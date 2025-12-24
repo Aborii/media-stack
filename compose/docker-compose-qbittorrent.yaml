@@ -8,6 +8,9 @@
 ##
 ###########################################################################
 ###########################################################################
+
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
 services:
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest

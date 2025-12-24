@@ -8,6 +8,7 @@
 ##
 ###########################################################################
 ###########################################################################
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
 services:
   homepage:
     image: ghcr.io/gethomepage/homepage:latest

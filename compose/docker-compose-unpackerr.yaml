@@ -9,6 +9,9 @@
 ##
 ###########################################################################
 ###########################################################################
+
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
 services:
   unpackerr:
     image: ghcr.io/hotio/unpackerr:latest

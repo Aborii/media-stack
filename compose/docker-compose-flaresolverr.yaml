@@ -8,6 +8,9 @@
 ##
 ###########################################################################
 ###########################################################################
+
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
 services:
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest

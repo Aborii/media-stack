@@ -8,6 +8,7 @@
 ##
 ###########################################################################
 ###########################################################################
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
 services:
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest

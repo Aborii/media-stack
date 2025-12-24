@@ -8,6 +8,9 @@
 ##
 ###########################################################################
 ###########################################################################
+
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
 services:
   lidarr:
     image: lscr.io/linuxserver/lidarr:latest

@@ -9,6 +9,9 @@
 ##
 ###########################################################################
 ###########################################################################
+
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
 services:
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest

@@ -10,6 +10,9 @@
 ##
 ###########################################################################
 ###########################################################################
+
+name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
 services:
   tdarr:
     image: ghcr.io/haveagitgat/tdarr:latest
