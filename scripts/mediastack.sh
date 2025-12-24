@@ -258,7 +258,7 @@ stop_all_services() {
     echo ""
     
     # Get list of running MediaStack containers
-    local all_running=$(sudo docker ps --format "{{.Names}}" | grep -E "(gluetun|bazarr|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
+    local all_running=$(sudo docker ps --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
     
     if [[ -z "$all_running" ]]; then
         echo -e "${BLUE}No MediaStack containers are currently running.${NC}"
@@ -291,7 +291,7 @@ remove_all_services() {
     echo ""
     
     # Get list of all MediaStack containers (running and stopped)
-    local all_containers=$(sudo docker ps -a --format "{{.Names}}" | grep -E "(gluetun|bazarr|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
+    local all_containers=$(sudo docker ps -a --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
     
     if [[ -z "$all_containers" ]]; then
         echo -e "${BLUE}No MediaStack containers found.${NC}"
@@ -340,6 +340,7 @@ check_health() {
         case "$service" in
             "gluetun")          var_name="GLUETUN_CONTROL_PORT" ;;
             "bazarr")           var_name="WEBUI_PORT_BAZARR" ;;
+            "immich")           var_name="IMMICH_PORT" ;;
             "jellyfin")         var_name="WEBUI_PORT_JELLYFIN" ;;
             "jellyseerr")       var_name="WEBUI_PORT_JELLYSEERR" ;;
             "lidarr")           var_name="WEBUI_PORT_LIDARR" ;;
@@ -385,7 +386,7 @@ check_health() {
         fi
     else
         # Check all MediaStack containers
-        containers=$(sudo docker ps --format "{{.Names}}" | grep -E "(gluetun|bazarr|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
+        containers=$(sudo docker ps --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
     fi
     
     if [[ -z "$containers" ]]; then
@@ -753,6 +754,7 @@ case "$command" in
         echo "  $0 restart-all         - Stop all, start Gluetun + whitelisted services"
         echo "  $0 restart-all --all   - Stop all, start ALL services"
         echo "  $0 remove-all          - Remove ALL containers"
+        echo "  $0 logs immich         - Show Immich logs"
         echo "  $0 logs jellyfin       - Show Jellyfin logs"
         echo "  $0 health              - Check health of all running services"
         echo "  $0 health prowlarr     - Check health of Prowlarr only"

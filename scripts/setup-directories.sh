@@ -59,7 +59,7 @@ export PGID
 
 # Create data directories for applications
 echo -e "${BLUE}Creating application data directories...${NC}"
-sudo -E mkdir -p $FOLDER_FOR_DATA/{authelia/assets,bazarr,ddns-updater,flaresolverr,gluetun,heimdall,homarr/{configs,data,icons},homepage,jellyfin,jellyseerr,lidarr,mylar,plex,portainer,prowlarr,qbittorrent,radarr,readarr,sabnzbd,sonarr,swag,tdarr/{server,configs,logs},tdarr_transcode_cache,unpackerr,whisparr}
+sudo -E mkdir -p $FOLDER_FOR_DATA/{authelia/assets,bazarr,ddns-updater,flaresolverr,gluetun,heimdall,homarr/{configs,data,icons},homepage,immich/{library,postgres,model-cache},jellyfin,jellyseerr,lidarr,mylar,plex,portainer,prowlarr,qbittorrent,radarr,readarr,sabnzbd,sonarr,swag,tdarr/{server,configs,logs},tdarr_transcode_cache,unpackerr,whisparr}
 
 # Create media directories
 echo -e "${BLUE}Creating media directories...${NC}"
@@ -77,6 +77,7 @@ sudo -E mkdir -p $FOLDER_FOR_MEDIA/torrents/{anime,audio,books,comics,complete,c
 echo -e "${BLUE}Creating additional directories...${NC}"
 sudo -E mkdir -p $FOLDER_FOR_MEDIA/watch
 sudo -E mkdir -p $FOLDER_FOR_MEDIA/filebot/{input,output}
+sudo -E mkdir -p $FOLDER_FOR_MEDIA/cloud-backup
 
 # Set permissions
 echo -e "${BLUE}Setting permissions...${NC}"

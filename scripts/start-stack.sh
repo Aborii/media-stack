@@ -77,6 +77,7 @@ start_service "compose/docker-compose-bazarr.yaml" "Bazarr"
 start_service "compose/docker-compose-jellyfin.yaml" "Jellyfin"
 start_service "compose/docker-compose-jellyseerr.yaml" "Jellyseerr"
 start_service "compose/docker-compose-plex.yaml" "Plex"
+start_service "compose/docker-compose-immich.yaml" "Immich"
 
 # Dashboards
 start_service "compose/docker-compose-homarr.yaml" "Homarr"

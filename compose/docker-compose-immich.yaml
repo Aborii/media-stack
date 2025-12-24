@@ -1,0 +1,100 @@
+###########################################################################
+###########################################################################
+##
+##  Docker Compose File: Immich (Photo and Video Management)
+##  Function: Photo and Video backup, management, and AI-powered organization
+##
+##  Documentation: https://docs.immich.app/
+##  https://docs.immich.app/install/docker-compose
+##
+###########################################################################
+###########################################################################
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:?err}
+    restart: unless-stopped
+    # extends:
+    #   file: hwaccel.transcoding.yml
+    #   service: cpu # set to one of [nvenc, quicksync, rkmpp, vaapi, vaapi-wsl] for accelerated transcoding
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/immich/server:/data
+      - ${FOLDER_FOR_MEDIA:?err}/cloud-backup:/data/library
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      # Database connection
+      - DB_HOSTNAME=immich_postgres
+      - DB_USERNAME=${IMMICH_DB_USERNAME:?err}
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD:?err}
+      - DB_DATABASE_NAME=${IMMICH_DB_DATABASE_NAME:?err}
+      # Redis connection
+      - REDIS_HOSTNAME=immich_redis
+    ports:
+      - '0.0.0.0:${IMMICH_PORT:?err}:2283'
+    depends_on:
+      - immich-redis
+      - immich-database
+    healthcheck:
+      disable: false
+    networks:
+      - immich_network
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    # For hardware acceleration, add one of -[armnn, cuda, rocm, openvino, rknn] to the image tag.
+    # Example tag: ${IMMICH_VERSION:?err}-cuda
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}
+    restart: unless-stopped
+    user: "999:999"
+    # extends: # uncomment this section for hardware acceleration - see https://docs.immich.app/features/ml-hardware-acceleration
+    #   file: hwaccel.ml.yml
+    #   service: cpu # set to one of [armnn, cuda, rocm, openvino, openvino-wsl, rknn] for accelerated inference - use the `-wsl` version for WSL2 where applicable
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/immich/model-cache:/cache
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+    healthcheck:
+      disable: false
+    networks:
+      - immich_network
+
+  immich-redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9@sha256:fb8d272e529ea567b9bf1302245796f21a2672b8368ca3fcb938ac334e613c8f
+    restart: unless-stopped
+    healthcheck:
+      test: redis-cli ping || exit 1
+    networks:
+      - immich_network
+
+  immich-database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD:?err}
+      - POSTGRES_USER=${IMMICH_DB_USERNAME:?err}
+      - POSTGRES_DB=${IMMICH_DB_DATABASE_NAME:?err}
+      - POSTGRES_INITDB_ARGS=--data-checksums
+      # Uncomment the DB_STORAGE_TYPE: 'HDD' var if your database isn't stored on SSDs
+      # - DB_STORAGE_TYPE=HDD
+    volumes:
+      - immich_postgres_data:/var/lib/postgresql/data
+    shm_size: 128mb
+    networks:
+      - immich_network
+
+volumes:
+  immich_postgres_data:
+    name: immich_postgres_data
+
+networks:
+  immich_network:
+    name: immich_network
+    driver: bridge

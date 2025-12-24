@@ -18,6 +18,7 @@
 # - heimdall (Dashboard)
 # - homarr (Dashboard)
 # - homepage (Dashboard)
+# - immich (Photo and video management)
 # - jellyfin (Media server)
 # - jellyseerr (Media requests)
 # - lidarr (Music management)
@@ -46,3 +47,4 @@ flaresolverr
 sonarr
 portainer
 bazarr
+immich

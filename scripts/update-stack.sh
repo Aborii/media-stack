@@ -236,6 +236,10 @@ if is_service_whitelisted "plex" "$whitelist" "$use_all"; then
     update_service "compose/docker-compose-plex.yaml" "Plex"
     ((recreated_count++))
 fi
+if is_service_whitelisted "immich" "$whitelist" "$use_all"; then
+    update_service "compose/docker-compose-immich.yaml" "Immich"
+    ((recreated_count++))
+fi
 
 # Dashboards
 if is_service_whitelisted "homarr" "$whitelist" "$use_all"; then
