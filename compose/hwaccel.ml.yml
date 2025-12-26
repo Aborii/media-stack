@@ -1,0 +1,44 @@
+# Hardware Acceleration for Immich Machine Learning
+# Source: https://docs.immich.app/features/ml-hardware-acceleration
+
+services:
+  # CPU-only (default)
+  cpu: {}
+
+  # NVIDIA CUDA acceleration  
+  cuda:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-cuda
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+  # OpenVINO acceleration (Intel)
+  openvino:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-openvino
+    devices:
+      - /dev/dri:/dev/dri
+
+  # OpenVINO acceleration for WSL2 (Intel)
+  openvino-wsl:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-openvino
+    devices:
+      - /dev/dxg:/dev/dxg
+    volumes:
+      - /usr/lib/wsl:/usr/lib/wsl
+
+  # AMD ROCm acceleration
+  rocm:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-rocm
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+
+  # ARM Neural Network acceleration
+  armnn:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-armnn
+
+  # Rockchip NPU acceleration
+  rknn:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-rknn
