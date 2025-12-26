@@ -17,7 +17,7 @@ services:
     container_name: mylar
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/mylar:/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/mylar:/config
       - ${FOLDER_FOR_MEDIA:?err}:/data
     environment:
       - PUID=${PUID:?err}

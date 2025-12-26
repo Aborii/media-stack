@@ -15,7 +15,7 @@ services:
     container_name: sonarr
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/sonarr:/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/sonarr:/config
       - ${FOLDER_FOR_MEDIA:?err}:/data
       - ${FOLDER_FOR_MEDIA:?err}/torrents:/downloads
 

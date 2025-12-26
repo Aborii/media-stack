@@ -22,7 +22,7 @@ services:
       - CAPTCHA_SOLVER=none
       - TZ=${TIMEZONE:?err}
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/flaresolverr:/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/flaresolverr:/config
     network_mode: "container:gluetun"
 
 # Ports are disabled in containers when they are connected to VPN, as the

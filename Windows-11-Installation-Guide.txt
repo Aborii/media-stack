@@ -125,7 +125,7 @@ sudo docker network    prune -f
 # This tutorial will show you how to set up the following folders
 
 # FOLDER_FOR_MEDIA=/mnt/d/MediaStack/Media      We will store all media in this location
-# FOLDER_FOR_DATA=/mnt/d/MediaStack/AppData     We will store all Docker configurations here
+# FOLDER_FOR_CONFIG_DATA=/mnt/d/MediaStack/AppData     We will store all Docker configurations here
 
 mkdir D:\MediaStack\Media
 mkdir D:\MediaStack\AppData
@@ -151,7 +151,7 @@ nano docker-compose.env
 
 # Set your folder paths (update these to match your setup):
 # FOLDER_FOR_MEDIA=/mnt/d/MediaStack/Media
-# FOLDER_FOR_DATA=/mnt/d/MediaStack/AppData/data
+# FOLDER_FOR_CONFIG_DATA=/mnt/d/MediaStack/AppData/data
 
 #####################################################################################
 #                    MEDIASTACK ENHANCED SETUP - ONE COMMAND!                       #

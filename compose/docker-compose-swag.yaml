@@ -20,7 +20,7 @@ services:
       - NET_ADMIN
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/swag:/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/swag:/config
     ports:
       - ${REVERSE_PROXY_PORT_HTTP:?err}:80
       - ${REVERSE_PROXY_PORT_HTTPS:?err}:443

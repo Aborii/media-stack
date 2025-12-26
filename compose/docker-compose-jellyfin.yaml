@@ -22,7 +22,7 @@ services:
 #      - /dev/dri/renderD128:/dev/dri/renderD128
 #      - /dev/dri/card0:/dev/dri/card0
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/jellyfin:/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/jellyfin:/config
       - ${FOLDER_FOR_MEDIA:?err}/media:/data/media
     environment:
       - PUID=${PUID:?err}

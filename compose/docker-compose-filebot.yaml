@@ -19,7 +19,7 @@ services:
     container_name: filebot
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/filebot:/data/filebot
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/filebot:/data/filebot
       - ${FOLDER_FOR_MEDIA:?err}/filebot:/filebot
     environment:
 #      - XPRA_AUTH=password:value=YOUR_PASSWORD

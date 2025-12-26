@@ -39,27 +39,27 @@ else
 fi
 
 # Verify required variables
-if [[ -z "$FOLDER_FOR_MEDIA" || -z "$FOLDER_FOR_DATA" || -z "$PUID" || -z "$PGID" ]]; then
+if [[ -z "$FOLDER_FOR_MEDIA" || -z "$FOLDER_FOR_CONFIG_DATA" || -z "$PUID" || -z "$PGID" ]]; then
     echo -e "${RED}✗ Required environment variables not found in docker-compose.env${NC}"
-    echo "Please ensure FOLDER_FOR_MEDIA, FOLDER_FOR_DATA, PUID, and PGID are set."
+    echo "Please ensure FOLDER_FOR_MEDIA, FOLDER_FOR_CONFIG_DATA, PUID, and PGID are set."
     exit 1
 fi
 
 echo -e "${YELLOW}Creating MediaStack directories...${NC}"
 echo "Media folder: $FOLDER_FOR_MEDIA"
-echo "Data folder: $FOLDER_FOR_DATA"
+echo "Data folder: $FOLDER_FOR_CONFIG_DATA"
 echo "PUID: $PUID, PGID: $PGID"
 echo ""
 
 # Export variables for use with sudo -E
 export FOLDER_FOR_MEDIA
-export FOLDER_FOR_DATA
+export FOLDER_FOR_CONFIG_DATA
 export PUID
 export PGID
 
 # Create data directories for applications
 echo -e "${BLUE}Creating application data directories...${NC}"
-sudo -E mkdir -p $FOLDER_FOR_DATA/{authelia/assets,bazarr,ddns-updater,flaresolverr,gluetun,heimdall,homarr/{configs,data,icons},homepage,immich/{library,postgres,model-cache},jellyfin,jellyseerr,lidarr,mylar,plex,portainer,prowlarr,qbittorrent,radarr,readarr,sabnzbd,sonarr,swag,tdarr/{server,configs,logs},tdarr_transcode_cache,unpackerr,whisparr}
+sudo -E mkdir -p $FOLDER_FOR_CONFIG_DATA/{authelia/assets,bazarr,ddns-updater,flaresolverr,ftp-client,ftp-shared,gluetun,heimdall,homarr/{configs,data,icons},homepage,immich/{library,postgres,model-cache},jellyfin,jellyseerr,lidarr,mylar,plex,portainer,prowlarr,qbittorrent,radarr,readarr,sabnzbd,sonarr,swag,tdarr/{server,configs,logs},tdarr_transcode_cache,unpackerr,whisparr}
 
 # Create media directories
 echo -e "${BLUE}Creating media directories...${NC}"
@@ -81,8 +81,8 @@ sudo -E mkdir -p $FOLDER_FOR_MEDIA/cloud-backup
 
 # Set permissions
 echo -e "${BLUE}Setting permissions...${NC}"
-sudo -E chmod -R 775 $FOLDER_FOR_MEDIA $FOLDER_FOR_DATA
-sudo -E chown -R $PUID:$PGID $FOLDER_FOR_MEDIA $FOLDER_FOR_DATA
+sudo -E chmod -R 775 $FOLDER_FOR_MEDIA $FOLDER_FOR_CONFIG_DATA
+sudo -E chown -R $PUID:$PGID $FOLDER_FOR_MEDIA $FOLDER_FOR_CONFIG_DATA
 
 echo ""
 echo -e "${GREEN}✓ Directory setup complete!${NC}"

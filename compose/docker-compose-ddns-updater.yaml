@@ -18,7 +18,7 @@ services:
     restart: always
     user: ${PUID:?err}:${PGID:?err}
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/ddns-updater:/updater/data
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/ddns-updater:/updater/data
     ports:
       - ${WEBUI_PORT_DDNS_UPDATER:?err}:${WEBUI_PORT_DDNS_UPDATER:?err}/tcp
     environment:

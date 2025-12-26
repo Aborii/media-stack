@@ -18,7 +18,7 @@ services:
     container_name: heimdall
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/heimdall:/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/heimdall:/config
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}

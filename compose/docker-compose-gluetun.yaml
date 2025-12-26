@@ -70,7 +70,7 @@ services:
       #- 5353:5353/udp                           # Plex Network Port  (Clashes with Synology: Bonjour "File Services" --> "Advanced")
 
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/gluetun:/gluetun
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}

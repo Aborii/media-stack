@@ -17,7 +17,7 @@ services:
     container_name: jellyseerr
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/jellyseerr:/app/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/jellyseerr:/app/config
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}

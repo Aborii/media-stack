@@ -17,7 +17,7 @@ services:
     ports:
       - ${WEBUI_PORT_HOMEPAGE:?err}:3000
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/homepage:/app/config
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PUID=${PUID:?err}

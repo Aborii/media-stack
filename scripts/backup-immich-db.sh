@@ -29,7 +29,7 @@ cd "$(dirname "$SCRIPT_DIR")"
 source docker-compose.env
 
 # Create backup directory
-BACKUP_DIR="${FOLDER_FOR_DATA}/immich/backups"
+BACKUP_DIR="${FOLDER_FOR_CONFIG_DATA}/immich/backups"
 mkdir -p "$BACKUP_DIR"
 
 echo -e "${BLUE}Immich Database Backup${NC}"

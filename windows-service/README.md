@@ -55,8 +55,8 @@ The installer automatically determines your MediaStack directory from `docker-co
 ```
 
 **Example paths:**
-- If `FOLDER_FOR_DATA=/mnt/d/MediaStack/AppData/data` → Service files in `D:\MediaStack\windows-service\`
-- If `FOLDER_FOR_DATA=/mnt/h/MyMedia/AppData/data` → Service files in `H:\MyMedia\windows-service\`
+- If `FOLDER_FOR_CONFIG_DATA=/mnt/d/MediaStack/AppData/data` → Service files in `D:\MediaStack\windows-service\`
+- If `FOLDER_FOR_CONFIG_DATA=/mnt/h/MyMedia/AppData/data` → Service files in `H:\MyMedia\windows-service\`
 
 ## Service Management
 

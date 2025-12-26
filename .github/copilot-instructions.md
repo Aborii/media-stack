@@ -52,7 +52,7 @@ Services are organized into logical Docker Compose stacks using the `name:` fiel
 All configuration in [docker-compose.env](docker-compose.env) (gitignored, copy from `.example`):
 - **Required placeholders**: `${VAR:?err}` syntax fails immediately if undefined
 - **VPN credentials**: `VPN_SERVICE_PROVIDER`, `VPN_USERNAME`, `VPN_PASSWORD`, `WIREGUARD_*` keys
-- **Path mappings**: `FOLDER_FOR_MEDIA`, `FOLDER_FOR_DATA` (must exist before docker compose up)
+- **Path mappings**: `FOLDER_FOR_MEDIA`, `FOLDER_FOR_CONFIG_DATA` (must exist before docker compose up)
 - **Port definitions**: `WEBUI_PORT_*` variables reference service WebUI ports
 
 ### Service Whitelist
@@ -94,7 +94,7 @@ Set `runtime: nvidia` and env vars (`NVIDIA_VISIBLE_DEVICES`, `NVIDIA_DRIVER_CAP
 
 ```bash
 # Setup (run once)
-./mediastack.sh setup     # Creates FOLDER_FOR_DATA subdirectories
+./mediastack.sh setup     # Creates FOLDER_FOR_CONFIG_DATA subdirectories
 
 # Daily operations  
 ./mediastack.sh start     # Gluetun-first startup with VPN wait
@@ -123,7 +123,7 @@ Set `runtime: nvidia` and env vars (`NVIDIA_VISIBLE_DEVICES`, `NVIDIA_DRIVER_CAP
 - **Standardized headers**: 11-line comment block with service name, function, documentation links
 - **Name field**: Use `${MEDIA_STACK_PROJECT_NAME:-media-stack}` or `${IMMICH_PROJECT_NAME:-immich-stack}` for project grouping
 - **Required env vars**: Use `:?err` suffix for mandatory variables
-- **Volume patterns**: `${FOLDER_FOR_DATA}/service:/config` and `${FOLDER_FOR_MEDIA}:/data`
+- **Volume patterns**: `${FOLDER_FOR_CONFIG_DATA}/service:/config` and `${FOLDER_FOR_MEDIA}:/data`
 - **Theme Park**: *ARR services use `DOCKER_MODS` for UI theming via `TP_THEME` env var
 
 ## Project Structure
@@ -142,7 +142,7 @@ services.whitelist           # Service enable/disable list
 
 1. **VPN service ports**: Never add `ports:` to services using `network_mode: "container:gluetun"` - define them in Gluetun's compose file
 2. **Startup order**: Always start Gluetun first for VPN-dependent services or use `./mediastack.sh start` which handles this
-3. **Missing directories**: Run `./mediastack.sh setup` before first `docker compose up` to create `FOLDER_FOR_DATA` structure
+3. **Missing directories**: Run `./mediastack.sh setup` before first `docker compose up` to create `FOLDER_FOR_CONFIG_DATA` structure
 4. **Environment validation**: Use `:?err` suffix on all critical env vars to fail fast on missing config
 5. **Whitelist confusion**: If bulk commands skip services, check [services.whitelist](services.whitelist) or use `--all` flag
 
