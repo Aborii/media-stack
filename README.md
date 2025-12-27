@@ -36,8 +36,8 @@ List of Docker applications configured in the MediaStack `docker-compose.yaml` f
 | [DDNS-Updater](https://hub.docker.com/r/qmcgaw/ddns-updater) | DDNS-Updater automatically updates dynamic DNS records when your home Internet changes IP address |  
 | [Filebot](https://www.filebot.net/) | FileBot is a tool for renaming and organising media files using online metadata sources |  
 | [Flaresolverr](https://github.com/FlareSolverr/FlareSolverr) | Flaresolverr bypasses Cloudflare protection, allowing automated access to websites for scripts and bots |  
-| [FTP Client](https://github.com/jlesage/docker-filezilla) | Web-based FileZilla FTP client for easy file management via browser |  
-| [FTP Server](https://github.com/garethflowers/docker-ftp-server) | Lightweight FTP server for local file transfers and sharing |  
+| [File Manager](https://github.com/filebrowser/filebrowser) | Modern web-based file manager with intuitive interface for easy file management via browser |  
+| [FTP Server](https://github.com/stilliard/docker-pure-ftpd) | Pure-FTPd server with passive mode support for secure file transfers and mobile access |  
 | [Gluetun](https://github.com/qdm12/gluetun-wiki) | Gluetun routes network traffic through a VPN, ensuring privacy and security for Docker containers |  
 | [Grafana](http://docs.grafana.org/installation/docker/) | Grafana is an open-source analytics platform for visualising metrics, logs, and time-series data |  
 | [Guacamole](https://hub.docker.com/r/guacamole/guacamole) | Guacamole is a clientless remote desktop gateway supporting RDP, VNC, and SSH through a web browser |  

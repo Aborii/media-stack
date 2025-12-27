@@ -88,6 +88,22 @@ Replace `{YOUR_MEDIASTACK_DIR}` with your actual MediaStack directory:
 
 ## Troubleshooting
 
+### WSL Port Forwarding for FTP Access
+
+For FTP server external access (mobile devices), use the dedicated script:
+
+```powershell
+# Run as Administrator in PowerShell
+.\scripts\setup-ftp-windows-access.ps1
+```
+
+This script:
+- Automatically detects WSL IP address
+- Detects Windows host IP for network access
+- Sets up port forwarding for FTP ports (21, 20, 40000-40009)
+- Configures Windows Firewall rules
+- Provides connection details for mobile access
+
 ### Service Won't Start
 - Ensure your Windows account has a password
 - Check service is configured to run as your user account
