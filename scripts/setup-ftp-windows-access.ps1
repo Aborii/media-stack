@@ -1,4 +1,4 @@
-# MediaStack FTP Windows Access Setup Script
+# FTP Windows Access Setup Script
 # This script sets up port forwarding and firewall rules to allow FTP access from Windows/network to WSL
 # 
 # IMPORTANT: Run this script as Administrator in Windows PowerShell
@@ -6,7 +6,7 @@
 #
 # Usage: .\setup-ftp-windows-access.ps1
 
-Write-Host "MediaStack FTP Windows Access Setup" -ForegroundColor Green
+Write-Host "FTP Windows Access Setup" -ForegroundColor Green
 Write-Host "====================================" -ForegroundColor Green
 Write-Host ""
 
@@ -23,8 +23,52 @@ if (-not $isAdmin) {
 Write-Host "Running as Administrator - OK" -ForegroundColor Green
 Write-Host ""
 
-# WSL IP Address (update if different)
-$wslIP = "172.21.214.197"
+# Dynamically get WSL IP Address
+Write-Host "Detecting network configuration..." -ForegroundColor Blue
+try {
+    # Get the primary WSL IP (first one that's not a Docker network)
+    $wslIPs = (wsl hostname -I).Trim() -split '\s+'
+    $wslIP = $wslIPs | Where-Object { 
+        $_ -and 
+        $_ -notlike "172.17.*" -and 
+        $_ -notlike "172.18.*" -and 
+        $_ -notlike "172.19.*" -and 
+        $_ -notlike "172.20.*" -and 
+        $_ -notlike "172.28.*" -and 
+        $_ -notlike "172.22.*" 
+    } | Select-Object -First 1
+    
+    if (-not $wslIP) {
+        # If no non-Docker IP found, use the first IP
+        $wslIP = $wslIPs[0]
+    }
+    
+    if (-not $wslIP) {
+        throw "Could not get WSL IP"
+    }
+    Write-Host "WSL IP detected: $wslIP" -ForegroundColor Green
+} catch {
+    Write-Host "Could not auto-detect WSL IP. Please ensure WSL is running." -ForegroundColor Red
+    $wslIP = Read-Host "Please enter your WSL IP address manually"
+}
+
+# Dynamically get Windows host IP (for local network)
+try {
+    $windowsIP = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp | Where-Object {$_.IPAddress -like "192.168.*"} | Select-Object -First 1).IPAddress
+    if (-not $windowsIP) {
+        $windowsIP = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Manual | Where-Object {$_.IPAddress -like "192.168.*"} | Select-Object -First 1).IPAddress
+    }
+    if ($windowsIP) {
+        Write-Host "Windows host IP detected: $windowsIP" -ForegroundColor Green
+    } else {
+        throw "Could not detect Windows IP"
+    }
+} catch {
+    Write-Host "Could not auto-detect Windows IP." -ForegroundColor Yellow
+    $windowsIP = Read-Host "Please enter your Windows host IP address for network access"
+}
+
+Write-Host ""
 Write-Host "Setting up port forwarding for WSL IP: $wslIP" -ForegroundColor Yellow
 Write-Host ""
 
@@ -52,11 +96,11 @@ try {
     
     # Add firewall rule for FTP control
     Write-Host "  - Adding firewall rule for FTP control port..."
-    New-NetFirewallRule -DisplayName "MediaStack-FTP-Control" -Direction Inbound -Protocol TCP -LocalPort 21 -Action Allow | Out-Null
+    New-NetFirewallRule -DisplayName "FTP-Control" -Direction Inbound -Protocol TCP -LocalPort 21 -Action Allow | Out-Null
     
     # Add firewall rule for FTP data and passive ports
     Write-Host "  - Adding firewall rule for FTP data and passive ports..."
-    New-NetFirewallRule -DisplayName "MediaStack-FTP-Data" -Direction Inbound -Protocol TCP -LocalPort 20,40000-40009 -Action Allow | Out-Null
+    New-NetFirewallRule -DisplayName "FTP-Data" -Direction Inbound -Protocol TCP -LocalPort 20,40000-40009 -Action Allow | Out-Null
     
     Write-Host "Firewall rules added successfully" -ForegroundColor Green
     Write-Host ""
@@ -64,12 +108,12 @@ try {
     Write-Host "Setup completed successfully!" -ForegroundColor Green
     Write-Host ""
     Write-Host "You can now connect to your FTP server from your phone using:" -ForegroundColor Yellow
-    Write-Host "  Host: 192.168.0.114" -ForegroundColor White
+    Write-Host "  Host: $windowsIP" -ForegroundColor White
     Write-Host "  Port: 21" -ForegroundColor White
     Write-Host "  Username: aborii" -ForegroundColor White
     Write-Host "  Password: secure_password_goes_here" -ForegroundColor White
     Write-Host ""
-    Write-Host "Web File Manager: http://192.168.0.114:5800" -ForegroundColor Yellow
+    Write-Host "Web File Manager: http://${windowsIP}:5800" -ForegroundColor Yellow
     Write-Host ""
     
 } catch {
