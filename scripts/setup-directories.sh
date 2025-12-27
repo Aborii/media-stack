@@ -61,7 +61,7 @@ export PGID
 
 # Create data directories for applications
 echo -e "${BLUE}Creating application data directories...${NC}"
-sudo -E mkdir -p $FOLDER_FOR_CONFIG_DATA/{authelia/assets,bazarr,ddns-updater,flaresolverr,ftp-client,ftp-shared,gluetun,heimdall,homarr/{configs,data,icons},homepage,immich/{library,postgres,model-cache},jellyfin,jellyseerr,lidarr,mylar,plex,portainer,prowlarr,qbittorrent,radarr,readarr,sabnzbd,sonarr,swag,tdarr/{server,configs,logs},tdarr_transcode_cache,unpackerr,whisparr}
+sudo -E mkdir -p $FOLDER_FOR_CONFIG_DATA/{authelia/assets,bazarr,ddns-updater,flaresolverr,file-manager,ftp-shared,gluetun,heimdall,homarr/{configs,data,icons},homepage,immich/{library,postgres,model-cache},jellyfin,jellyseerr,lidarr,mylar,plex,portainer,prowlarr,qbittorrent,radarr,readarr,sabnzbd,sonarr,swag,tdarr/{server,configs,logs},tdarr_transcode_cache,unpackerr,whisparr}
 
 # Create media directories
 echo -e "${BLUE}Creating media directories...${NC}"

@@ -1,11 +1,11 @@
 #################################################################################
 ##
-##    Docker Compose File: FTP Stack (Server + Client)
+##    Docker Compose File: FTP Server + Web File Manager
 ##
-##    Function: Local FTP server with web-based FileZilla client
+##    Function: FTP server with web-based file manager interface
 ##
-##    Documentation: https://github.com/garethflowers/docker-ftp-server
-##                   https://github.com/jlesage/docker-filezilla
+##    Documentation: https://github.com/stilliard/docker-pure-ftpd
+##                   https://github.com/filebrowser/filebrowser
 ##
 #################################################################################
 
@@ -18,7 +18,7 @@ services:
     container_name: ftp-server
     restart: unless-stopped
     environment:
-      - PUBLICHOST=${FTP_PASV_ADDRESS:?err}
+      - PUBLICHOST=${LOCAL_DOCKER_IP}
       - FTP_USER_NAME=${FTP_USER:?err}
       - FTP_USER_PASS=${FTP_PASS:?err}
       - FTP_USER_HOME=/home/ftpuser
@@ -35,22 +35,20 @@ services:
     labels:
       - "autoheal=true"
 
-  ftp-client:
-    image: jlesage/filezilla:latest
-    container_name: ftp-client
+  file-manager:
+    image: filebrowser/filebrowser:latest
+    container_name: file-manager
     restart: unless-stopped
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
-      - TZ=${TIMEZONE:?err}
-      - DISPLAY_WIDTH=1920
-      - DISPLAY_HEIGHT=1080
-      - VNC_PASSWORD=${FTP_VNC_PASSWORD:-}
     volumes:
-      - ${FOLDER_FOR_CONFIG_DATA:?err}/ftp-client:/config:rw
-      - ${FOLDER_FOR_MEDIA:?err}:/shared:ro
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/file-manager:/config:rw
+      - ${FOLDER_FOR_FTP_STORAGE:?err}:/srv:rw
+      - ${FOLDER_FOR_MEDIA:?err}:/media:ro
     ports:
-      - "${WEBUI_PORT_FTP_CLIENT:?err}:5800"
+      - "${WEBUI_PORT_FILE_MANAGER:?err}:80"
+    command: --config /config/filebrowser.json --database /config/database.db --address 0.0.0.0 --port 80 --root /srv
     networks:
       - ftp-network
     labels:
