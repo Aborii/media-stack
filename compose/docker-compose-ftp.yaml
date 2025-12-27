@@ -9,24 +9,26 @@
 ##
 #################################################################################
 
-name: ftp-stack
+name: ${FTP_PROJECT_NAME:-ftp-stack}
 
 
 services:
   ftp-server:
-    image: garethflowers/ftp-server:latest
+    image: stilliard/pure-ftpd:latest
     container_name: ftp-server
     restart: unless-stopped
     environment:
-      - FTP_USER=${FTP_USER:?err}
-      - FTP_PASS=${FTP_PASS:?err}
-      - PUID=${PUID:?err}
-      - PGID=${PGID:?err}
+      - PUBLICHOST=${FTP_PASV_ADDRESS:?err}
+      - FTP_USER_NAME=${FTP_USER:?err}
+      - FTP_USER_PASS=${FTP_PASS:?err}
+      - FTP_USER_HOME=/home/ftpuser
+      - FTP_PASSIVE_PORTS=40000:40009
+      - ADDED_FLAGS=-d -d
     volumes:
-      - ${FOLDER_FOR_FTP_STORAGE:?err}:/home/${FTP_USER}/shared:rw
+      - ${FOLDER_FOR_FTP_STORAGE:?err}:/home/ftpuser:rw
     ports:
+      - "20:20"
       - "21:21"
-      - "20:20" 
       - "40000-40009:40000-40009"
     networks:
       - ftp-network

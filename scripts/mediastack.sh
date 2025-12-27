@@ -258,7 +258,7 @@ stop_all_services() {
     echo ""
     
     # Get list of running MediaStack containers
-    local all_running=$(sudo docker ps --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
+    local all_running=$(sudo docker ps --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot|ftp-server|ftp-client)")
     
     if [[ -z "$all_running" ]]; then
         echo -e "${BLUE}No MediaStack containers are currently running.${NC}"
@@ -291,7 +291,7 @@ remove_all_services() {
     echo ""
     
     # Get list of all MediaStack containers (running and stopped)
-    local all_containers=$(sudo docker ps -a --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot)")
+    local all_containers=$(sudo docker ps -a --format "{{.Names}}" | grep -E "(gluetun|bazarr|immich|jellyfin|jellyseerr|lidarr|mylar|plex|portainer|prowlarr|qbittorrent|radarr|readarr|sabnzbd|sonarr|swag|tdarr|unpackerr|whisparr|flaresolverr|homarr|homepage|heimdall|ddns-updater|authelia|filebot|ftp-server|ftp-client)")
     
     if [[ -z "$all_containers" ]]; then
         echo -e "${BLUE}No MediaStack containers found.${NC}"
@@ -313,6 +313,10 @@ remove_all_services() {
     # Clean up the mediastack network
     echo -e "${BLUE}Cleaning up mediastack network...${NC}"
     sudo docker network rm mediastack 2>/dev/null || true
+    
+    # Clean up the FTP network
+    echo -e "${BLUE}Cleaning up FTP network...${NC}"
+    sudo docker network rm ftp-stack_ftp-network 2>/dev/null || true
     
     echo ""
     if [[ $removed_count -gt 0 ]]; then
