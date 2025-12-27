@@ -1,0 +1,59 @@
+#################################################################################
+##
+##    Docker Compose File: FTP Stack (Server + Client)
+##
+##    Function: Local FTP server with web-based FileZilla client
+##
+##    Documentation: https://github.com/garethflowers/docker-ftp-server
+##                   https://github.com/jlesage/docker-filezilla
+##
+#################################################################################
+
+name: ftp-stack
+
+
+services:
+  ftp-server:
+    image: garethflowers/ftp-server:latest
+    container_name: ftp-server
+    restart: unless-stopped
+    environment:
+      - FTP_USER=${FTP_USER:?err}
+      - FTP_PASS=${FTP_PASS:?err}
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+    volumes:
+      - ${FOLDER_FOR_FTP_STORAGE:?err}:/home/${FTP_USER}/shared:rw
+    ports:
+      - "21:21"
+      - "20:20" 
+      - "40000-40009:40000-40009"
+    networks:
+      - ftp-network
+    labels:
+      - "autoheal=true"
+
+  ftp-client:
+    image: jlesage/filezilla:latest
+    container_name: ftp-client
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DISPLAY_WIDTH=1920
+      - DISPLAY_HEIGHT=1080
+      - VNC_PASSWORD=${FTP_VNC_PASSWORD:-}
+    volumes:
+      - ${FOLDER_FOR_CONFIG_DATA:?err}/ftp-client:/config:rw
+      - ${FOLDER_FOR_MEDIA:?err}:/shared:ro
+    ports:
+      - "${WEBUI_PORT_FTP_CLIENT:?err}:5800"
+    networks:
+      - ftp-network
+    labels:
+      - "autoheal=true"
+
+networks:
+  ftp-network:
+    driver: bridge

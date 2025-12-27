@@ -15,6 +15,7 @@
 # - ddns-updater (Dynamic DNS)
 # - filebot (File organization)
 # - flaresolverr (Cloudflare bypass)
+# - ftp (FTP server and client)
 # - heimdall (Dashboard)
 # - homarr (Dashboard)
 # - homepage (Dashboard)

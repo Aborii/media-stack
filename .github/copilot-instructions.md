@@ -145,6 +145,7 @@ services.whitelist           # Service enable/disable list
 3. **Missing directories**: Run `./mediastack.sh setup` before first `docker compose up` to create `FOLDER_FOR_CONFIG_DATA` structure
 4. **Environment validation**: Use `:?err` suffix on all critical env vars to fail fast on missing config
 5. **Whitelist confusion**: If bulk commands skip services, check [services.whitelist](services.whitelist) or use `--all` flag
+6. **🚨 CRITICAL: NEVER DELETE ENVIRONMENT FILES**: Never delete `docker-compose.env`, `.env`, or any configuration files containing environment variables. These files contain valuable user configuration data that cannot be easily recovered. Always preserve, backup, or ask before modifying these files.
 
 ## External Documentation
 

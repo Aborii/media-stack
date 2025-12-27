@@ -39,21 +39,23 @@ else
 fi
 
 # Verify required variables
-if [[ -z "$FOLDER_FOR_MEDIA" || -z "$FOLDER_FOR_CONFIG_DATA" || -z "$PUID" || -z "$PGID" ]]; then
+if [[ -z "$FOLDER_FOR_MEDIA" || -z "$FOLDER_FOR_CONFIG_DATA" || -z "$FOLDER_FOR_FTP_STORAGE" || -z "$PUID" || -z "$PGID" ]]; then
     echo -e "${RED}✗ Required environment variables not found in docker-compose.env${NC}"
-    echo "Please ensure FOLDER_FOR_MEDIA, FOLDER_FOR_CONFIG_DATA, PUID, and PGID are set."
+    echo "Please ensure FOLDER_FOR_MEDIA, FOLDER_FOR_CONFIG_DATA, FOLDER_FOR_FTP_STORAGE, PUID, and PGID are set."
     exit 1
 fi
 
 echo -e "${YELLOW}Creating MediaStack directories...${NC}"
 echo "Media folder: $FOLDER_FOR_MEDIA"
 echo "Data folder: $FOLDER_FOR_CONFIG_DATA"
+echo "FTP storage folder: $FOLDER_FOR_FTP_STORAGE"
 echo "PUID: $PUID, PGID: $PGID"
 echo ""
 
 # Export variables for use with sudo -E
 export FOLDER_FOR_MEDIA
 export FOLDER_FOR_CONFIG_DATA
+export FOLDER_FOR_FTP_STORAGE
 export PUID
 export PGID
 
@@ -79,10 +81,14 @@ sudo -E mkdir -p $FOLDER_FOR_MEDIA/watch
 sudo -E mkdir -p $FOLDER_FOR_MEDIA/filebot/{input,output}
 sudo -E mkdir -p $FOLDER_FOR_MEDIA/cloud-backup
 
+# Create FTP storage directory
+echo -e "${BLUE}Creating FTP storage directory...${NC}"
+sudo -E mkdir -p $FOLDER_FOR_FTP_STORAGE
+
 # Set permissions
 echo -e "${BLUE}Setting permissions...${NC}"
-sudo -E chmod -R 775 $FOLDER_FOR_MEDIA $FOLDER_FOR_CONFIG_DATA
-sudo -E chown -R $PUID:$PGID $FOLDER_FOR_MEDIA $FOLDER_FOR_CONFIG_DATA
+sudo -E chmod -R 775 $FOLDER_FOR_MEDIA $FOLDER_FOR_CONFIG_DATA $FOLDER_FOR_FTP_STORAGE
+sudo -E chown -R $PUID:$PGID $FOLDER_FOR_MEDIA $FOLDER_FOR_CONFIG_DATA $FOLDER_FOR_FTP_STORAGE
 
 echo ""
 echo -e "${GREEN}✓ Directory setup complete!${NC}"
