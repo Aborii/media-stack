@@ -94,7 +94,7 @@ services:
       - HTTPPROXY=on
       - SHADOWSOCKS=on
       - PORT_FORWARD_ONLY=on
-
+      - EXTRA_SUBNETS=192.168.0.0/24
 # NOTE: Gluetun VPN container MUST ONLY connect to the mediastack
     networks:
       - mediastack

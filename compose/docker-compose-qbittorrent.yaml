@@ -23,6 +23,7 @@ services:
       - UMASK=${UMASK:?err}
       - TZ=${TIMEZONE:?err}
       - WEBUI_PORT=${WEBUI_PORT_QBITTORRENT:?err}
+      - TORRENTING_PORT=6881
       - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:qbittorrent
       - TP_THEME=${TP_THEME:?err}
 
@@ -30,3 +31,10 @@ services:
 ## qBittorrent MUST always use a VPN / Secure Internet connection
 
     network_mode: "container:gluetun"
+
+    # ports:
+    #   - "8200:${WEBUI_PORT_QBITTORRENT:?err}"
+    #   - "${QBIT_PORT:?err}:6881"                # Transmission Torrent Port
+    #   - "${QBIT_PORT:?err}:6881/udp"
+
+    # network_mode: "bridge"
