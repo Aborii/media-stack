@@ -1,13 +1,21 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Sonarr (LinuxServer.io)
-##  Function: Series Library Manager (TV Shows)
+##  Sonarr - TV series management
 ##
 ##  Documentation: https://docs.linuxserver.io/images/docker-sonarr
 ##
+##  On the normal bridge, NOT the VPN. Sonarr never contacts a tracker
+##  directly - Prowlarr proxies searches from inside the tunnel.
+##
+##  Point it at:
+##    Download client : gluetun:${WEBUI_PORT_QBITTORRENT}   (not qbittorrent:)
+##    Indexers        : added automatically by Prowlarr
+##
+##
 ###########################################################################
-###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
 services:
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
@@ -15,19 +23,22 @@ services:
     restart: unless-stopped
     volumes:
       - ${FOLDER_FOR_DATA:?err}/sonarr:/config
+      # ONE mount spanning downloads and library. A separate /downloads
+      # mount makes them look like different filesystems to Sonarr, which
+      # then copies on import instead of hardlinking.
       - ${FOLDER_FOR_MEDIA:?err}:/data
-      - ${FOLDER_FOR_MEDIA:?err}/torrents:/downloads
-
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
       - TZ=${TIMEZONE:?err}
       - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:sonarr
       - TP_THEME=${TP_THEME:?err}
-    network_mode: "container:gluetun"
+    ports:
+      - "${WEBUI_PORT_SONARR:?err}:8989"
+    networks:
+      - mediastack
 
-# Ports are disabled in containers when they are connected to VPN, as the
-# Gluetun container manages the ports for containers that connect via VPN
-
-#    ports:
-#      - "${WEBUI_PORT_SONARR:?err}:8989"             # Configured in Gluetun VPN container
+networks:
+  mediastack:
+    name: mediastack
+    external: true

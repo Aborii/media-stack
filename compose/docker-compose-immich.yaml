@@ -1,0 +1,105 @@
+###########################################################################
+##
+##  Immich - photo and video library
+##
+##  Documentation: https://immich.app/docs
+##
+##  Four containers: server, machine learning, postgres, valkey.
+##  Roughly 2-3GB of RAM together, by far the heaviest thing in the stack.
+##
+##  On the normal bridge, NOT the VPN.
+##
+##  Machine learning runs on CPU. Immich's accelerated variants target
+##  Mali (armnn), NVIDIA (cuda), Intel (openvino) and Rockchip (rknn); the
+##  Pi 5's Broadcom VideoCore VII matches none of them, so there is no GPU
+##  option here. Expect the first scan of a large library to take a long
+##  while - it runs in the background and you can use Immich meanwhile.
+##  Set MACHINE_LEARNING_ENABLED=false on the server to skip it entirely.
+##
+##  IMMICH_VERSION is pinned deliberately. Immich makes breaking schema
+##  changes between releases and its database migrations are ONE-WAY -
+##  once upgraded you cannot roll back without restoring a dump. Read the
+##  release notes before changing it.
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:?err}
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/immich/server:/data
+      # The photo library itself. Immich stores paths relative to this
+      # root, so the folder can be renamed as long as this points at it.
+      - ${FOLDER_FOR_MEDIA:?err}/immich:/data/library
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DB_HOSTNAME=immich_postgres
+      - DB_USERNAME=${IMMICH_DB_USERNAME:?err}
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD:?err}
+      - DB_DATABASE_NAME=${IMMICH_DB_DATABASE_NAME:?err}
+      - REDIS_HOSTNAME=immich_redis
+    ports:
+      - "${IMMICH_PORT:?err}:2283"
+    depends_on:
+      - immich-redis
+      - immich-database
+    healthcheck:
+      disable: false
+    networks:
+      - mediastack
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    # No -cuda / -armnn / -openvino suffix: CPU inference. See header.
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/immich/model-cache:/cache
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - MPLCONFIGDIR=/tmp/matplotlib
+    healthcheck:
+      disable: false
+    networks:
+      - mediastack
+
+  immich-redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9
+    restart: unless-stopped
+    healthcheck:
+      test: redis-cli ping || exit 1
+    networks:
+      - mediastack
+
+  immich-database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD:?err}
+      - POSTGRES_USER=${IMMICH_DB_USERNAME:?err}
+      - POSTGRES_DB=${IMMICH_DB_DATABASE_NAME:?err}
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    volumes:
+      # A bind mount, not a named volume, so the database sits on the data
+      # disk with everything else and is visible for backup.
+      - ${FOLDER_FOR_DATA:?err}/immich/postgres:/var/lib/postgresql/data
+    shm_size: 128mb
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true
