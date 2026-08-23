@@ -1,13 +1,24 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Prowlarr (LinuxServer.io)
-##  Function: Indexer and Search Manager
+##  Prowlarr - indexer and search manager
 ##
 ##  Documentation: https://docs.linuxserver.io/images/docker-prowlarr
 ##
+##  Behind the VPN because some indexers are geo-blocked here. Prowlarr
+##  proxies searches on behalf of Sonarr and Radarr, so those two stay on
+##  the normal bridge and never contact a blocked site directly - they
+##  query Prowlarr, and Prowlarr queries the tracker from inside the tunnel.
+##
+##  Two addresses to get right:
+##    - Sonarr/Radarr reach Prowlarr at  gluetun:${WEBUI_PORT_PROWLARR}
+##    - Prowlarr reaches FlareSolverr at http://localhost:8191, because
+##      both share this same network namespace. Using flaresolverr:8191
+##      will fail with a confusing timeout.
+##
 ###########################################################################
-###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
 services:
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:develop
@@ -21,10 +32,11 @@ services:
       - TZ=${TIMEZONE:?err}
       - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:prowlarr
       - TP_THEME=${TP_THEME:?err}
-    network_mode: "container:gluetun"
 
-# Ports are disabled in containers when they are connected to VPN, as the
-# Gluetun container manages the ports for containers that connect via VPN
+    # Ports are published by gluetun - a container sharing another's network
+    # namespace cannot publish its own.
+    network_mode: "service:gluetun"
 
-#    ports:
-#      - "${WEBUI_PORT_PROWLARR:?err}:9696"             # Configured in Gluetun VPN container
+    depends_on:
+      gluetun:
+        condition: service_healthy

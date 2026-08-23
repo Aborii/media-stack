@@ -1,13 +1,21 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Flaresolverr (Flaresolverr)
-##  Function: Cloudflare Proxy Server
+##  FlareSolverr - Cloudflare challenge solver
 ##
 ##  Documentation: https://github.com/FlareSolverr/FlareSolverr
 ##
+##  Shares gluetun's namespace so it solves challenges from the same exit
+##  IP that Prowlarr searches from. Solving a challenge on one IP and then
+##  using the cookie from another gets rejected, so these two must stay
+##  together.
+##
+##  Prowlarr reaches it at  http://localhost:8191  - same namespace, same
+##  loopback. Using http://flaresolverr:8191 will fail.
+##
 ###########################################################################
-###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
 services:
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -20,10 +28,10 @@ services:
       - TZ=${TIMEZONE:?err}
     volumes:
       - ${FOLDER_FOR_DATA:?err}/flaresolverr:/config
-    network_mode: "container:gluetun"
 
-# Ports are disabled in containers when they are connected to VPN, as the
-# Gluetun container manages the ports for containers that connect via VPN
+    # Ports are published by gluetun.
+    network_mode: "service:gluetun"
 
-#    ports:
-#      - "${FLARESOLVERR_PORT:?err}:8191"             # Configured in Gluetun VPN container
+    depends_on:
+      gluetun:
+        condition: service_healthy
