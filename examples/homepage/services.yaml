@@ -144,6 +144,30 @@
         server: my-docker
         container: flaresolverr
 
+    # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
+    # flags and silently ignores "metric" - only the service widget understands
+    # it, which is why these live here and not in widgets.yaml.
+    #
+    # No href: glances is bound to the docker gateway only, so it has no
+    # browsable UI. These widgets are its sole consumer, deliberately.
+    - Network:
+        icon: glances.png
+        description: wlan0 throughput
+        widget:
+          type: glances
+          url: http://172.28.10.1:61208
+          version: 4
+          metric: network:wlan0
+
+    - Disk I/O:
+        icon: glances.png
+        description: sda read and write
+        widget:
+          type: glances
+          url: http://172.28.10.1:61208
+          version: 4
+          metric: disk:sda
+
     - PostgreSQL 17:
         icon: postgres.png
         description: Shared database cluster
