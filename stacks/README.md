@@ -10,7 +10,6 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `media` | jellyfin, kavita, audiobookshelf |
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, diun |
-| `management` | homepage, portainer, dockerproxy, tdarr |
 | `dockge` | the UI itself |
 
 ## Three things that are load-bearing

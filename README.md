@@ -38,7 +38,6 @@ docker compose down
 | | audiobookshelf | 13378 | audiobooks, podcasts |
 | | immich | 2283 | photos and video |
 | **Management** | homepage | 3000 | dashboard |
-| | portainer | 9000 | containers |
 
 ## Network
 
@@ -52,7 +51,6 @@ Only the acquisition services are tunnelled:
   ════════╪════════ mediastack bridge ════════
           │
   sonarr radarr bazarr mylar jellyfin kavita
-  audiobookshelf immich homepage portainer
 ```
 
 qBittorrent is tunnelled because BitTorrent announces your IP to every peer in
