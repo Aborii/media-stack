@@ -1,0 +1,4 @@
+---
+# Read-only socket: Homepage only needs to LIST containers for status dots.
+my-docker:
+  socket: /var/run/docker.sock

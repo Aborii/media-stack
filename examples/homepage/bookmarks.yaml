@@ -1,0 +1,12 @@
+---
+- Admin:
+    - Router:
+        - abbr: RT
+          href: http://192.168.0.1
+- Reference:
+    - TRaSH Guides:
+        - abbr: TR
+          href: https://trash-guides.info
+    - Jellyfin Docs:
+        - abbr: JF
+          href: https://jellyfin.org/docs
