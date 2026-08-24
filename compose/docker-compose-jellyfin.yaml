@@ -24,7 +24,7 @@ services:
     volumes:
       - ${FOLDER_FOR_DATA:?err}/jellyfin:/config
       # Library only - Jellyfin has no reason to see the download folder.
-      - ${FOLDER_FOR_MEDIA:?err}/media:/data/media
+      - ${FOLDER_FOR_MEDIA:?err}/library:/data/media
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}

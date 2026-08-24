@@ -34,7 +34,7 @@ services:
       - ${FOLDER_FOR_DATA:?err}/immich/server:/data
       # The photo library itself. Immich stores paths relative to this
       # root, so the folder can be renamed as long as this points at it.
-      - ${FOLDER_FOR_MEDIA:?err}/immich:/data/library
+      - ${FOLDER_FOR_MEDIA:?err}/gallery:/data/library
       - /etc/localtime:/etc/localtime:ro
     environment:
       - PUID=${PUID:?err}

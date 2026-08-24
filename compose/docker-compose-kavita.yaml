@@ -22,7 +22,7 @@ services:
     volumes:
       - ${FOLDER_FOR_DATA:?err}/kavita:/config
       - ${FOLDER_FOR_MEDIA:?err}/books:/books
-      - ${FOLDER_FOR_MEDIA:?err}/media/comics:/comics
+      - ${FOLDER_FOR_MEDIA:?err}/library/comics:/comics
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
