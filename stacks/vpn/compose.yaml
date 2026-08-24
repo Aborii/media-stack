@@ -69,6 +69,19 @@ services:
       # cold start. Lives in the gluetun config volume.
       - VPN_PORT_FORWARDING_UP_COMMAND=/gluetun/set-qbit-port.sh {{PORTS}}
 
+      # --- dns ------------------------------------------------------------
+      # DoT (the default) CANNOT work behind Proton. Port 853 accepts the TCP
+      # connection and then resets the TLS handshake, so every lookup fails,
+      # gluetun own healthcheck fails on a DNS lookup, and it restarts the
+      # tunnel in a loop - which is what made this container look unreliable.
+      # Proton also blocks plain DNS to anything but its own resolver.
+      #
+      # DoH rides on 443 and is not interfered with. Verified by hand inside
+      # the namespace before changing this. Using Proton DNS (10.2.0.1) would
+      # also work but hands them every query, which the gluetun docs advise
+      # against.
+      - DNS_UPSTREAM_RESOLVER_TYPE=doh
+
       # --- local access -----------------------------------------------------
       # Without these the firewall drops LAN traffic and every WebUI behind
       # the tunnel becomes unreachable from your own network.

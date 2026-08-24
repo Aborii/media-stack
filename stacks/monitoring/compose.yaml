@@ -32,8 +32,12 @@ services:
     cap_add:
       - SYS_RAWIO
     devices:
-      - /dev/sda:/dev/sda
-      - /dev/sdb:/dev/sdb
+      # Mapped by stable WWN, never /dev/sdX. The kernel name changes when the
+      # disk moves port or another drive is attached - this entry was
+      # /dev/sda + /dev/sdb until the Seagate was removed and the WD came back
+      # as sda, at which point the missing sdb stopped the container starting.
+      # Docker resolves the symlink, so the container always sees /dev/sda.
+      - /dev/disk/by-id/wwn-0x50014ee216baa995:/dev/sda
     volumes:
       - ${FOLDER_FOR_DATA:?err}/scrutiny/config:/opt/scrutiny/config
       - ${FOLDER_FOR_DATA:?err}/scrutiny/influxdb:/opt/scrutiny/influxdb
