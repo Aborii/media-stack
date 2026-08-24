@@ -8,9 +8,35 @@
     units: metric
 
 - resources:
-    label: Storage
+    label: Data disk
     disk:
       - /srv/storage
+
+# The SD card. Homepage can only stat filesystems mounted into it, and mounting
+# the host root would expose far more than is needed - so an empty directory on
+# the root partition is bind-mounted instead. statfs reports the filesystem that
+# CONTAINS the path, so this gives the SD card figures while exposing nothing.
+# Without it a full SD stops the Pi with no warning on the dashboard.
+- resources:
+    label: SD card
+    disk:
+      - /hostroot
+
+# Host metrics the resources widget cannot provide. glances is bound to the
+# docker gateway only, so it has no browsable UI - these widgets are its only
+# consumer, which is the point: an unauthenticated process list must not be
+# reachable from an open wifi.
+- glances:
+    url: http://172.28.10.1:61208
+    metric: network:wlan0
+    chart: false
+    version: 4
+
+- glances:
+    url: http://172.28.10.1:61208
+    metric: disk:sda
+    chart: false
+    version: 4
 
 - search:
     provider: duckduckgo

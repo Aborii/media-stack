@@ -21,6 +21,11 @@ services:
       # Read-only, purely so the disk-usage widget reports the real
       # figures rather than the container's own filesystem.
       - /srv/storage:/srv/storage:ro
+      # An EMPTY directory on the root partition. statfs reports the filesystem
+      # containing a path, so this surfaces the SD card usage without exposing
+      # anything - mounting host / would have worked but shows far too much.
+      # Without it a filling SD card gives no warning until the Pi stops.
+      - /var/lib/homepage-diskstat:/hostroot:ro
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}

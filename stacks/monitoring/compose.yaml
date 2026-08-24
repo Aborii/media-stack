@@ -108,6 +108,35 @@ services:
     networks:
       - mediastack
 
+  # Host metrics the Homepage resources widget cannot reach: per-core CPU,
+  # network throughput, disk I/O, process list.
+  #
+  # network_mode: host is required - on the bridge it would report the
+  # CONTAINER's network counters, which is not what anyone wants from a system
+  # monitor. That means it is not on the mediastack network, so Homepage reaches
+  # it through the bridge gateway instead of by name.
+  #
+  # --bind 172.28.10.1 keeps it on the docker gateway only. With host networking
+  # the default 0.0.0.0 would publish an unauthenticated process list to the
+  # whole wifi, which is an open network we do not control.
+  glances:
+    image: nicolargo/glances:latest-full
+    container_name: glances
+    restart: unless-stopped
+    pid: host
+    network_mode: host
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - GLANCES_OPT=-w --bind 172.28.10.1
+      # NO docker integration on purpose. dockerproxy publishes no host port -
+      # it is reachable only from inside the mediastack network - and this
+      # container is on host networking, so it cannot see it. Handing glances
+      # the raw socket instead would give a monitoring tool full control of the
+      # daemon. Container state is already covered by Homepage, Dozzle and
+      # Portainer; what glances is here for is HOST metrics.
+    volumes:
+      - /:/rootfs:ro
+
 networks:
   mediastack:
     name: mediastack
