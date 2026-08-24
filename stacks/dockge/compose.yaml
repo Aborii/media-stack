@@ -26,7 +26,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${FOLDER_FOR_DATA:?err}/dockge:/app/data
-      - /home/aborii/media-stack/stacks:/home/aborii/media-stack/stacks
+      # The REPO ROOT, not just stacks/. Each stack's .env is a symlink to
+      # ../../docker-compose.env - mounting only stacks/ leaves that symlink
+      # dangling inside this container, and every stack then fails to
+      # interpolate with "required variable ... is missing a value".
+      - /home/aborii/media-stack:/home/aborii/media-stack
     environment:
       - TZ=${TIMEZONE:?err}
       - DOCKGE_STACKS_DIR=/home/aborii/media-stack/stacks
