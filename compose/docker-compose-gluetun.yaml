@@ -20,16 +20,6 @@
 
 name: ${COMPOSE_PROJECT_NAME:-mediastack}
 
-networks:
-  mediastack:
-    name: mediastack
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: ${DOCKER_SUBNET:?err}
-          gateway: ${DOCKER_GATEWAY:?err}
-
 services:
   gluetun:
     image: qmcgaw/gluetun:latest
@@ -77,7 +67,11 @@ services:
       # which matters because Proton issues a different one on every reconnect.
       - VPN_PORT_FORWARDING=on
       - PORT_FORWARD_ONLY=on
-      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -qO- --post-data="json={\"listen_port\":{{PORTS}}}" http://127.0.0.1:${WEBUI_PORT_QBITTORRENT}/api/v2/app/setPreferences'
+      # Script, not an inline command: it must RETRY. gluetun obtains the
+      # port before qBittorrent can be running, because qBittorrent waits
+      # on gluetun's healthcheck - so a single attempt always fails on a
+      # cold start. Lives in the gluetun config volume.
+      - VPN_PORT_FORWARDING_UP_COMMAND=/gluetun/set-qbit-port.sh {{PORTS}}
 
       # --- local access -----------------------------------------------------
       # Without these the firewall drops LAN traffic and every WebUI behind

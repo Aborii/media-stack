@@ -36,8 +36,3 @@ services:
       - "${WEBUI_PORT_HOMEPAGE:?err}:3000"
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true

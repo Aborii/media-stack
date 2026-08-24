@@ -34,8 +34,3 @@ services:
       - "${WEBUI_PORT_JELLYFIN:?err}:8096"
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true

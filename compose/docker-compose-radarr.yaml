@@ -32,8 +32,3 @@ services:
       - "${WEBUI_PORT_RADARR:?err}:7878"
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true

@@ -29,8 +29,3 @@ services:
       - "${WEBUI_PORT_PORTAINER:?err}:9000"
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true

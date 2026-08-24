@@ -98,8 +98,3 @@ services:
     shm_size: 128mb
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true

@@ -56,8 +56,3 @@ services:
       - "${TDARR_SERVER_PORT:?err}:${TDARR_SERVER_PORT:?err}"
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true

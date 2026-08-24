@@ -43,3 +43,18 @@ include:
   - compose/docker-compose-homepage.yaml
   - compose/docker-compose-portainer.yaml
   - compose/docker-compose-tdarr.yaml
+
+###########################################################################
+##  Defined once here, for the whole project. Individual service files
+##  only reference it by name - declaring it per-file (external: true or
+##  otherwise) contradicts this definition once include: merges them.
+###########################################################################
+networks:
+  mediastack:
+    name: mediastack
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${DOCKER_SUBNET:?err}
+          gateway: ${DOCKER_GATEWAY:?err}

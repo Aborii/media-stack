@@ -33,8 +33,3 @@ services:
       - "${WEBUI_PORT_BAZARR:?err}:6767"
     networks:
       - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true
