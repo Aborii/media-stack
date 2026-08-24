@@ -1,4 +1,103 @@
 ---
+- System:
+    # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
+    # flags and silently ignores "metric" - only the service widget understands
+    # it, which is why these live here and not in widgets.yaml.
+    #
+    # No href: glances is bound to the docker gateway only, so it has no
+    # browsable UI. These widgets are its sole consumer, deliberately.
+    - Network:
+        icon: glances.png
+        description: wlan0 throughput
+        widget:
+          type: glances
+          url: http://172.28.10.1:61208
+          version: 4
+          metric: network:wlan0
+
+    - Disk I/O:
+        icon: glances.png
+        description: sda read and write
+        widget:
+          type: glances
+          url: http://172.28.10.1:61208
+          version: 4
+          metric: disk:sda
+
+    - Portainer:
+        icon: portainer.png
+        siteMonitor: http://portainer:9000/api/system/status
+        href: http://aboriis-pi.local:9000
+        description: Docker management UI
+        server: my-docker
+        container: portainer
+        widget:
+          type: portainer
+          url: http://portainer:9000
+          # env is the environment id from /api/endpoints - 3 here, NOT the
+          # 2 that most guides assume, because this install has been recreated.
+          env: 3
+          key: PASTE_PORTAINER_TOKEN
+
+
+    - Gluetun:
+        icon: gluetun.png
+        href: http://aboriis-pi.local:8320
+        description: ProtonVPN tunnel
+        server: my-docker
+        container: gluetun
+
+    - FlareSolverr:
+        icon: flaresolverr.png
+        description: Cloudflare solver for Prowlarr
+        server: my-docker
+        container: flaresolverr
+
+    - PostgreSQL 17:
+        icon: postgres.png
+        description: Shared database cluster
+        server: my-docker
+        container: postgres17
+
+- Monitoring:
+    - Scrutiny:
+        icon: scrutiny.png
+        siteMonitor: http://scrutiny:8080/
+        href: http://aboriis-pi.local:8081
+        description: Drive health - the 10TB runs hot
+        server: my-docker
+        container: scrutiny
+        widget:
+          type: scrutiny
+          url: http://scrutiny:8080
+
+    - Uptime Kuma:
+        icon: uptime-kuma.png
+        siteMonitor: http://uptime-kuma:3001/
+        href: http://aboriis-pi.local:3001
+        description: Service checks and Telegram alerts
+        server: my-docker
+        container: uptime-kuma
+        widget:
+          type: uptimekuma
+          url: http://uptime-kuma:3001
+          # Reads the PUBLISHED status page, not the admin API. It shows the
+          # monitors attached to this page only - an empty page reports 0 up.
+          slug: home-services
+
+    - Dozzle:
+        icon: dozzle.png
+        siteMonitor: http://dozzle:8080/healthcheck
+        href: http://aboriis-pi.local:8888
+        description: Container logs
+        server: my-docker
+        container: dozzle
+
+    - Diun:
+        icon: diun.png
+        description: Image update notices - reports only, never pulls
+        server: my-docker
+        container: diun
 - Libraries:
     - Jellyfin:
         icon: jellyfin.png
@@ -129,102 +228,3 @@
           type: tdarr
           url: http://tdarr:8265
 
-- System:
-
-    - Gluetun:
-        icon: gluetun.png
-        href: http://aboriis-pi.local:8320
-        description: ProtonVPN tunnel
-        server: my-docker
-        container: gluetun
-
-    - FlareSolverr:
-        icon: flaresolverr.png
-        description: Cloudflare solver for Prowlarr
-        server: my-docker
-        container: flaresolverr
-
-    # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
-    # flags and silently ignores "metric" - only the service widget understands
-    # it, which is why these live here and not in widgets.yaml.
-    #
-    # No href: glances is bound to the docker gateway only, so it has no
-    # browsable UI. These widgets are its sole consumer, deliberately.
-    - Network:
-        icon: glances.png
-        description: wlan0 throughput
-        widget:
-          type: glances
-          url: http://172.28.10.1:61208
-          version: 4
-          metric: network:wlan0
-
-    - Disk I/O:
-        icon: glances.png
-        description: sda read and write
-        widget:
-          type: glances
-          url: http://172.28.10.1:61208
-          version: 4
-          metric: disk:sda
-
-    - PostgreSQL 17:
-        icon: postgres.png
-        description: Shared database cluster
-        server: my-docker
-        container: postgres17
-
-    - Portainer:
-        icon: portainer.png
-        siteMonitor: http://portainer:9000/api/system/status
-        href: http://aboriis-pi.local:9000
-        description: Docker management UI
-        server: my-docker
-        container: portainer
-        widget:
-          type: portainer
-          url: http://portainer:9000
-          # env is the environment id from /api/endpoints - 3 here, NOT the
-          # 2 that most guides assume, because this install has been recreated.
-          env: 3
-          key: PASTE_PORTAINER_TOKEN
-
-- Monitoring:
-    - Scrutiny:
-        icon: scrutiny.png
-        siteMonitor: http://scrutiny:8080/
-        href: http://aboriis-pi.local:8081
-        description: Drive health - the 10TB runs hot
-        server: my-docker
-        container: scrutiny
-        widget:
-          type: scrutiny
-          url: http://scrutiny:8080
-
-    - Uptime Kuma:
-        icon: uptime-kuma.png
-        siteMonitor: http://uptime-kuma:3001/
-        href: http://aboriis-pi.local:3001
-        description: Service checks and Telegram alerts
-        server: my-docker
-        container: uptime-kuma
-        widget:
-          type: uptimekuma
-          url: http://uptime-kuma:3001
-          # Reads the PUBLISHED status page, not the admin API. It shows the
-          # monitors attached to this page only - an empty page reports 0 up.
-          slug: home-services
-
-    - Dozzle:
-        icon: dozzle.png
-        siteMonitor: http://dozzle:8080/healthcheck
-        href: http://aboriis-pi.local:8888
-        description: Container logs
-        server: my-docker
-        container: dozzle
-
-    - Diun:
-        icon: diun.png
-        description: Image update notices - reports only, never pulls
-        server: my-docker
-        container: diun
