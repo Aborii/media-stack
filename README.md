@@ -1,318 +1,139 @@
-# MediaStack Project - Enhanced Management System
+# MediaStack
 
-> **Original Project:** This project is based on the [MediaStack Project](https://github.com/geekau/mediastack) by **geekau**. All credit for the core MediaStack architecture, Docker configurations, and application integrations goes to the original author.
-> 
-> See the original project on [Reddit for MediaStack](https://www.reddit.com/r/MediaStack/)
+Self-hosted media stack on a Raspberry Pi 5: acquisition, libraries, and the
+apps that serve them. 14 services, one Compose project.
 
-## Enhanced Features Overview
-
-This enhanced version adds a **comprehensive management system** to the original MediaStack project with:
-
-- **🎯 Unified Management Interface** - Single script for all operations
-- **🏥 Advanced Health Monitoring** - Real HTTP health checks with dynamic port detection
-- **🎛️ Selective Service Control** - Whitelist-based service management
-- **📁 Organized Project Structure** - Clean separation of scripts, compose files, and data
-- **🔄 Smart Container Orchestration** - Intelligent dependency handling (Gluetun-first)
-- **✅ Code Quality Assurance** - Shellcheck-compliant scripts with proper error handling
-- **🎨 Enhanced User Experience** - Colored output, progress indicators, and detailed logging
-
-## Network Architecture - Full Download VPN Configuration
-
-This enhanced management system is specifically designed for the **"Full Download VPN"** configuration from the original MediaStack project. This setup routes all network traffic from Docker containers through the Gluetun VPN container for maximum privacy and security.
-
-<center>
-
-``` mermaid
-flowchart TD
-  subgraph DockerNet["Full Download VPN"]
-    Gluetun
-    Jellyfin
-    Plex
-    Jellyseerr
-    Prowlarr
-    Radarr
-    Readarr
-    Sonarr
-    Mylar
-    Whisparr
-    Bazarr
-    Lidarr
-    Tdarr
-    Huntarr
-    SABnzbd
-    qBittorrent
-    Label@{ label: "<div style=\"color:\"><span style=\"color:\">IP Subnet: 172.28.10.0/24</span></div>" }
-    NIC["Network Adapter"]
-  end
-
-  Jellyfin     ---- Gluetun
-  Plex         ---  Gluetun
-  Jellyseerr   ---- Gluetun
-  Prowlarr     ---  Gluetun
-  Radarr       ---- Gluetun
-  Readarr      ---  Gluetun
-  Sonarr       ---- Gluetun
-  Mylar        ---  Gluetun
-  Whisparr     ---- Gluetun
-  Bazarr       ---  Gluetun
-  Lidarr       ---- Gluetun
-  Tdarr        ---  Gluetun
-  Huntarr      ---- Gluetun
-  SABnzbd      ---  Gluetun
-  qBittorrent  ---- Gluetun
-  Gluetun      ==> NIC
-  NIC          ==> Gateway
-  Gateway      ==> VPN
-  Gateway["Home Gateway"]
-  VPN{"VPN Server<br>Anchor Point"}
-
-  style Gluetun      stroke:#2962FF
-  style Jellyfin     stroke:#2962FF
-  style Plex         stroke:#2962FF
-  style Jellyseerr   stroke:#2962FF
-  style Prowlarr     stroke:#2962FF
-  style Radarr       stroke:#2962FF
-  style Readarr      stroke:#2962FF
-  style Sonarr       stroke:#2962FF
-  style Mylar        stroke:#2962FF
-  style Whisparr     stroke:#2962FF
-  style Bazarr       stroke:#2962FF
-  style Lidarr       stroke:#2962FF
-  style Tdarr        stroke:#2962FF
-  style Huntarr      stroke:#2962FF
-  style SABnzbd      stroke:#2962FF
-  style qBittorrent  stroke:#2962FF
-  style Label        stroke:none
-  style NIC          stroke:green,    stroke-width:2px
-  style Gateway      stroke:green,    stroke-width:2px
-  style VPN          stroke:green,    stroke-width:2px
-```
-
-</center>
-
-> **Key Architecture Benefits:**
-> - **Maximum Privacy:** All container traffic routed through VPN encryption
-> - **Intelligent Management:** Our scripts handle Gluetun dependency automatically
-> - **Network Security:** VPN failure stops all container traffic (fail-safe design)
-> - **Centralized Control:** Single VPN connection protects entire media stack
-
-**For complete documentation** on VPN configurations, network architecture, and advanced features, visit the **[Original MediaStack Repository](https://github.com/geekau/mediastack)**.
-
-## What Applications Are Provided In MediaStack  
-
-Welcome to the MediaStack project! MediaStack is your ultimate solution for managing and streaming media collections with applications like Jellyfin and Plex. Using Docker, MediaStack containerises these media servers alongside *ARR applications (Radarr, Sonarr, Lidarr, etc.) for seamless media automation and management.
-
-**Complete application list and original documentation available in the [Original Project README](README1.md)**
-
-## Enhanced Directory Structure
-
-```
-/mnt/d/MediaStack/AppData/
-├── data/                       # 📁 All container data (gitignored)
-│   ├── gluetun/               # Container configurations and data
-│   ├── radarr/                # (All service data folders)
-│   ├── sonarr/
-│   ├── jellyfin/
-│   └── [20+ other services]/
-├── compose/                    # 🐳 Docker Compose files
-│   ├── docker-compose-gluetun.yaml
-│   ├── docker-compose-radarr.yaml
-│   ├── docker-compose-sonarr.yaml
-│   └── [20+ other services].yaml
-├── scripts/                    # 🛠️ Enhanced management scripts
-│   ├── mediastack.sh          # ⭐ UNIFIED management script (all functionality)
-│   ├── setup-directories.sh   # Automated directory setup
-│   ├── pull-images.sh         # Docker image management
-│   ├── start-stack.sh         # Intelligent service startup
-│   ├── stop-stack.sh          # Graceful service shutdown
-│   ├── update-stack.sh        # Update all services
-│   ├── logs.sh                # Enhanced log viewing
-│   └── status.sh              # Comprehensive status checking
-├── mediastack.sh              # 🚀 Convenience launcher (main entry point)
-├── docker-compose.env         # Environment configuration
-├── services.whitelist         # 🎛️ Service selection configuration
-└── .gitignore                 # Excludes data/ and sensitive configs
-```
-
-## Enhanced Management System Usage
-
-### Unified Command Interface
-
-The enhanced MediaStack provides a single entry point for all operations:
+## Quick start
 
 ```bash
-# Main management interface (recommended)
-./mediastack.sh [command] [service]
+cp docker-compose.env.example docker-compose.env   # then fill it in
+docker compose up -d
 ```
 
-### Core Commands
-
-#### **Initial Setup**
-```bash
-./mediastack.sh setup           # Create directory structure automatically
-./mediastack.sh pull            # Download all Docker images
-./mediastack.sh start-all       # Start all services (Gluetun first)
-```
-
-#### **Daily Operations**
-```bash
-./mediastack.sh status          # Show container status with health checks
-./mediastack.sh health          # Comprehensive health check with HTTP testing
-./mediastack.sh list            # List all available services
-./mediastack.sh logs [service]  # View logs for specific service
-```
-
-#### **Service Management**
-```bash
-# Individual service control
-./mediastack.sh start [service]    # Start specific service
-./mediastack.sh stop [service]     # Stop specific service  
-./mediastack.sh restart [service]  # Restart specific service
-
-# Bulk operations
-./mediastack.sh start-all          # Start all services (intelligent ordering)
-./mediastack.sh stop-all           # Stop all running services
-./mediastack.sh restart-all        # Full restart (remove + recreate)
-./mediastack.sh remove-all         # Stop and remove all containers
-```
-
-#### **Advanced Features**
-```bash
-./mediastack.sh update          # Update all services to latest images
-./mediastack.sh whitelist       # Manage selective service control
-./mediastack.sh help            # Show detailed command help
-```
-
-### Whitelist-Based Service Management
-
-The enhanced system includes **selective service management** via `services.whitelist`:
+Everything is included from `docker-compose.yml`, so ordinary Compose commands
+operate on the whole stack:
 
 ```bash
-# Enable whitelist mode
-echo "prowlarr radarr sonarr jellyfin gluetun" > services.whitelist
-
-# Only whitelisted services will be affected by:
-./mediastack.sh start-all       # Starts only whitelisted services
-./mediastack.sh restart-all     # Restarts only whitelisted services
+docker compose up -d              # start everything
+docker compose up -d sonarr       # just one service
+docker compose logs -f jellyfin
+docker compose pull               # update images
+docker compose down
 ```
 
-**Note:** Individual service commands (`start [service]`, `stop [service]`) work on ALL services regardless of whitelist.
+## Services
 
-## Enhanced Features
+| | Service | Port | Notes |
+|---|---|---|---|
+| **VPN** | gluetun | 8320 | ProtonVPN over WireGuard |
+| | qbittorrent | 8200 | inside the tunnel |
+| | prowlarr | 9696 | inside the tunnel |
+| | flaresolverr | 8191 | inside the tunnel |
+| **Automation** | sonarr | 8989 | TV |
+| | radarr | 7878 | films |
+| | bazarr | 6767 | subtitles |
+| | mylar | 8090 | comics |
+| **Libraries** | jellyfin | 8096 | video |
+| | kavita | 5000 | books, comics, manga |
+| | audiobookshelf | 13378 | audiobooks, podcasts |
+| | immich | 2283 | photos and video |
+| **Management** | homepage | 3000 | dashboard |
+| | portainer | 9000 | containers |
 
-### 🎯 **Unified Management System**
-- **Single Entry Point:** All operations through one script (`./mediastack.sh`)
-- **Comprehensive Commands:** Setup, management, monitoring, and maintenance
-- **Intelligent Orchestration:** Smart dependency handling (Gluetun-first startup)
+## Network
 
-### 🏥 **Advanced Health Monitoring**
-- **Real HTTP Health Checks:** Tests actual web service availability (not just ports)
-- **Dynamic Port Detection:** Automatically reads ports from `docker-compose.env`
-- **Comprehensive Status:** Container status + HTTP accessibility in one view
-- **Health Command:** Dedicated health check with detailed reporting
+Only the acquisition services are tunnelled:
 
-### 🎛️ **Selective Service Control (Whitelist System)**
-- **Service Selection:** Control which services are affected by bulk operations
-- **Whitelist Configuration:** Simple file-based service selection (`services.whitelist`)
-- **Flexible Management:** Individual services always accessible, bulk ops respect whitelist
-- **Easy Configuration:** Add/remove services from automated management
+```
+          ┌── ProtonVPN ──┐
+          │                │
+     [ gluetun ] ← qbittorrent, prowlarr, flaresolverr
+          │
+  ════════╪════════ mediastack bridge ════════
+          │
+  sonarr radarr bazarr mylar jellyfin kavita
+  audiobookshelf immich homepage portainer
+```
 
-### 📁 **Clean Project Organization**  
-- **Separated Concerns:** Scripts, compose files, and data in dedicated folders
-- **Git-Safe Structure:** Container data and configs excluded from version control
-- **Automated Setup:** Directory structure created automatically
-- **Environment-Driven:** All paths configurable via `docker-compose.env`
+qBittorrent is tunnelled because BitTorrent announces your IP to every peer in
+the swarm. Prowlarr and FlareSolverr because some indexers are geo-blocked.
+Nothing else benefits, and routing a media server through another country only
+makes streaming slower.
 
-### 🔄 **Smart Container Orchestration**
-- **Dependency Awareness:** Gluetun always starts first (VPN network priority)
-- **Graceful Operations:** Proper start/stop sequences with error handling
-- **Container-Aware Logic:** Works with actual running containers, not just compose files
-- **Data Preservation:** Volumes and configurations persist across operations
+Those three share gluetun's network namespace, so **they have no hostnames of
+their own**. Two addresses that are easy to get wrong:
 
-### ✅ **Code Quality & Reliability**
-- **Shellcheck Compliant:** All scripts pass static analysis
-- **Proper Error Handling:** Robust error checking with `set -euo pipefail`
-- **Quoted Variables:** Protection against path/space issues
-- **Exit Code Management:** Proper error propagation (`|| exit 1` on critical commands)
+| From | To | Use |
+|---|---|---|
+| Sonarr, Radarr, Mylar | qBittorrent | `gluetun:8200` — not `qbittorrent:8200` |
+| Sonarr, Radarr | Prowlarr | `gluetun:9696` |
+| Prowlarr | FlareSolverr | `http://localhost:8191` — same namespace |
 
-### 🎨 **Enhanced User Experience**
-- **Colored Output:** Easy-to-read status messages and progress indicators
-- **Detailed Logging:** Comprehensive feedback for all operations
-- **Help System:** Built-in documentation with `./mediastack.sh help`
-- **Progress Feedback:** Clear indication of what the system is doing
+If the tunnel drops, those three lose all connectivity rather than falling back
+to the real connection. That is the kill switch working.
 
-## Implementation Details
+## Storage
 
-### **Whitelist System**
-The `services.whitelist` file controls which services are affected by bulk operations:
+```
+/srv/storage/
+├── appdata/                 container configs
+└── data/                    Samba share
+    └── media/               FOLDER_FOR_MEDIA
+        ├── library/         tv, anime, movies, comics
+        ├── torrents/        watch, incomplete, categories
+        ├── books/           Kavita
+        ├── audiobooks/      Audiobookshelf
+        └── gallery/         Immich - app-managed, do not reorganise
+```
+
+**`library/` and `torrents/` must stay siblings under one parent.** That is what
+lets the *arr apps hardlink an import instead of copying it — the file exists in
+both places while using the disk space once. Mount the parent as a single volume
+(`/data`), never the subfolders separately: two mounts look like two filesystems
+inside the container and hardlinking silently degrades to copying.
+
+Verify it works:
 
 ```bash
-# Create whitelist with essential services
-echo "gluetun prowlarr radarr sonarr jellyfin" > services.whitelist
-
-# Bulk operations now only affect these services:
-./mediastack.sh start-all    # Only starts whitelisted services
-./mediastack.sh restart-all  # Only restarts whitelisted services
-
-# Individual commands work on ALL services:
-./mediastack.sh start plex   # Works regardless of whitelist
+touch data/media/torrents/.t && ln data/media/torrents/.t data/media/library/.t
+stat -c %h data/media/torrents/.t     # 2 means hardlinks work
 ```
 
-### **Health Check System**
-Enhanced health monitoring with real HTTP testing:
+Deleting the downloads copy of a hardlinked file frees no space until every link
+is gone. That is correct, not a bug.
 
-```bash
-./mediastack.sh health
-# Output example:
-# ✅ gluetun: Running (VPN connected)
-# ✅ prowlarr: Running + HTTP accessible (http://192.168.1.100:9696)
-# ❌ radarr: Running but HTTP not accessible (port 7878)
-# ⚠️  jellyfin: Container stopped
-```
+## Raspberry Pi notes
 
-### **Directory Management**
-Automated directory creation with proper permissions:
+**No hardware video encoder.** The Pi 5 decodes H.265 but cannot encode at all,
+so Jellyfin transcoding runs on CPU and is slow. Prefer direct play. This is also
+why Tdarr is not in the stack.
 
-```bash
-./mediastack.sh setup
-# Creates complete folder structure from docker-compose.env
-# Sets proper ownership and permissions
-# Handles Windows line endings in environment files
-```
+**Immich machine learning runs on CPU.** Its accelerated images target Mali,
+NVIDIA, Intel and Rockchip; the Pi 5's VideoCore VII matches none of them.
 
-### **Project Migration Benefits**
-Advantages of the enhanced structure:
+**`IMMICH_VERSION` is pinned.** Immich's database migrations are one-way — an
+accidental major upgrade cannot be rolled back without restoring a dump. Read
+the release notes before changing it.
 
-- **📁 Clean Organization:** Container data moved to `data/` folder (gitignored)
-- **🔄 Environment-Driven:** All paths from `docker-compose.env` variables
-- **🚫 Git Safety:** Sensitive data excluded from version control
-- **🛡️ Data Persistence:** Configurations survive container operations
-- **🌐 VPN Priority:** Gluetun dependency handling for network security
-- **📍 Relocatable:** Easy path changes via environment configuration
+## Configuration
 
-## Original MediaStack Documentation
+`docker-compose.env` holds everything, and is gitignored because it contains
+WireGuard keys and the Immich database password. `docker-compose.env.example`
+lists what must be set.
 
-For complete details about MediaStack applications, VPN configurations, remote access setup, and advanced features, see the **[Original Project Documentation](README1.md)**.
+Notable gluetun settings, and why:
 
-The original documentation includes:
-- **Complete Application List** - All 30+ Docker applications with descriptions
-- **VPN Network Configurations** - Full/Mini/No VPN setups
-- **Security Features** - Traefik, Authentik, CrowdSec integration
-- **Remote Access** - Tailscale mesh networking setup
-- **Filesystem Mapping** - Media and data storage configuration
-- **Advanced Configuration** - Headscale, authentication, and monitoring setup
+- **No `VPN_ENDPOINT_IP`.** Pinning one server by IP leaves nothing to fail over
+  to when the provider retires or overloads it, and it silently overrides
+  `SERVER_COUNTRIES`. Name countries instead.
+- **`VPN_PORT_FORWARDING=on`.** Without an inbound port no peer can initiate a
+  connection, and transfers crawl. The UP command pushes each newly assigned
+  port into qBittorrent, since a new one is issued on every reconnect.
+- **`FIREWALL_OUTBOUND_SUBNETS` / `EXTRA_SUBNETS`.** Without these the firewall
+  drops LAN traffic and every WebUI behind the tunnel becomes unreachable.
 
-## Contributing to Enhanced Features
+## Scripts
 
-This enhanced management system builds upon the excellent foundation of the original MediaStack project. The modifications focus on:
-
-1. **Operational Excellence** - Making day-to-day management easier
-2. **Code Quality** - Ensuring robust, maintainable scripts  
-3. **User Experience** - Providing clear feedback and intuitive commands
-4. **Selective Control** - Allowing granular service management
-
-All enhancements preserve the original MediaStack architecture and are designed to be non-intrusive additions that improve usability while maintaining full compatibility with the base system.
-
----
-
-**Credits:** Original MediaStack project by **geekau** - [GitHub Repository](https://github.com/geekau/mediastack)
+`scripts/reorganise-media.sh` is a one-off that reshapes a migrated media tree
+into the layout above. It takes `--dry-run` and refuses to run while a transfer
+is active.
