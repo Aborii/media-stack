@@ -25,6 +25,18 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+
+    # The namespace has no global IPv6 address, but IPv6 was left enabled and
+    # ip6tables policy is DROP. DNS still hands back AAAA records - the main DHT
+    # bootstrap node resolves to IPv6 only - and Alpine musl does not
+    # deprioritise unreachable addresses the way glibc does. So qBittorrent kept
+    # trying IPv6, the kernel dropped the packets, and the app saw EPERM:
+    # "Operation not permitted" on every UDP tracker, dht_nodes stuck at 0, and
+    # nothing ever downloaded. Turning IPv6 off makes everything fall back to
+    # the A records, which resolve and work.
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
     ports:
       - "${GLUETUN_CONTROL_PORT:?err}:${GLUETUN_CONTROL_PORT:?err}"      # Gluetun control server
       - "${WEBUI_PORT_QBITTORRENT:?err}:${WEBUI_PORT_QBITTORRENT:?err}"  # qBittorrent WebUI
@@ -123,6 +135,19 @@ services:
       - TORRENTING_PORT=${QBIT_PORT:?err}
       - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:qbittorrent
       - TP_THEME=${TP_THEME:?err}
+
+    # REQUIRED SETTING THAT LIVES IN qBittorrent.conf, NOT HERE:
+    #   Session\Interface=tun0
+    #   Session\InterfaceAddress=10.2.0.2
+    # Options > Advanced > Network Interface. Without it libtorrent binds a
+    # socket to EVERY interface, including the docker bridge. Gluetun has
+    # "ip rule from 172.28.10.2 lookup 200" which routes bridge-sourced traffic
+    # out eth0, where its OUTPUT chain only permits the bridge, the LAN and the
+    # VPN endpoint - so those announces were dropped. A locally generated packet
+    # killed by OUTPUT returns EPERM, which qBittorrent reports as "Operation
+    # not permitted" on every UDP tracker. Symptom: dht_nodes stuck at 0, zero
+    # peers, nothing ever downloads, while the tunnel itself tests fine.
+    # Binding to the tunnel address also acts as a kill switch.
 
     ## Do not change this. qBittorrent must always be behind the VPN.
     network_mode: "service:gluetun"
