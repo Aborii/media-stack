@@ -83,6 +83,24 @@ services:
     networks:
       - mediastack
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # Full socket, not the dockerproxy - Portainer needs to create and
+      # control containers, which the read-only proxy deliberately blocks.
+      # Anyone reaching this UI can start a privileged container, so keep it
+      # off the internet and use a strong admin password.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${FOLDER_FOR_DATA:?err}/portainer:/data
+    ports:
+      - "${WEBUI_PORT_PORTAINER:?err}:9000"
+    networks:
+      - mediastack
+
 networks:
   mediastack:
     name: mediastack
