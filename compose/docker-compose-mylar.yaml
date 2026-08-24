@@ -1,15 +1,18 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Mylar3 (LinuxServer.io)
-##  Function: Comic Library Manager
+##  Mylar3 - comic management
 ##
-##  Documentation: https://github.com/mylar3/mylar3/wiki
+##  Documentation: https://docs.linuxserver.io/images/docker-mylar3
 ##
-###########################################################################
+##  Mylar acquires comics but has no reader - Kavita serves them for
+##  reading, pointed at the same media/comics folder.
+##
+##  Download client : gluetun:${WEBUI_PORT_QBITTORRENT}   (not qbittorrent:)
+##
+##
 ###########################################################################
 
-name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
 
 services:
   mylar:
@@ -17,7 +20,7 @@ services:
     container_name: mylar
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_CONFIG_DATA:?err}/mylar:/config
+      - ${FOLDER_FOR_DATA:?err}/mylar:/config
       - ${FOLDER_FOR_MEDIA:?err}:/data
     environment:
       - PUID=${PUID:?err}
@@ -25,10 +28,7 @@ services:
       - TZ=${TIMEZONE:?err}
       - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:mylar3
       - TP_THEME=${TP_THEME:?err}
-    network_mode: "container:gluetun"
-
-# Ports are disabled in containers when they are connected to VPN, as the
-# Gluetun container manages the ports for containers that connect via VPN
-
-#    ports:
-#      - "${WEBUI_PORT_MYLAR:?err}:8090"             # Configured in Gluetun VPN container
+    ports:
+      - "${WEBUI_PORT_MYLAR:?err}:8090"
+    networks:
+      - mediastack

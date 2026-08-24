@@ -1,0 +1,24 @@
+---
+- resources:
+    label: Pi
+    cpu: true
+    memory: true
+    cputemp: true
+    uptime: true
+    units: metric
+
+- resources:
+    label: Storage
+    disk:
+      - /srv/storage
+
+- search:
+    provider: duckduckgo
+    target: _blank
+
+- datetime:
+    text_size: xl
+    format:
+      timeStyle: short
+      dateStyle: short
+      hour12: false

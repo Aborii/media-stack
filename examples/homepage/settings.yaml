@@ -1,0 +1,23 @@
+---
+title: aboriis-pi
+description: Media stack
+startUrl: /
+
+theme: dark
+color: slate
+headerStyle: clean
+hideVersion: true
+
+layout:
+  Libraries:
+    style: row
+    columns: 4
+  Automation:
+    style: row
+    columns: 4
+  Acquisition:
+    style: row
+    columns: 3
+  System:
+    style: row
+    columns: 3

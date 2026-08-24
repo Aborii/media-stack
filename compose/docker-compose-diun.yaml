@@ -1,0 +1,37 @@
+###########################################################################
+##
+##  Diun - notifies when a container image has an update
+##
+##  Documentation: https://crazymax.dev/diun
+##
+##  Deliberately NOT Watchtower. Diun only tells you an update exists; it
+##  never pulls or restarts anything. Auto-updating is a bad idea here -
+##  Immich makes one-way database migrations, so an unattended major
+##  upgrade could not be rolled back without restoring a dump.
+##
+##  Watches labelled containers via the socket proxy.
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  diun:
+    image: crazymax/diun:latest
+    container_name: diun
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/diun:/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - LOG_LEVEL=info
+      - DIUN_WATCH_SCHEDULE=0 6 * * *
+      - DIUN_WATCH_JITTER=30s
+      - DIUN_PROVIDERS_DOCKER=true
+      - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
+      # false = watch everything, no per-container labels needed
+      - DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true
+      # Notifications are configured in the TODO - Telegram goes here.
+    networks:
+      - mediastack

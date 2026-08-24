@@ -1,33 +1,39 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Homepage (https://ghcr.io/)
-##  Function: Application Dashboard
+##  Homepage - dashboard
 ##
-##  Documentation: https://gethomepage.dev/configs/
+##  Documentation: https://gethomepage.dev
+##
+##  Configured entirely in YAML under its config folder, so the dashboard
+##  layout lives in this repo and survives a rebuild. Heimdall and Homarr
+##  were dropped - three dashboards doing the same job.
+##
+##  Widget endpoints: services behind the VPN are reached at gluetun:<port>
+##  (qbittorrent, prowlarr), everything else by its own container name.
 ##
 ###########################################################################
-###########################################################################
-name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
 services:
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
     restart: unless-stopped
-    ports:
-      - ${WEBUI_PORT_HOMEPAGE:?err}:3000
     volumes:
-      - ${FOLDER_FOR_CONFIG_DATA:?err}/homepage:/app/config
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${FOLDER_FOR_DATA:?err}/homepage:/app/config
+      # Read-only, purely so the disk-usage widget reports the real
+      # figures rather than the container's own filesystem.
+      - /srv/storage:/srv/storage:ro
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
       - UMASK=${UMASK:?err}
       - TZ=${TIMEZONE:?err}
-
-# NOTE: Homepage MUST NOT connect to the Gluetun VPN container
-
-networks:
-  default:
-    name: mediastack
-    external: true
+      # Required since v0.9: without it Homepage refuses requests whose
+      # Host header it does not recognise, and you get a blank page.
+      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS:-*}
+    ports:
+      - "${WEBUI_PORT_HOMEPAGE:?err}:3000"
+    networks:
+      - mediastack

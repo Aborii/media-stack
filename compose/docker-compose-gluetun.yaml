@@ -1,25 +1,24 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Gluetun (qmcgaw)
-##  Function: VPN Client
+##  Gluetun - VPN tunnel
 ##
 ##  Documentation: https://github.com/qdm12/gluetun-wiki
 ##
-###########################################################################
+##  Only the acquisition services run through this:
+##    - qbittorrent  : joins swarms, so its IP is visible to every peer
+##    - prowlarr     : some indexers are geo-blocked here
+##    - flaresolverr : same, and prowlarr reaches it on localhost
+##
+##  Everything else (jellyfin, immich, kavita, audiobookshelf, sonarr,
+##  radarr, bazarr, mylar, homepage, portainer) connects directly. There is
+##  no reason to route a media server through another country.
+##
+##  Those three share this container's network namespace, so they cannot
+##  publish their own ports - the ports are declared HERE instead.
+##
 ###########################################################################
 
-name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
-
-networks:
-  mediastack:
-    name: mediastack
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-      - subnet: ${DOCKER_SUBNET:?err}
-        gateway: ${DOCKER_GATEWAY:?err}
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
 
 services:
   gluetun:
@@ -31,76 +30,64 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     ports:
-      - "8888:8888/tcp"                                           # Gluetun Local Network HTTP proxy
-      - "8388:8388/tcp"                                           # Gluetun Local Network Shadowsocks
-      - "8388:8388/udp"                                           # Gluetun Local Network Shadowsocks
-      - ${GLUETUN_CONTROL_PORT:?err}:${GLUETUN_CONTROL_PORT:?err} # Gluetun Status Port
-
-    # Comment out lines below if they are not going to use Gluetun VPN for Internet connection:
-      - "${WEBUI_PORT_BAZARR:?err}:6767"        # WebUI Portal: Bazarr
-      - "${WEBUI_PORT_JELLYFIN:?err}:8096"      # WebUI Portal: Jellyfin
-      - "${WEBUI_PORT_JELLYSEERR:?err}:5055"    # WebUI Portal: Jellyseerr
-      - "${WEBUI_PORT_LIDARR:?err}:8686"        # WebUI Portal: Lidarr
-      - "${WEBUI_PORT_MYLAR:?err}:8090"         # WebUI Portal: Mylar3
-      - "${WEBUI_PORT_PROWLARR:?err}:9696"      # WebUI Portal: Prowlarr
-      - "${WEBUI_PORT_RADARR:?err}:7878"        # WebUI Portal: Radarr
-      - "${WEBUI_PORT_READARR:?err}:8787"       # WebUI Portal: Readarr
-      - "${WEBUI_PORT_SABNZBD:?err}:8080"       # WebUI Portal: SABnzbd
-      - "${WEBUI_PORT_SONARR:?err}:8989"        # WebUI Portal: Sonarr
-      - "${WEBUI_PORT_WHISPARR:?err}:6969"      # WebUI Portal: Whisparr
-      - "${WEBUI_PORT_FILEBOT:?err}:5454"       # WebUI Portal: Filebot
-
-      - "${WEBUI_PORT_QBITTORRENT:?err}:${WEBUI_PORT_QBITTORRENT:?err}"   # WebUI Portal: qBittorrent
-
-      - "${QBIT_PORT:?err}:6881"                # Transmission Torrent Port
-      - "${FLARESOLVERR_PORT:?err}:8191"        # Service Port: FlareSolverr
-      
-      - "${TDARR_SERVER_PORT:?err}:${TDARR_SERVER_PORT:?err}"   # Tdarr: Server Port
-      - "${WEBUI_PORT_TDARR:?err}:${WEBUI_PORT_TDARR:?err}"     # Tdarr: WebUI Portal
-
-    #Plex Ports (Comment out if Plex is not using Gluetun VPN or not installed)
-      # - "${WEBUI_PORT_PLEX:?err}:32400"         # WebUI Portal: Plex
-      # - 8324:8324                               # Plex Network Port
-      # - 32410:32410/udp                         # Plex Network Port
-      # - 32412:32412/udp                         # Plex Network Port
-      # - 32413:32413/udp                         # Plex Network Port
-      # - 32414:32414/udp                         # Plex Network Port
-      # - 32469:32469                             # Plex Network Port
-      #- 1900:1900/udp                           # DNLA Service       (Clashes with Synology: SSPD "File Services" --> "Advanced")
-      #- 5353:5353/udp                           # Plex Network Port  (Clashes with Synology: Bonjour "File Services" --> "Advanced")
-
+      - "${GLUETUN_CONTROL_PORT:?err}:${GLUETUN_CONTROL_PORT:?err}"      # Gluetun control server
+      - "${WEBUI_PORT_QBITTORRENT:?err}:${WEBUI_PORT_QBITTORRENT:?err}"  # qBittorrent WebUI
+      - "${QBIT_PORT:?err}:${QBIT_PORT:?err}/tcp"                        # qBittorrent torrent port
+      - "${QBIT_PORT:?err}:${QBIT_PORT:?err}/udp"
+      - "${WEBUI_PORT_PROWLARR:?err}:9696"                               # Prowlarr WebUI
+      - "${FLARESOLVERR_PORT:?err}:8191"                                 # FlareSolverr
     volumes:
-      - ${FOLDER_FOR_CONFIG_DATA:?err}/gluetun:/gluetun
+      - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
       - UMASK=${UMASK:?err}
       - TZ=${TIMEZONE:?err}
+
+      # --- provider --------------------------------------------------------
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:?err}
-      - OPENVPN_USER=${VPN_USERNAME:?err}
-      - OPENVPN_PASSWORD=${VPN_PASSWORD:?err}
-      - SERVER_COUNTRIES=${SERVER_COUNTRIES}
-      - SERVER_REGIONS=${SERVER_REGIONS}
-      - SERVER_CITIES=${SERVER_CITIES}
-      - SERVER_HOSTNAMES=${SERVER_HOSTNAMES}
-      - SERVER_CATEGORIES=${SERVER_CATEGORIES}
-      - FIREWALL_OUTBOUND_SUBNETS=${LOCAL_SUBNET:?err}
-      - OPENVPN_CUSTOM_CONFIG=${OPENVPN_CUSTOM_CONFIG}
-      - HTTP_CONTROL_SERVER_ADDRESS=:${GLUETUN_CONTROL_PORT:?err}
-      - VPN_TYPE=${VPN_TYPE}
-      - VPN_ENDPOINT_IP=${VPN_ENDPOINT_IP}
-      - VPN_ENDPOINT_PORT=${VPN_ENDPOINT_PORT}
-      - WIREGUARD_PUBLIC_KEY=${WIREGUARD_PUBLIC_KEY}
-      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-      - WIREGUARD_PRESHARED_KEY=${WIREGUARD_PRESHARED_KEY}
-      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
-      - HTTPPROXY=on
-      - SHADOWSOCKS=on
+      - VPN_TYPE=${VPN_TYPE:?err}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:?err}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES:?err}
+
+      # --- server selection -------------------------------------------------
+      # Deliberately NO VPN_ENDPOINT_IP. Pinning a single server by IP was why
+      # the tunnel kept dying: when Proton retired or overloaded that one host
+      # there was nothing to fail over to, and SERVER_COUNTRIES was ignored
+      # because a hardcoded endpoint overrides it. Naming countries lets
+      # gluetun choose, and choose again when one stops answering.
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:?err}
+      - UPDATER_PERIOD=24h
+
+      # --- port forwarding --------------------------------------------------
+      # Without an inbound port no peer can initiate a connection to us, so
+      # transfers crawl. PORT_FORWARD_ONLY was already on, but nothing ever
+      # requested a port, so it only narrowed the server pool for no gain.
+      # The UP command pushes the assigned port straight into qBittorrent,
+      # which matters because Proton issues a different one on every reconnect.
+      - VPN_PORT_FORWARDING=on
       - PORT_FORWARD_ONLY=on
-      - EXTRA_SUBNETS=${LOCAL_SUBNET}
-      - DNS_UPSTREAM_RESOLVERS=google
-      - DOT_PROVIDERS=cloudflare,quad9
-      - DOT=on
-      
+      # Script, not an inline command: it must RETRY. gluetun obtains the
+      # port before qBittorrent can be running, because qBittorrent waits
+      # on gluetun's healthcheck - so a single attempt always fails on a
+      # cold start. Lives in the gluetun config volume.
+      - VPN_PORT_FORWARDING_UP_COMMAND=/gluetun/set-qbit-port.sh {{PORTS}}
+
+      # --- local access -----------------------------------------------------
+      # Without these the firewall drops LAN traffic and every WebUI behind
+      # the tunnel becomes unreachable from your own network.
+      - FIREWALL_OUTBOUND_SUBNETS=${LOCAL_SUBNET:?err}
+      - EXTRA_SUBNETS=${LOCAL_SUBNET:?err}
+
+      - HTTP_CONTROL_SERVER_ADDRESS=:${GLUETUN_CONTROL_PORT:?err}
+    healthcheck:
+      # Dependents wait on this with condition: service_healthy, which is what
+      # stops them starting into a tunnel that is not up. Replaces the manual
+      # wait_for_gluetun_connection loop in scripts/mediastack.sh.
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     networks:
       - mediastack

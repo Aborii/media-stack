@@ -12,3 +12,10 @@ logs/
 # Ignore Windows service files
 windows-service/wsl-ubuntu-monitoring.exe
 windows-service/wsl-ubuntu-monitoring.xml
+# Container config data - API keys, databases, VPN credentials.
+# NEVER commit this.
+config-data/
+
+# env backups - same secrets as the env itself
+*.env.bak*
+*.env.example.bak*

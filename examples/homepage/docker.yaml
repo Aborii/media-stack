@@ -1,0 +1,6 @@
+---
+# Via the proxy, not the socket. Homepage has no Docker access of its own -
+# the proxy exposes only container listing and refuses every POST.
+my-docker:
+  host: dockerproxy
+  port: 2375

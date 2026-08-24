@@ -1,0 +1,33 @@
+###########################################################################
+##
+##  Audiobookshelf - audiobooks and podcasts
+##
+##  Documentation: https://www.audiobookshelf.org/docs
+##
+##  Has proper native iOS and Android apps with offline downloads and
+##  per-user progress sync - the one app here that does not depend on a
+##  third-party client.
+##
+##  Also auto-downloads podcast episodes on a schedule.
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/config:/config
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/metadata:/metadata
+      - ${FOLDER_FOR_MEDIA:?err}/audiobooks:/audiobooks
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_AUDIOBOOKSHELF:?err}:80"
+    networks:
+      - mediastack

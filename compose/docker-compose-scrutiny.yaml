@@ -1,0 +1,45 @@
+###########################################################################
+##
+##  Scrutiny - drive health (SMART) monitoring
+##
+##  Documentation: https://github.com/AnalogJ/scrutiny
+##
+##  Added because the 10TB runs hot: 68C steady, 76C peak, and it has
+##  exceeded its temperature limit over 1300 times. WD Red Plus is rated
+##  for 0-65C. No reallocated sectors yet - this is here to catch the
+##  moment that changes.
+##
+##  Needs the raw device and SYS_RAWIO to issue SMART commands. The USB
+##  bridge only answers with device type "sat", hence the collector
+##  override below - without it, autodetect fails with
+##  "Unknown USB bridge [0x0bda:0x9201]".
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:master-omnibus
+    container_name: scrutiny
+    restart: unless-stopped
+    cap_add:
+      - SYS_RAWIO
+    devices:
+      - /dev/sda:/dev/sda
+      - /dev/sdb:/dev/sdb
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/scrutiny/config:/opt/scrutiny/config
+      - ${FOLDER_FOR_DATA:?err}/scrutiny/influxdb:/opt/scrutiny/influxdb
+      - /run/udev:/run/udev:ro
+      # by-id is a directory of symlinks, not a device node, so it is a
+      # volume rather than a device. collector.yaml selects the WD by its
+      # stable name here, since sda/sdb swap between boots.
+      - /dev/disk/by-id:/dev/disk/by-id:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - COLLECTOR_CRON_SCHEDULE=0 */2 * * *
+    ports:
+      - "${WEBUI_PORT_SCRUTINY:?err}:8080"
+    networks:
+      - mediastack

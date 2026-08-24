@@ -1,15 +1,17 @@
 ###########################################################################
-###########################################################################
 ##
-##  Docker Compose File: Radarr (LinuxServer.io)
-##  Function: Movie Library Manager
+##  Radarr - film management
 ##
 ##  Documentation: https://docs.linuxserver.io/images/docker-radarr
 ##
-###########################################################################
+##  On the normal bridge, NOT the VPN - Prowlarr proxies its searches.
+##
+##  Download client : gluetun:${WEBUI_PORT_QBITTORRENT}   (not qbittorrent:)
+##
+##
 ###########################################################################
 
-name: ${MEDIA_STACK_PROJECT_NAME:-media-stack}
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
 
 services:
   radarr:
@@ -17,19 +19,16 @@ services:
     container_name: radarr
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_CONFIG_DATA:?err}/radarr:/config
+      - ${FOLDER_FOR_DATA:?err}/radarr:/config
+      # ONE mount - see sonarr for why.
       - ${FOLDER_FOR_MEDIA:?err}:/data
-      - ${FOLDER_FOR_MEDIA:?err}/torrents:/downloads
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
       - TZ=${TIMEZONE:?err}
       - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:radarr
       - TP_THEME=${TP_THEME:?err}
-    network_mode: "container:gluetun"
-
-# Ports are disabled in containers when they are connected to VPN, as the
-# Gluetun container manages the ports for containers that connect via VPN
-
-#    ports:
-#      - "${WEBUI_PORT_RADARR:?err}:7878"             # Configured in Gluetun VPN container
+    ports:
+      - "${WEBUI_PORT_RADARR:?err}:7878"
+    networks:
+      - mediastack
