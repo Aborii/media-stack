@@ -13,7 +13,10 @@
 
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    # Pinned to the v2 line. The "1" and "latest" tags are the old release
+    # branch - last pushed Oct 2025, while 2.x ships regularly. "latest" still
+    # points at v1, so following it would silently keep you on the old line.
+    image: louislam/uptime-kuma:2
     container_name: uptime-kuma
     restart: unless-stopped
     volumes:
