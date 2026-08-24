@@ -1,0 +1,70 @@
+###########################################################################
+##
+##  Media servers.
+##
+##  Part of the mediastack network, which is shared by every stack and
+##  created outside them - so containers still reach each other by name
+##  across stack boundaries.
+##
+##  Environment comes from .env in this directory (a symlink to the one
+##  real file, so a change is picked up by every stack at once).
+##
+###########################################################################
+
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/jellyfin:/config
+      # Library only - Jellyfin has no reason to see the download folder.
+      - ${FOLDER_FOR_MEDIA:?err}/library:/data/media
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_JELLYFIN:?err}:8096"
+    networks:
+      - mediastack
+
+  kavita:
+    image: lscr.io/linuxserver/kavita:latest
+    container_name: kavita
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/kavita:/config
+      - ${FOLDER_FOR_MEDIA:?err}/books:/books
+      - ${FOLDER_FOR_MEDIA:?err}/library/comics:/comics
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_KAVITA:?err}:5000"
+    networks:
+      - mediastack
+
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/config:/config
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/metadata:/metadata
+      - ${FOLDER_FOR_MEDIA:?err}/audiobooks:/audiobooks
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_AUDIOBOOKSHELF:?err}:80"
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

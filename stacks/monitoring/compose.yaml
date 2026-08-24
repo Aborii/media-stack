@@ -1,0 +1,90 @@
+###########################################################################
+##
+##  Monitoring and alerting.
+##
+##  Part of the mediastack network, which is shared by every stack and
+##  created outside them - so containers still reach each other by name
+##  across stack boundaries.
+##
+##  Environment comes from .env in this directory (a symlink to the one
+##  real file, so a change is picked up by every stack at once).
+##
+###########################################################################
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/uptime-kuma:/app/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_UPTIMEKUMA:?err}:3001"
+    networks:
+      - mediastack
+
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:master-omnibus
+    container_name: scrutiny
+    restart: unless-stopped
+    cap_add:
+      - SYS_RAWIO
+    devices:
+      - /dev/sda:/dev/sda
+      - /dev/sdb:/dev/sdb
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/scrutiny/config:/opt/scrutiny/config
+      - ${FOLDER_FOR_DATA:?err}/scrutiny/influxdb:/opt/scrutiny/influxdb
+      - /run/udev:/run/udev:ro
+      # by-id is a directory of symlinks, not a device node, so it is a
+      # volume rather than a device. collector.yaml selects the WD by its
+      # stable name here, since sda/sdb swap between boots.
+      - /dev/disk/by-id:/dev/disk/by-id:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - COLLECTOR_CRON_SCHEDULE=0 */2 * * *
+    ports:
+      - "${WEBUI_PORT_SCRUTINY:?err}:8080"
+    networks:
+      - mediastack
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # Via the proxy, not the socket directly.
+      - DOZZLE_REMOTE_HOST=tcp://dockerproxy:2375
+      - DOZZLE_NO_ANALYTICS=true
+    ports:
+      - "${WEBUI_PORT_DOZZLE:?err}:8080"
+    networks:
+      - mediastack
+
+  diun:
+    image: crazymax/diun:latest
+    container_name: diun
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/diun:/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - LOG_LEVEL=info
+      - DIUN_WATCH_SCHEDULE=0 6 * * *
+      - DIUN_WATCH_JITTER=30s
+      - DIUN_PROVIDERS_DOCKER=true
+      - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
+      # false = watch everything, no per-container labels needed
+      - DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true
+      # Notifications are configured in the TODO - Telegram goes here.
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

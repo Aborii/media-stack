@@ -1,0 +1,98 @@
+###########################################################################
+##
+##  Library automation.
+##
+##  Reach qBittorrent at gluetun:8200 and Prowlarr at gluetun:9696 -
+##  NOT at their own names. They share gluetun's network namespace and
+##  have no hostname on this bridge.
+##
+##  Part of the mediastack network, which is shared by every stack and
+##  created outside them - so containers still reach each other by name
+##  across stack boundaries.
+##
+##  Environment comes from .env in this directory (a symlink to the one
+##  real file, so a change is picked up by every stack at once).
+##
+###########################################################################
+
+services:
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/sonarr:/config
+      # ONE mount spanning downloads and library. A separate /downloads
+      # mount makes them look like different filesystems to Sonarr, which
+      # then copies on import instead of hardlinking.
+      - ${FOLDER_FOR_MEDIA:?err}:/data
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:sonarr
+      - TP_THEME=${TP_THEME:?err}
+    ports:
+      - "${WEBUI_PORT_SONARR:?err}:8989"
+    networks:
+      - mediastack
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/radarr:/config
+      # ONE mount - see sonarr for why.
+      - ${FOLDER_FOR_MEDIA:?err}:/data
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:radarr
+      - TP_THEME=${TP_THEME:?err}
+    ports:
+      - "${WEBUI_PORT_RADARR:?err}:7878"
+    networks:
+      - mediastack
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/bazarr:/config
+      - ${FOLDER_FOR_MEDIA:?err}:/data
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:bazarr
+      - TP_THEME=${TP_THEME:?err}
+    ports:
+      - "${WEBUI_PORT_BAZARR:?err}:6767"
+    networks:
+      - mediastack
+
+  mylar:
+    image: lscr.io/linuxserver/mylar3:latest
+    container_name: mylar
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/mylar:/config
+      - ${FOLDER_FOR_MEDIA:?err}:/data
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:mylar3
+      - TP_THEME=${TP_THEME:?err}
+    ports:
+      - "${WEBUI_PORT_MYLAR:?err}:8090"
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true
