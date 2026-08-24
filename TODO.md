@@ -58,3 +58,36 @@ collection at the wrong quality and there is no undo.
       at `gluetun:<port>`, everything else by container name.
 - [ ] Decide whether Bazarr needs to move behind the VPN, if subtitle providers
       turn out to be blocked.
+
+## Hardware note: UAS must stay disabled
+
+The 10 TB drive is in a Ugreen enclosure with a **Realtek RTL9210** bridge
+(`0bda:9201`). Under sustained write load it stops answering UAS commands, the
+kernel resets it, recovery fails, and the device is offlined — ext4 then remounts
+read-only and every service on `/srv/storage` dies. This happened on 2026-08-24
+while Docker pulled ten images.
+
+`dmesg` signature:
+
+```
+usb 4-1: enable of device-initiated U1 failed
+scsi host0: uas_eh_device_reset_handler success
+sd 0:0:0:0: Device offlined - not ready after error recovery
+EXT4-fs (sdX1): Remounting filesystem read-only
+```
+
+**Applied fix:** `usb-storage.quirks=0bda:9201:u` in `/boot/firmware/cmdline.txt`,
+forcing bulk-only transport instead of UAS. Costs perhaps 20-30% of sequential
+throughput; buys a disk that stays online. Verify with `lsmod | grep uas`
+returning nothing.
+
+- [ ] Re-apply this after any reflash — `pi5-setup.sh` does not yet include it
+
+**No data was lost.** The read-only remount is `errors=remount-ro` working as
+intended: ext4 stopped writing the instant it saw the fault, and the journal
+replayed cleanly on the next mount. All databases passed integrity checks
+afterwards.
+
+**Device names are not stable.** With the 2 TB Seagate also attached, the 10 TB
+may be `sda` or `sdb` depending on enumeration order. Everything references the
+UUID for this reason — never put `/dev/sdX` in fstab here.
