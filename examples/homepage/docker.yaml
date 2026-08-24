@@ -1,4 +1,6 @@
 ---
-# Read-only socket: Homepage only needs to LIST containers for status dots.
+# Via the proxy, not the socket. Homepage has no Docker access of its own -
+# the proxy exposes only container listing and refuses every POST.
 my-docker:
-  socket: /var/run/docker.sock
+  host: dockerproxy
+  port: 2375

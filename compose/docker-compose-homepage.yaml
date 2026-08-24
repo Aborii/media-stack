@@ -22,8 +22,6 @@ services:
     restart: unless-stopped
     volumes:
       - ${FOLDER_FOR_DATA:?err}/homepage:/app/config
-      # Read-only: Homepage only needs to LIST containers for its widgets.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       # Read-only, purely so the disk-usage widget reports the real
       # figures rather than the container's own filesystem.
       - /srv/storage:/srv/storage:ro

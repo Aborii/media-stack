@@ -40,6 +40,7 @@ include:
   - compose/docker-compose-audiobookshelf.yaml
   - compose/docker-compose-immich.yaml
   # --- management ------------------------------------------------------
+  - compose/docker-compose-dockerproxy.yaml
   - compose/docker-compose-homepage.yaml
   - compose/docker-compose-portainer.yaml
   - compose/docker-compose-tdarr.yaml
