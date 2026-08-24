@@ -153,3 +153,33 @@ Notable gluetun settings, and why:
 `scripts/reorganise-media.sh` is a one-off that reshapes a migrated media tree
 into the layout above. It takes `--dry-run` and refuses to run while a transfer
 is active.
+
+## Remote access
+
+Tailscale runs on the host, not in a container, so the whole Pi joins the
+tailnet and every service is reachable on its normal port. No open ports, no
+domain, no certificates, nothing exposed to the internet - only devices signed
+into the tailnet can reach it.
+
+| From anywhere | |
+|---|---|
+| Dashboard | `http://aboriis-pi.tail54d520.ts.net` |
+| Immich | `:2283` |
+| Jellyfin | `:8096` |
+| Dockge | `:5001` |
+
+MagicDNS resolves the name, so the URLs differ from the LAN ones only in the
+hostname.
+
+**Homepage needs every name added to `HOMEPAGE_ALLOWED_HOSTS`.** It rejects any
+Host header it does not recognise with a blank 400, which looks like the
+service being down. The tailnet IP and MagicDNS name are both listed there.
+
+**Subnet routing is advertised but needs approving** in the Tailscale admin
+console under Machines → aboriis-pi → Edit route settings. Until then the Pi
+itself is reachable but other devices on the home LAN are not. It also needs
+IP forwarding enabled on the host to work properly.
+
+**Consider disabling key expiry** for this machine. Tailscale expires device
+keys every 180 days by default, and a headless server then silently drops off
+the tailnet until someone re-authenticates it.
