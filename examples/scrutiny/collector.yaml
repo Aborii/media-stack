@@ -1,0 +1,15 @@
+# Explicit device list - autodetection does not work here:
+#
+#   - smartctl --scan finds only the Seagate and misses the WD entirely
+#   - the Realtek bridge needs an explicit  type: sat  or it reports
+#     "Unknown USB bridge [0x0bda:0x9201]"
+#   - the Seagate enclosure passes no SMART at all
+#     ("Read Device Identity failed"), so it is deliberately excluded
+#
+# The WWN path, not /dev/sdX and not the ata-* name:
+#   * /dev/sdX swaps between boots with two USB drives attached
+#   * Scrutiny LOWERCASES the device path, so ata-WDC_WD100EFGX-... becomes
+#     a path that does not exist. wwn-0x... is already lowercase.
+devices:
+  - device: /dev/disk/by-id/wwn-0x50014ee216baa995
+    type: sat

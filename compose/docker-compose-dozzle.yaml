@@ -1,0 +1,27 @@
+###########################################################################
+##
+##  Dozzle - live container logs in a browser
+##
+##  Documentation: https://dozzle.dev
+##
+##  Reads logs through the socket proxy, so it has no Docker access of its
+##  own. Saves sshing in and running docker logs for every service.
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # Via the proxy, not the socket directly.
+      - DOZZLE_REMOTE_HOST=tcp://dockerproxy:2375
+      - DOZZLE_NO_ANALYTICS=true
+    ports:
+      - "${WEBUI_PORT_DOZZLE:?err}:8080"
+    networks:
+      - mediastack

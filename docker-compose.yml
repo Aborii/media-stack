@@ -44,6 +44,11 @@ include:
   - compose/docker-compose-homepage.yaml
   - compose/docker-compose-portainer.yaml
   - compose/docker-compose-tdarr.yaml
+  # --- monitoring ------------------------------------------------------
+  - compose/docker-compose-uptimekuma.yaml
+  - compose/docker-compose-scrutiny.yaml
+  - compose/docker-compose-dozzle.yaml
+  - compose/docker-compose-diun.yaml
 
 ###########################################################################
 ##  Defined once here, for the whole project. Individual service files

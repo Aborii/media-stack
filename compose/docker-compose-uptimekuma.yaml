@@ -1,0 +1,29 @@
+###########################################################################
+##
+##  Uptime Kuma - service monitoring and alerting
+##
+##  Documentation: https://github.com/louislam/uptime-kuma
+##
+##  Watches whether each service actually answers and notifies when one
+##  stops. Homepage shows whether a container is RUNNING; a container can
+##  be running and still not serving. This checks the difference.
+##
+##  Has native Telegram support - configure under Settings > Notifications.
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/uptime-kuma:/app/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_UPTIMEKUMA:?err}:3001"
+    networks:
+      - mediastack
