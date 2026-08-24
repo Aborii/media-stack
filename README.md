@@ -7,7 +7,25 @@ apps that serve them. 14 services, one Compose project.
 
 ```bash
 cp docker-compose.env.example docker-compose.env   # then fill it in
-docker compose up -d
+
+# the shared network, created once outside every stack
+docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
+
+for s in vpn arr media immich monitoring management dockge; do
+  (cd stacks/$s && docker compose up -d)
+done
+```
+
+Or manage them from **Dockge** at `:5001`, which edits the compose files
+directly so the browser and git stay in sync.
+
+Per stack:
+
+```bash
+cd stacks/arr
+docker compose up -d          # start
+docker compose pull           # update images
+docker compose logs -f sonarr
 ```
 
 Everything is included from `docker-compose.yml`, so ordinary Compose commands

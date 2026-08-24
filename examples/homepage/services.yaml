@@ -119,12 +119,6 @@
           url: http://tdarr:8265
 
 - System:
-    - Portainer:
-        icon: portainer.png
-        href: http://aboriis-pi.local:9000
-        description: Containers
-        server: my-docker
-        container: portainer
 
     - Gluetun:
         icon: gluetun.png
