@@ -1,0 +1,63 @@
+###########################################################################
+##
+##  Tdarr - library normalisation (SERVER ONLY)
+##
+##  Documentation: https://docs.tdarr.io
+##
+##  The Pi runs the server: it scans the library, decides what needs
+##  converting, and holds the queue. It does NOT transcode - internalNode
+##  is off, because the Pi 5 has no hardware video encoder and CPU
+##  encoding would peg all four cores for days.
+##
+##  The work is done by a Tdarr NODE on the Windows desktop, using NVENC
+##  on its RTX 3080 Ti. When that machine is off, jobs simply wait in the
+##  queue; when it comes back the node reconnects and drains them.
+##
+##  The point of all this is that Jellyfin then rarely has to transcode at
+##  playback time, because the library is already in a format clients can
+##  direct play.
+##
+##  Node setup on the desktop:
+##    - install the Tdarr Node package for Windows
+##    - point it at this Pi, server port ${TDARR_SERVER_PORT}
+##    - map the media path to the Samba share so both see the same files
+##
+###########################################################################
+
+name: ${COMPOSE_PROJECT_NAME:-mediastack}
+
+services:
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/tdarr/server:/app/server
+      - ${FOLDER_FOR_DATA:?err}/tdarr/configs:/app/configs
+      - ${FOLDER_FOR_DATA:?err}/tdarr/logs:/app/logs
+      - ${FOLDER_FOR_MEDIA:?err}/library:/media
+      # Transcode scratch space. Kept on the data disk, not the SD card -
+      # this churns hard during a conversion.
+      - ${FOLDER_FOR_MEDIA:?err}/tdarr-cache:/temp
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+      - serverIP=0.0.0.0
+      - serverPort=${TDARR_SERVER_PORT:?err}
+      - webUIPort=${WEBUI_PORT_TDARR:?err}
+      # The whole point: the Pi coordinates, the desktop encodes.
+      - internalNode=false
+      - inContainer=true
+      - ffmpegVersion=7
+    ports:
+      - "${WEBUI_PORT_TDARR:?err}:${WEBUI_PORT_TDARR:?err}"
+      - "${TDARR_SERVER_PORT:?err}:${TDARR_SERVER_PORT:?err}"
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

@@ -42,3 +42,4 @@ include:
   # --- management ------------------------------------------------------
   - compose/docker-compose-homepage.yaml
   - compose/docker-compose-portainer.yaml
+  - compose/docker-compose-tdarr.yaml
