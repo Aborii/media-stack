@@ -46,14 +46,31 @@ services:
       - ${FOLDER_FOR_DATA:?err}/scrutiny/influxdb:/opt/scrutiny/influxdb
       - /run/udev:/run/udev:ro
       # by-id is a directory of symlinks, not a device node, so it is a
-      # volume rather than a device. collector.yaml selects the WD by its
-      # stable name here, since sda/sdb swap between boots.
+      # volume rather than a device. collector.yaml no longer reads a path from
+      # here - it uses the container-side /dev/sda that the devices entry pins -
+      # but scrutiny still reads this directory for device identity metadata.
       - /dev/disk/by-id:/dev/disk/by-id:ro
     environment:
       - TZ=${TIMEZONE:?err}
       - COLLECTOR_CRON_SCHEDULE=0 */2 * * *
+      # On a cold boot 24 containers fight for the Pi CPU at once and s6 gives
+      # up waiting for its own services: "s6-rc: fatal: timed out". The container
+      # then sits there Up while serving nothing, so restart: unless-stopped
+      # never fires - it only reacts to an exit. 0 removes that deadline so s6
+      # waits instead of failing.
+      - S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+      - S6_SERVICES_READYTIME=5000
     ports:
       - "${WEBUI_PORT_SCRUTINY:?err}:8080"
+    # Makes a half-started container show as unhealthy instead of passing for
+    # Up. start_period is generous because a boot-time start is slow here.
+    healthcheck:
+      # curl, not wget - this image ships curl only.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - mediastack
 
