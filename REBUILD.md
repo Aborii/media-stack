@@ -354,6 +354,67 @@ curl -s -o /dev/null -w '%{http_code} %{ssl_verify_result}
 '   https://<host>.<tailnet>.ts.net:18096/
 ```
 
+### Backups — and getting them off this disk
+
+`scripts/backup.sh` runs nightly from `media-stack-backup.timer` at 03:30, as
+root. Root matters: two directories are mode 700 owned by the container's user,
+not by you.
+
+```
+appdata/immich/postgres    owner 999
+appdata/postgres17/data    owner 70
+```
+
+An rsync as a normal user hits permission denied on both, **skips them, and
+reports success**. That is exactly how Immich arrived on this Pi with 61 GB of
+photos and an empty database. Databases are therefore dumped, not copied — a
+live PostgreSQL directory copied file-by-file can capture a torn state that will
+not replay.
+
+It also refuses to trust rsync's exit code, comparing sizes in **both**
+directions. Too small means something was skipped; too large means excluded
+paths are lingering in the destination from a previous run.
+
+35 of appdata's 36 GB is regenerable — transcodes, thumbnails, posters, ML
+models — and is excluded. What is protected is the roughly 1 GB of
+configuration. Losing artwork costs time after a restore; losing a config file
+costs an evening remembering what was in it.
+
+**All of that still lands on the disk it is backing up.** So the last step packs
+the newest snapshot plus that run's dumps into one dated `.tar.gz`, checksums
+it, and uploads it to the PC.
+
+#### The receiver
+
+Full notes in `receiver/README.md`. The shape matters more than the code:
+
+- **The Pi pushes; the PC never reaches in.** The alternative — the PC pulling
+  on a timer — needs standing credentials to the Pi kept on the PC, and a key
+  with no passphrase so a scheduled task can use it. Pushing means the only
+  credential anywhere is one that can do a single thing.
+- **It is not an FTP or SSH server.** Those accept whatever they are handed and
+  write wherever the account reaches. This accepts a gzipped tar named like the
+  Pi's archives whose checksum was declared before sending, writes to one
+  directory, never extracts anything, and serves nothing back.
+- **It binds to the Tailscale address, never `0.0.0.0`.** That wifi is not ours.
+- **A failed upload does not fail the backup.** The PC is often off; the local
+  backup has already succeeded by then and the archive waits for the next run.
+
+The archive **must** be built on the Pi as root for the same reason the backup
+is: the snapshot contains root-owned files — scrutiny's influxdb, diun's
+database, both PostgreSQL directories — and anything assembling it as an
+ordinary user would silently produce a backup missing them.
+
+Verify by trying to break it, not by watching one success:
+
+```bash
+# each of these must be refused, with nothing left in .incoming
+curl -T good.tar.gz -H "X-Backup-Key: $KEY" -H "X-Backup-Name: ../../evil.tar.gz" ...
+curl -T good.tar.gz -H "X-Backup-Key: $KEY" -H "X-Backup-Sha256: 0000..." ...
+curl -T notatar.gz  -H "X-Backup-Key: $KEY" ...
+curl -T good.tar.gz ...            # no key at all
+```
+
 ### Uptime Kuma
 
 ```bash
