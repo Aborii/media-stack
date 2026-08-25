@@ -80,6 +80,10 @@ services:
       # on gluetun's healthcheck - so a single attempt always fails on a
       # cold start. Lives in the gluetun config volume.
       - VPN_PORT_FORWARDING_UP_COMMAND=/gluetun/set-qbit-port.sh {{PORTS}}
+      # Default is /tmp/gluetun/forwarded_port, which lives inside this
+      # container only. Writing it into the bind mount lets the port-sync
+      # sidecar read it.
+      - VPN_PORT_FORWARDING_STATUS_FILE=/gluetun/forwarded_port
 
       # --- dns ------------------------------------------------------------
       # DoT (the default) CANNOT work behind Proton. Port 853 accepts the TCP
@@ -156,6 +160,28 @@ services:
       gluetun:
         # service_healthy, not service_started. Without it qBittorrent can
         # start before the tunnel is up and announce the real IP.
+        condition: service_healthy
+
+  # Reconciles qBittorrent's listen port with the forwarded port every 30s.
+  #
+  # gluetun's UP command handles the tunnel changing. This handles qBittorrent
+  # restarting on its own, which nothing else covered: it comes back on
+  # TORRENTING_PORT while gluetun still holds a different port, peers get sent
+  # somewhere nothing is listening, and connection_status silently drops to
+  # "firewalled" until the next VPN reconnect - possibly hours later.
+  #
+  # Shares gluetun's namespace, so 127.0.0.1 is qBittorrent and
+  # LocalHostAuth=false means no credentials live in this container.
+  qbit-port-sync:
+    image: alpine:latest
+    container_name: qbit-port-sync
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun:ro
+    entrypoint: ["/bin/sh", "/gluetun/qbit-port-sync.sh"]
+    depends_on:
+      gluetun:
         condition: service_healthy
 
   prowlarr:
