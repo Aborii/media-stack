@@ -181,6 +181,64 @@ else
   note "appdata: $n snapshot(s) kept"
 fi
 
+# --------------------------------------------------------------- offsite
+# Everything above lands on the SAME disk it is backing up. That covers a bad
+# delete or a corrupted database - what has actually gone wrong here - but not
+# the disk dying, and this one has already dropped offline once under load.
+#
+# So one dated archive gets staged for another machine to collect.
+#
+# It has to be a TARBALL, and it has to be built here as root. The snapshot
+# tree contains files a normal user cannot read - scrutiny's influxdb, diun's
+# database, both database directories - because rsync -aHAX faithfully kept
+# their ownership. A pull over SSH as an ordinary user reads what it can, skips
+# the rest without complaint, and produces an archive missing precisely the
+# data this script exists to protect. That is the same silent-skip failure
+# Immich already arrived here with once.
+#
+# Tar as root, then hand ownership to the login user so the puller can read it
+# without needing any privilege of its own.
+echo
+echo "== offsite archive =="
+OFFSITE="$DEST/offsite"
+OWNER=${OWNER:-aborii}
+mkdir -p "$OFFSITE"
+ARCHIVE="$OFFSITE/media-stack-$STAMP.tar.gz"
+
+# Only the newest snapshot and this run's dumps. The older snapshots are
+# hardlinked to it, so tarring them all would expand every hardlink into a full
+# copy and multiply the size by the retention count.
+# Build the file list explicitly. An unquoted glob that matches nothing would
+# leave tar with a -C and no operands, which fails with a message about tar
+# rather than about the missing dumps.
+tar_args=(-C "$DEST/appdata" "$STAMP")
+shopt -s nullglob
+dumps=("$DEST"/dumps/*-"$STAMP".sql.gz)
+shopt -u nullglob
+if [ ${#dumps[@]} -gt 0 ]; then
+  tar_args+=(-C "$DEST")
+  for d in "${dumps[@]}"; do tar_args+=("dumps/$(basename "$d")"); done
+else
+  note "no dumps for this run - archiving the snapshot only"
+fi
+
+if tar czf "$ARCHIVE" "${tar_args[@]}" 2>/dev/null; then
+  sha256sum "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
+  chown "$OWNER":"$OWNER" "$ARCHIVE" "$ARCHIVE.sha256"
+  chmod 640 "$ARCHIVE"; chmod 644 "$ARCHIVE.sha256"
+  note "$(basename "$ARCHIVE")  $(du -h "$ARCHIVE" | cut -f1)"
+else
+  note "ARCHIVE FAILED"; fail=1
+fi
+
+# Keep only a couple here - this is a staging area, not the backup. The real
+# retention lives on whatever machine collects them.
+n=$(ls -1t "$OFFSITE"/media-stack-*.tar.gz 2>/dev/null | wc -l || true)
+if [ "$n" -gt 3 ]; then
+  ls -1t "$OFFSITE"/media-stack-*.tar.gz | tail -n +4 | while read -r f; do rm -f -- "$f" "$f.sha256"; done
+  note "staged: removed $(( n - 3 )), 3 kept"
+fi
+
 echo
 echo "== total =="
 note "$(du -sh "$DEST" | cut -f1) in $DEST"
