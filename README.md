@@ -1,7 +1,11 @@
 # MediaStack
 
 Self-hosted media stack on a Raspberry Pi 5: acquisition, libraries, and the
-apps that serve them. 14 services, one Compose project.
+apps that serve them. 26 containers across seven Compose stacks.
+
+**Rebuilding on a new Pi? Read [REBUILD.md](REBUILD.md) first.** A lot of what
+makes this work lives inside application databases rather than in any file
+here, and it is invisible until something quietly does not work.
 
 ## Quick start
 
@@ -11,13 +15,14 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management dockge; do
+for s in vpn arr media immich monitoring management postgres; do
   (cd stacks/$s && docker compose up -d)
 done
 ```
 
-Or manage them from **Dockge** at `:5001`, which edits the compose files
-directly so the browser and git stay in sync.
+Or manage them from **Portainer** at `:9000`. Dockge was used for a while and
+removed; the per-stack directory layout it required was kept because it is
+useful on its own.
 
 Per stack:
 
@@ -55,7 +60,15 @@ docker compose down
 | | kavita | 5000 | books, comics, manga |
 | | audiobookshelf | 13378 | audiobooks, podcasts |
 | | immich | 2283 | photos and video |
-| **Management** | homepage | 3000 | dashboard |
+| **Management** | homepage | 80 | dashboard, password protected |
+| | portainer | 9000 | container management |
+| | tdarr | 8265 | transcoding server, node runs elsewhere |
+| **Monitoring** | uptime-kuma | 3001 | 15 service checks |
+| | scrutiny | 8081 | drive SMART health |
+| | dozzle | 8888 | live container logs |
+| | glances | - | host metrics, bound to the docker gateway |
+| | diun | - | image update watcher |
+| **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network
 
