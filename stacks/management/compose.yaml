@@ -34,6 +34,20 @@ services:
       # Required since v0.9: without it Homepage refuses requests whose
       # Host header it does not recognise, and you get a blank page.
       - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS:-*}
+      # Authentication. Two reasons, not one:
+      #
+      #  1. The dashboard answered 200 with no credentials to anyone on the
+      #     wifi - an open network - handing over a full index of every service
+      #     with working links to Portainer and the arr apps.
+      #  2. Homepage serves custom.js ONLY to authenticated users. Without auth
+      #     the file is served but never referenced in the page, so the script
+      #     that makes links follow the host you arrived on never ran.
+      #
+      # Secrets live in docker-compose.env, which is gitignored.
+      - HOMEPAGE_AUTH_ENABLED=${HOMEPAGE_AUTH_ENABLED:-false}
+      - HOMEPAGE_AUTH_PASSWORD=${HOMEPAGE_AUTH_PASSWORD:-}
+      - HOMEPAGE_AUTH_SECRET=${HOMEPAGE_AUTH_SECRET:-}
+      - HOMEPAGE_EXTERNAL_URL=${HOMEPAGE_EXTERNAL_URL:-}
     ports:
       - "${WEBUI_PORT_HOMEPAGE:?err}:3000"
     networks:
