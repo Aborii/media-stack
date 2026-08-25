@@ -138,7 +138,13 @@
           # The scrutiny widget is pass/fail only - it stays green at 40C and at
           # 68C alike. This disk hit 68C in its old enclosure, stopped answering
           # under write load and took the whole array read-only, so the actual
-          # number is the thing worth watching. The key is the drive's WWN.
+          # number is the thing worth watching.
+          #
+          # The key below is the drive's WWN and is hardcoded. Replace the disk
+          # and this tile goes blank WITHOUT an error, because customapi renders
+          # nothing for a field it cannot find - the same silent failure this
+          # tile exists to prevent. Get the new one with:
+          #   curl -s http://scrutiny:8080/api/summary | jq -r '.data.summary|keys[]'
           - type: customapi
             url: http://scrutiny:8080/api/summary
             mappings:
@@ -148,7 +154,7 @@
                       "0x50014ee216baa995":
                         smart: temp
                 label: Drive temp
-                suffix: "C"
+                suffix: "°C"
 
     - Uptime Kuma:
         icon: uptime-kuma.png
