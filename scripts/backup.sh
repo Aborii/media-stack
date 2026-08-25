@@ -193,13 +193,13 @@ fi
 # It has to be a TARBALL, and it has to be built here as root. The snapshot
 # tree contains files a normal user cannot read - scrutiny's influxdb, diun's
 # database, both database directories - because rsync -aHAX faithfully kept
-# their ownership. A pull over SSH as an ordinary user reads what it can, skips
-# the rest without complaint, and produces an archive missing precisely the
-# data this script exists to protect. That is the same silent-skip failure
-# Immich already arrived here with once.
+# their ownership. Anything assembling this archive as an ordinary user reads
+# what it can, skips the rest without complaint, and produces a backup missing
+# precisely the data this script exists to protect. That is the same silent-skip
+# failure Immich already arrived here with once.
 #
-# Tar as root, then hand ownership to the login user so the puller can read it
-# without needing any privilege of its own.
+# Tar as root, then hand ownership to the login user so the archive can be read
+# and checked without privilege afterwards.
 echo
 echo "== offsite archive =="
 OFFSITE="$DEST/offsite"
@@ -251,11 +251,19 @@ fi
 if [ -f "$UPLOAD_KEY_FILE" ] && [ -f "$ARCHIVE" ]; then
   echo
   echo "== upload =="
-  if curl -sS --fail --max-time 3600 -T "$ARCHIVE"        -H "X-Backup-Key: $(cat "$UPLOAD_KEY_FILE")"        -H "X-Backup-Name: $(basename "$ARCHIVE")"        -H "X-Backup-Sha256: $(cat "$ARCHIVE.sha256")"        "$UPLOAD_URL" >/dev/null 2>&1; then
-    note "sent to $UPLOAD_URL"
-  else
-    note "upload skipped - receiver unreachable or refused (local backup is fine)"
-  fi
+  err=$(curl -sS --fail --max-time 3600 -T "$ARCHIVE"        -H "X-Backup-Key: $(cat "$UPLOAD_KEY_FILE")"        -H "X-Backup-Name: $(basename "$ARCHIVE")"        -H "X-Backup-Sha256: $(cat "$ARCHIVE.sha256" 2>/dev/null)"        "$UPLOAD_URL" 2>&1 >/dev/null) && rc=0 || rc=$?
+
+  # These two are not the same problem and must not read the same in the log.
+  # The PC being off is expected. The receiver REFUSING the archive means it
+  # failed a checksum or is not a valid tar - a corrupt backup, worth knowing
+  # tonight rather than the day you need to restore. This whole script exists
+  # because rsync reported success while quietly skipping directories; a
+  # swallowed curl error is the same failure one step further along.
+  case "$rc" in
+    0)     note "sent to $UPLOAD_URL" ;;
+    7|28)  note "receiver unreachable - PC is probably off (local backup is fine)" ;;
+    *)     note "UPLOAD REFUSED (curl $rc): ${err:-no detail}"; fail=1 ;;
+  esac
 fi
 
 # Keep only a couple here - this is a staging area, not the backup. The real
