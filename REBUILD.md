@@ -123,6 +123,10 @@ health complaining — 256 collections and one import list also needed changing.
 - The proxy only applies to indexers carrying its **tag**. An untagged indexer
   behind Cloudflare fails while every other one passes, which looks like that
   indexer being down.
+- Set the FlareSolverr proxy **requestTimeout to 120**, not the default 60. A Pi
+  running headless Chrome through a VPN exiting in another country is slower
+  than the desktop that default was chosen for, and a challenge needing 65
+  seconds fails purely on the clock. It costs nothing on the fast path.
 
 ### gluetun — DNS
 
