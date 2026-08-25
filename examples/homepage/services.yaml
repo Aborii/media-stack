@@ -1,21 +1,22 @@
 ---
-# href uses the LAN IP, NOT aboriis-pi.local, and NOT the tailscale name.
+# href uses the bare hostname aboriis-pi - not .local, and not a fixed IP.
 #
-# href is opened by YOUR BROWSER, so it has to resolve wherever you happen to
-# be. Only the IP resolves in all three cases:
+# href is opened by YOUR BROWSER, so it must resolve wherever you happen to be.
+# The bare name is the only form that does, and it resolves three different ways
+# depending on where you are:
 #
-#   at home, tailscale off  -> direct on the LAN
-#   at home, tailscale on   -> direct on the LAN
-#   remote over tailscale   -> via the 192.168.0.0/24 subnet route the Pi
-#                              advertises, which is approved in the admin console
+#   at home, tailscale off  -> the router's DNS knows the DHCP hostname, and
+#                              Windows also falls back to mDNS (verified: both)
+#   at home, tailscale on   -> tailscale MagicDNS
+#   remote over tailscale   -> tailscale MagicDNS
 #
-# .local is mDNS: it is a local broadcast and cannot cross tailscale, so remote
-# links silently pointed at an unreachable host. The bare tailscale name works
-# remotely but fails at home with tailscale off, which is the case we
-# deliberately kept working.
+# aboriis-pi.local was wrong: mDNS is a local broadcast and cannot cross
+# tailscale, so opening the dashboard remotely showed a page where every single
+# link pointed at an unresolvable host.
 #
-# If the router ever hands the Pi a different address these all break at once.
-# Other devices also need "accept routes" enabled for the remote case.
+# A hardcoded 192.168.0.143 also worked everywhere - the Pi advertises
+# 192.168.0.0/24 as an approved subnet route - but breaks the day the router
+# hands out a different address. The name survives that.
 #
 # widget.url below is a different thing entirely - HOMEPAGE fetches those
 # server-side from inside the docker network, so they stay as container names.
@@ -47,7 +48,7 @@
     - Portainer:
         icon: portainer.png
         siteMonitor: http://portainer:9000/api/system/status
-        href: http://192.168.0.143:9000
+        href: http://aboriis-pi:9000
         description: Docker management UI
         server: my-docker
         container: portainer
@@ -62,7 +63,7 @@
 
     - Gluetun:
         icon: gluetun.png
-        href: http://192.168.0.143:8320
+        href: http://aboriis-pi:8320
         description: ProtonVPN tunnel
         server: my-docker
         container: gluetun
@@ -83,7 +84,7 @@
     - Scrutiny:
         icon: scrutiny.png
         siteMonitor: http://scrutiny:8080/
-        href: http://192.168.0.143:8081
+        href: http://aboriis-pi:8081
         description: Drive health - the 10TB runs hot
         server: my-docker
         container: scrutiny
@@ -94,7 +95,7 @@
     - Uptime Kuma:
         icon: uptime-kuma.png
         siteMonitor: http://uptime-kuma:3001/
-        href: http://192.168.0.143:3001
+        href: http://aboriis-pi:3001
         description: Service checks and Telegram alerts
         server: my-docker
         container: uptime-kuma
@@ -108,7 +109,7 @@
     - Dozzle:
         icon: dozzle.png
         siteMonitor: http://dozzle:8080/healthcheck
-        href: http://192.168.0.143:8888
+        href: http://aboriis-pi:8888
         description: Container logs
         server: my-docker
         container: dozzle
@@ -122,7 +123,7 @@
     - Jellyfin:
         icon: jellyfin.png
         siteMonitor: http://jellyfin:8096/health
-        href: http://192.168.0.143:8096
+        href: http://aboriis-pi:8096
         description: Films, TV and anime
         server: my-docker
         container: jellyfin
@@ -136,7 +137,7 @@
     - Immich:
         icon: immich.png
         siteMonitor: http://immich_server:2283/api/server/ping
-        href: http://192.168.0.143:2283
+        href: http://aboriis-pi:2283
         description: Photos and video
         server: my-docker
         container: immich_server
@@ -150,7 +151,7 @@
     - Kavita:
         icon: kavita.png
         siteMonitor: http://kavita:5000/api/health
-        href: http://192.168.0.143:5000
+        href: http://aboriis-pi:5000
         description: Books, comics and manga
         server: my-docker
         container: kavita
@@ -158,7 +159,7 @@
     - Audiobookshelf:
         icon: audiobookshelf.png
         siteMonitor: http://audiobookshelf:80/healthcheck
-        href: http://192.168.0.143:13378
+        href: http://aboriis-pi:13378
         description: Audiobooks and podcasts
         server: my-docker
         container: audiobookshelf
@@ -167,7 +168,7 @@
     - Sonarr:
         icon: sonarr.png
         siteMonitor: http://sonarr:8989/ping
-        href: http://192.168.0.143:8989
+        href: http://aboriis-pi:8989
         description: TV series
         server: my-docker
         container: sonarr
@@ -180,7 +181,7 @@
     - Radarr:
         icon: radarr.png
         siteMonitor: http://radarr:7878/ping
-        href: http://192.168.0.143:7878
+        href: http://aboriis-pi:7878
         description: Films
         server: my-docker
         container: radarr
@@ -192,7 +193,7 @@
 
     - Bazarr:
         icon: bazarr.png
-        href: http://192.168.0.143:6767
+        href: http://aboriis-pi:6767
         description: Subtitles
         server: my-docker
         container: bazarr
@@ -203,7 +204,7 @@
 
     - Mylar:
         icon: mylar.png
-        href: http://192.168.0.143:8090
+        href: http://aboriis-pi:8090
         description: Comics
         server: my-docker
         container: mylar
@@ -212,7 +213,7 @@
     - Prowlarr:
         icon: prowlarr.png
         siteMonitor: http://gluetun:9696/ping
-        href: http://192.168.0.143:9696
+        href: http://aboriis-pi:9696
         description: Indexers - behind the VPN
         server: my-docker
         container: prowlarr
@@ -225,7 +226,7 @@
     - qBittorrent:
         icon: qbittorrent.png
         siteMonitor: http://gluetun:8200/
-        href: http://192.168.0.143:8200
+        href: http://aboriis-pi:8200
         description: Torrents - behind the VPN
         server: my-docker
         container: qbittorrent
@@ -240,7 +241,7 @@
     - Tdarr:
         icon: tdarr.png
         siteMonitor: http://tdarr:8265/
-        href: http://192.168.0.143:8265
+        href: http://aboriis-pi:8265
         description: Transcoding queue - node runs on the desktop
         server: my-docker
         container: tdarr
