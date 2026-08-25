@@ -1,5 +1,12 @@
 # TODO
 
+See also `todo/` for items written up in full:
+
+- [Telegram alerting](todo/telegram-alerting.md) — nothing on this Pi currently
+  reports anything. Uptime Kuma has 0 notification channels and Diun has no
+  notifier, so 15 monitors and 24 watched images tell nobody.
+
+
 ## Tdarr node on the Windows desktop
 
 The Tdarr **server** runs on the Pi already and holds the queue, but nothing
