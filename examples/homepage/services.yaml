@@ -224,14 +224,6 @@
           url: http://kavita:5000
           key: PASTE_API_KEY
 
-    - Audiobookshelf:
-        icon: audiobookshelf.png
-        siteMonitor: http://audiobookshelf:80/healthcheck
-        href: http://aboriis-pi:13378
-        description: Audiobooks and podcasts
-        server: my-docker
-        container: audiobookshelf
-
 - Automation:
     - Sonarr:
         icon: sonarr.png
@@ -269,13 +261,6 @@
           type: bazarr
           url: http://bazarr:6767
           key: PASTE_API_KEY
-
-    - Mylar:
-        icon: mylar.png
-        href: http://aboriis-pi:8090
-        description: Comics
-        server: my-docker
-        container: mylar
 
 - Acquisition:
     - Prowlarr:

@@ -6,8 +6,8 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | Stack | Contains |
 |---|---|
 | `vpn` | gluetun, qbittorrent, prowlarr, flaresolverr |
-| `arr` | sonarr, radarr, bazarr, mylar |
-| `media` | jellyfin, kavita, audiobookshelf |
+| `arr` | sonarr, radarr, bazarr |
+| `media` | jellyfin, kavita |
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, diun |
 | `dockge` | the UI itself |
