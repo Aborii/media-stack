@@ -9,6 +9,12 @@ headerStyle: clean
 hideVersion: true
 
 layout:
+  System:
+    style: row
+    columns: 3
+  Monitoring:
+    style: row
+    columns: 4
   Libraries:
     style: row
     columns: 4
@@ -16,8 +22,5 @@ layout:
     style: row
     columns: 4
   Acquisition:
-    style: row
-    columns: 3
-  System:
     style: row
     columns: 3

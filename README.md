@@ -7,7 +7,25 @@ apps that serve them. 14 services, one Compose project.
 
 ```bash
 cp docker-compose.env.example docker-compose.env   # then fill it in
-docker compose up -d
+
+# the shared network, created once outside every stack
+docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
+
+for s in vpn arr media immich monitoring management dockge; do
+  (cd stacks/$s && docker compose up -d)
+done
+```
+
+Or manage them from **Dockge** at `:5001`, which edits the compose files
+directly so the browser and git stay in sync.
+
+Per stack:
+
+```bash
+cd stacks/arr
+docker compose up -d          # start
+docker compose pull           # update images
+docker compose logs -f sonarr
 ```
 
 Everything is included from `docker-compose.yml`, so ordinary Compose commands
@@ -38,7 +56,6 @@ docker compose down
 | | audiobookshelf | 13378 | audiobooks, podcasts |
 | | immich | 2283 | photos and video |
 | **Management** | homepage | 3000 | dashboard |
-| | portainer | 9000 | containers |
 
 ## Network
 
@@ -52,7 +69,6 @@ Only the acquisition services are tunnelled:
   ════════╪════════ mediastack bridge ════════
           │
   sonarr radarr bazarr mylar jellyfin kavita
-  audiobookshelf immich homepage portainer
 ```
 
 qBittorrent is tunnelled because BitTorrent announces your IP to every peer in
@@ -137,3 +153,33 @@ Notable gluetun settings, and why:
 `scripts/reorganise-media.sh` is a one-off that reshapes a migrated media tree
 into the layout above. It takes `--dry-run` and refuses to run while a transfer
 is active.
+
+## Remote access
+
+Tailscale runs on the host, not in a container, so the whole Pi joins the
+tailnet and every service is reachable on its normal port. No open ports, no
+domain, no certificates, nothing exposed to the internet - only devices signed
+into the tailnet can reach it.
+
+| From anywhere | |
+|---|---|
+| Dashboard | `http://aboriis-pi.tail54d520.ts.net` |
+| Immich | `:2283` |
+| Jellyfin | `:8096` |
+| Dockge | `:5001` |
+
+MagicDNS resolves the name, so the URLs differ from the LAN ones only in the
+hostname.
+
+**Homepage needs every name added to `HOMEPAGE_ALLOWED_HOSTS`.** It rejects any
+Host header it does not recognise with a blank 400, which looks like the
+service being down. The tailnet IP and MagicDNS name are both listed there.
+
+**Subnet routing is advertised but needs approving** in the Tailscale admin
+console under Machines → aboriis-pi → Edit route settings. Until then the Pi
+itself is reachable but other devices on the home LAN are not. It also needs
+IP forwarding enabled on the host to work properly.
+
+**Consider disabling key expiry** for this machine. Tailscale expires device
+keys every 180 days by default, and a headless server then silently drops off
+the tailnet until someone re-authenticates it.

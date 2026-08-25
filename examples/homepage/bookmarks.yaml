@@ -1,8 +1,13 @@
 ---
 - Admin:
-    - Router:
-        - abbr: RT
-          href: http://192.168.0.1
+    # The router is deliberately absent: this is an open network we do not
+    # control and 192.168.0.1 is not reachable, so the link was dead.
+    - Tailscale:
+        - abbr: TS
+          href: https://login.tailscale.com/admin/machines
+    - Proton VPN:
+        - abbr: PV
+          href: https://account.protonvpn.com/downloads
 - Reference:
     - TRaSH Guides:
         - abbr: TR

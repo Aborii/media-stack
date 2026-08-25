@@ -1,0 +1,112 @@
+###########################################################################
+##
+##  Dashboard, container UI and the transcode queue.
+##
+##  Part of the mediastack network, which is shared by every stack and
+##  created outside them - so containers still reach each other by name
+##  across stack boundaries.
+##
+##  Environment comes from .env in this directory (a symlink to the one
+##  real file, so a change is picked up by every stack at once).
+##
+###########################################################################
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/homepage:/app/config
+      # Read-only, purely so the disk-usage widget reports the real
+      # figures rather than the container's own filesystem.
+      - /srv/storage:/srv/storage:ro
+      # An EMPTY directory on the root partition. statfs reports the filesystem
+      # containing a path, so this surfaces the SD card usage without exposing
+      # anything - mounting host / would have worked but shows far too much.
+      # Without it a filling SD card gives no warning until the Pi stops.
+      - /var/lib/homepage-diskstat:/hostroot:ro
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+      # Required since v0.9: without it Homepage refuses requests whose
+      # Host header it does not recognise, and you get a blank page.
+      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS:-*}
+    ports:
+      - "${WEBUI_PORT_HOMEPAGE:?err}:3000"
+    networks:
+      - mediastack
+
+
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: dockerproxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1        # list and inspect - what status dots need
+      - IMAGES=1
+      - INFO=1
+      - PING=1
+      # everything else stays 0: no exec, no volumes, no networks, no
+      # secrets, and POST is refused outright
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # No published port: reachable only from inside the mediastack network.
+    networks:
+      - mediastack
+
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/tdarr/server:/app/server
+      - ${FOLDER_FOR_DATA:?err}/tdarr/configs:/app/configs
+      - ${FOLDER_FOR_DATA:?err}/tdarr/logs:/app/logs
+      - ${FOLDER_FOR_MEDIA:?err}/library:/media
+      # Transcode scratch space. Kept on the data disk, not the SD card -
+      # this churns hard during a conversion.
+      - ${FOLDER_FOR_MEDIA:?err}/tdarr-cache:/temp
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+      - serverIP=0.0.0.0
+      - serverPort=${TDARR_SERVER_PORT:?err}
+      - webUIPort=${WEBUI_PORT_TDARR:?err}
+      # The whole point: the Pi coordinates, the desktop encodes.
+      - internalNode=false
+      - inContainer=true
+      - ffmpegVersion=7
+    ports:
+      - "${WEBUI_PORT_TDARR:?err}:${WEBUI_PORT_TDARR:?err}"
+      - "${TDARR_SERVER_PORT:?err}:${TDARR_SERVER_PORT:?err}"
+    networks:
+      - mediastack
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # Full socket, not the dockerproxy - Portainer needs to create and
+      # control containers, which the read-only proxy deliberately blocks.
+      # Anyone reaching this UI can start a privileged container, so keep it
+      # off the internet and use a strong admin password.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${FOLDER_FOR_DATA:?err}/portainer:/data
+    ports:
+      - "${WEBUI_PORT_PORTAINER:?err}:9000"
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

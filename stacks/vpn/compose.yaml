@@ -1,0 +1,204 @@
+###########################################################################
+##
+##  Acquisition, behind the ProtonVPN tunnel.
+##
+##  These four MUST stay in one stack. network_mode: service:gluetun
+##  only resolves within a single Compose project - split them and it
+##  degrades to container:gluetun, which creates no startup ordering
+##  and silently kills networking in all three when gluetun restarts.
+##
+##  Part of the mediastack network, which is shared by every stack and
+##  created outside them - so containers still reach each other by name
+##  across stack boundaries.
+##
+##  Environment comes from .env in this directory (a symlink to the one
+##  real file, so a change is picked up by every stack at once).
+##
+###########################################################################
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+    # The namespace has no global IPv6 address, but IPv6 was left enabled and
+    # ip6tables policy is DROP. DNS still hands back AAAA records - the main DHT
+    # bootstrap node resolves to IPv6 only - and Alpine musl does not
+    # deprioritise unreachable addresses the way glibc does. So qBittorrent kept
+    # trying IPv6, the kernel dropped the packets, and the app saw EPERM:
+    # "Operation not permitted" on every UDP tracker, dht_nodes stuck at 0, and
+    # nothing ever downloaded. Turning IPv6 off makes everything fall back to
+    # the A records, which resolve and work.
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    ports:
+      - "${GLUETUN_CONTROL_PORT:?err}:${GLUETUN_CONTROL_PORT:?err}"      # Gluetun control server
+      - "${WEBUI_PORT_QBITTORRENT:?err}:${WEBUI_PORT_QBITTORRENT:?err}"  # qBittorrent WebUI
+      - "${QBIT_PORT:?err}:${QBIT_PORT:?err}/tcp"                        # qBittorrent torrent port
+      - "${QBIT_PORT:?err}:${QBIT_PORT:?err}/udp"
+      - "${WEBUI_PORT_PROWLARR:?err}:9696"                               # Prowlarr WebUI
+      - "${FLARESOLVERR_PORT:?err}:8191"                                 # FlareSolverr
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+
+      # --- provider --------------------------------------------------------
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:?err}
+      - VPN_TYPE=${VPN_TYPE:?err}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:?err}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES:?err}
+
+      # --- server selection -------------------------------------------------
+      # Deliberately NO VPN_ENDPOINT_IP. Pinning a single server by IP was why
+      # the tunnel kept dying: when Proton retired or overloaded that one host
+      # there was nothing to fail over to, and SERVER_COUNTRIES was ignored
+      # because a hardcoded endpoint overrides it. Naming countries lets
+      # gluetun choose, and choose again when one stops answering.
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:?err}
+      - UPDATER_PERIOD=24h
+
+      # --- port forwarding --------------------------------------------------
+      # Without an inbound port no peer can initiate a connection to us, so
+      # transfers crawl. PORT_FORWARD_ONLY was already on, but nothing ever
+      # requested a port, so it only narrowed the server pool for no gain.
+      # The UP command pushes the assigned port straight into qBittorrent,
+      # which matters because Proton issues a different one on every reconnect.
+      - VPN_PORT_FORWARDING=on
+      - PORT_FORWARD_ONLY=on
+      # Script, not an inline command: it must RETRY. gluetun obtains the
+      # port before qBittorrent can be running, because qBittorrent waits
+      # on gluetun's healthcheck - so a single attempt always fails on a
+      # cold start. Lives in the gluetun config volume.
+      - VPN_PORT_FORWARDING_UP_COMMAND=/gluetun/set-qbit-port.sh {{PORTS}}
+
+      # --- dns ------------------------------------------------------------
+      # DoT (the default) CANNOT work behind Proton. Port 853 accepts the TCP
+      # connection and then resets the TLS handshake, so every lookup fails,
+      # gluetun own healthcheck fails on a DNS lookup, and it restarts the
+      # tunnel in a loop - which is what made this container look unreliable.
+      # Proton also blocks plain DNS to anything but its own resolver.
+      #
+      # DoH rides on 443 and is not interfered with. Verified by hand inside
+      # the namespace before changing this. Using Proton DNS (10.2.0.1) would
+      # also work but hands them every query, which the gluetun docs advise
+      # against.
+      - DNS_UPSTREAM_RESOLVER_TYPE=doh
+
+      # --- local access -----------------------------------------------------
+      # Without these the firewall drops LAN traffic and every WebUI behind
+      # the tunnel becomes unreachable from your own network.
+      - FIREWALL_OUTBOUND_SUBNETS=${LOCAL_SUBNET:?err}
+      - EXTRA_SUBNETS=${LOCAL_SUBNET:?err}
+
+      - HTTP_CONTROL_SERVER_ADDRESS=:${GLUETUN_CONTROL_PORT:?err}
+    healthcheck:
+      # Dependents wait on this with condition: service_healthy, which is what
+      # stops them starting into a tunnel that is not up. Replaces the manual
+      # wait_for_gluetun_connection loop in scripts/mediastack.sh.
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    networks:
+      - mediastack
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/qbittorrent:/config
+      # ONE mount covering downloads and library together. Splitting them
+      # into /downloads and /data made them look like separate filesystems
+      # inside the container, and the *arr apps then copy on import instead
+      # of hardlinking - storing every file twice.
+      - ${FOLDER_FOR_MEDIA:?err}:/data
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+      - WEBUI_PORT=${WEBUI_PORT_QBITTORRENT:?err}
+      # Replaced on every reconnect by gluetun's port-forwarding UP command.
+      # This is only the value used before the first forward is granted.
+      - TORRENTING_PORT=${QBIT_PORT:?err}
+      - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:qbittorrent
+      - TP_THEME=${TP_THEME:?err}
+
+    # REQUIRED SETTING THAT LIVES IN qBittorrent.conf, NOT HERE:
+    #   Session\Interface=tun0
+    #   Session\InterfaceAddress=10.2.0.2
+    # Options > Advanced > Network Interface. Without it libtorrent binds a
+    # socket to EVERY interface, including the docker bridge. Gluetun has
+    # "ip rule from 172.28.10.2 lookup 200" which routes bridge-sourced traffic
+    # out eth0, where its OUTPUT chain only permits the bridge, the LAN and the
+    # VPN endpoint - so those announces were dropped. A locally generated packet
+    # killed by OUTPUT returns EPERM, which qBittorrent reports as "Operation
+    # not permitted" on every UDP tracker. Symptom: dht_nodes stuck at 0, zero
+    # peers, nothing ever downloads, while the tunnel itself tests fine.
+    # Binding to the tunnel address also acts as a kill switch.
+
+    ## Do not change this. qBittorrent must always be behind the VPN.
+    network_mode: "service:gluetun"
+
+    depends_on:
+      gluetun:
+        # service_healthy, not service_started. Without it qBittorrent can
+        # start before the tunnel is up and announce the real IP.
+        condition: service_healthy
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:develop
+    container_name: prowlarr
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/prowlarr:/config
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+      - DOCKER_MODS=ghcr.io/themepark-dev/theme.park:prowlarr
+      - TP_THEME=${TP_THEME:?err}
+
+    # Ports are published by gluetun - a container sharing another's network
+    # namespace cannot publish its own.
+    network_mode: "service:gluetun"
+
+    depends_on:
+      gluetun:
+        condition: service_healthy
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=${TIMEZONE:?err}
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/flaresolverr:/config
+
+    # Ports are published by gluetun.
+    network_mode: "service:gluetun"
+
+    depends_on:
+      gluetun:
+        condition: service_healthy
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

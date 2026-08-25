@@ -1,0 +1,143 @@
+###########################################################################
+##
+##  Monitoring and alerting.
+##
+##  Part of the mediastack network, which is shared by every stack and
+##  created outside them - so containers still reach each other by name
+##  across stack boundaries.
+##
+##  Environment comes from .env in this directory (a symlink to the one
+##  real file, so a change is picked up by every stack at once).
+##
+###########################################################################
+
+services:
+  uptime-kuma:
+    # Pinned to the v2 line. The "1" and "latest" tags are the old release
+    # branch - last pushed Oct 2025, while 2.x ships regularly. "latest" still
+    # points at v1, so following it would silently keep you on the old line.
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/uptime-kuma:/app/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_UPTIMEKUMA:?err}:3001"
+    networks:
+      - mediastack
+
+  scrutiny:
+    image: ghcr.io/analogj/scrutiny:master-omnibus
+    container_name: scrutiny
+    restart: unless-stopped
+    cap_add:
+      - SYS_RAWIO
+    devices:
+      # Mapped by stable WWN, never /dev/sdX. The kernel name changes when the
+      # disk moves port or another drive is attached - this entry was
+      # /dev/sda + /dev/sdb until the Seagate was removed and the WD came back
+      # as sda, at which point the missing sdb stopped the container starting.
+      # Docker resolves the symlink, so the container always sees /dev/sda.
+      - /dev/disk/by-id/wwn-0x50014ee216baa995:/dev/sda
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/scrutiny/config:/opt/scrutiny/config
+      - ${FOLDER_FOR_DATA:?err}/scrutiny/influxdb:/opt/scrutiny/influxdb
+      - /run/udev:/run/udev:ro
+      # by-id is a directory of symlinks, not a device node, so it is a
+      # volume rather than a device. collector.yaml no longer reads a path from
+      # here - it uses the container-side /dev/sda that the devices entry pins -
+      # but scrutiny still reads this directory for device identity metadata.
+      - /dev/disk/by-id:/dev/disk/by-id:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - COLLECTOR_CRON_SCHEDULE=0 */2 * * *
+      # On a cold boot 24 containers fight for the Pi CPU at once and s6 gives
+      # up waiting for its own services: "s6-rc: fatal: timed out". The container
+      # then sits there Up while serving nothing, so restart: unless-stopped
+      # never fires - it only reacts to an exit. 0 removes that deadline so s6
+      # waits instead of failing.
+      - S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+      - S6_SERVICES_READYTIME=5000
+    ports:
+      - "${WEBUI_PORT_SCRUTINY:?err}:8080"
+    # Makes a half-started container show as unhealthy instead of passing for
+    # Up. start_period is generous because a boot-time start is slow here.
+    healthcheck:
+      # curl, not wget - this image ships curl only.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - mediastack
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # Via the proxy, not the socket directly.
+      - DOZZLE_REMOTE_HOST=tcp://dockerproxy:2375
+      - DOZZLE_NO_ANALYTICS=true
+    ports:
+      - "${WEBUI_PORT_DOZZLE:?err}:8080"
+    networks:
+      - mediastack
+
+  diun:
+    image: crazymax/diun:latest
+    container_name: diun
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/diun:/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - LOG_LEVEL=info
+      - DIUN_WATCH_SCHEDULE=0 6 * * *
+      - DIUN_WATCH_JITTER=30s
+      - DIUN_PROVIDERS_DOCKER=true
+      - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
+      # false = watch everything, no per-container labels needed
+      - DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true
+      # Notifications are configured in the TODO - Telegram goes here.
+    networks:
+      - mediastack
+
+  # Host metrics the Homepage resources widget cannot reach: per-core CPU,
+  # network throughput, disk I/O, process list.
+  #
+  # network_mode: host is required - on the bridge it would report the
+  # CONTAINER's network counters, which is not what anyone wants from a system
+  # monitor. That means it is not on the mediastack network, so Homepage reaches
+  # it through the bridge gateway instead of by name.
+  #
+  # --bind 172.28.10.1 keeps it on the docker gateway only. With host networking
+  # the default 0.0.0.0 would publish an unauthenticated process list to the
+  # whole wifi, which is an open network we do not control.
+  glances:
+    image: nicolargo/glances:latest-full
+    container_name: glances
+    restart: unless-stopped
+    pid: host
+    network_mode: host
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - GLANCES_OPT=-w --bind 172.28.10.1
+      # NO docker integration on purpose. dockerproxy publishes no host port -
+      # it is reachable only from inside the mediastack network - and this
+      # container is on host networking, so it cannot see it. Handing glances
+      # the raw socket instead would give a monitoring tool full control of the
+      # daemon. Container state is already covered by Homepage, Dozzle and
+      # Portainer; what glances is here for is HOST metrics.
+    volumes:
+      - /:/rootfs:ro
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

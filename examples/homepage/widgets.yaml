@@ -8,13 +8,19 @@
     units: metric
 
 - resources:
-    label: Storage
+    label: Data disk
     disk:
       - /srv/storage
 
-- search:
-    provider: duckduckgo
-    target: _blank
+# The SD card. Homepage can only stat filesystems mounted into it, and mounting
+# the host root would expose far more than is needed - so an empty directory on
+# the root partition is bind-mounted instead. statfs reports the filesystem that
+# CONTAINS the path, so this gives the SD card figures while exposing nothing.
+# Without it a full SD stops the Pi with no warning on the dashboard.
+- resources:
+    label: SD card
+    disk:
+      - /hostroot
 
 - datetime:
     text_size: xl
