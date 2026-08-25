@@ -137,6 +137,37 @@ healthcheck resolves a name, it fails and restarts the tunnel in a loop.
 
 That presents as "the VPN keeps dropping" for weeks. It is DNS.
 
+### gluetun — proxies for devices that are not containers
+
+Only the four containers in the `vpn` stack ride the tunnel. `SHADOWSOCKS=on`
+and `HTTPPROXY=on` let a phone or a PC do the same without joining it.
+
+Shadowsocks (8388 tcp **and** udp) encrypts the hop from the device to the Pi
+and needs a client app on each device. The HTTP proxy is typed straight into
+Windows or browser settings with nothing installed, but that hop is plaintext,
+so it carries its own password and a different one.
+
+**8888 is already dozzle**, which is why the HTTP proxy is published on 3128.
+Compose does not warn about this in advance — gluetun recreates fine and then
+fails to start with `Bind for 0.0.0.0:8888 failed: port is already allocated`,
+having already torn down qBittorrent, Prowlarr and FlareSolverr with it. Check
+`docker ps --format '{{.Ports}}'` before publishing any new port on this host.
+
+Both ports are open to the LAN, so anyone who reaches them and knows the
+password sends traffic out of the VPN subscription as you. Long random
+passwords, not memorable ones.
+
+Verify by comparing three addresses — the Pi's own, gluetun's, and the proxy's.
+The first must differ from the other two:
+
+```bash
+curl -s ifconfig.me/ip                                    # the Pi, not the VPN
+docker exec gluetun wget -qO- https://ifconfig.me/ip      # the VPN
+curl -s -x http://user:pass@<pi>:3128 https://ifconfig.me/ip   # must match gluetun
+curl -s -o /dev/null -w '%{http_code}
+' -x http://<pi>:3128 https://ifconfig.me/ip  # must fail
+```
+
 ### Immich
 
 The database is **not** in the file store. Backing up `library/` and restoring it
