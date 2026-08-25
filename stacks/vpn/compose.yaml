@@ -46,7 +46,7 @@ services:
       - "${FLARESOLVERR_PORT:?err}:8191"                                 # FlareSolverr
       - "${SHADOWSOCKS_PORT:?err}:8388/tcp"                              # Shadowsocks proxy
       - "${SHADOWSOCKS_PORT:?err}:8388/udp"
-      - "${HTTPPROXY_PORT:?err}:8888/tcp"                                # HTTP proxy (3128 - 8888 is dozzle)
+      - "${HTTPPROXY_PORT:?err}:8888/tcp"                                # HTTP proxy - not on 8888, dozzle has it
     volumes:
       - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun
     environment:
