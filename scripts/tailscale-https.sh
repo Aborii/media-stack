@@ -82,6 +82,14 @@ FQDN=$(tailscale status --json | python3 -c 'import sys,json;print((json.load(sy
 tailscale serve reset
 for row in "${SERVICES[@]}"; do
   read -r name http https <<<"$row"
+  # serve never connects to the target, so a wrong or dead port is accepted
+  # silently and only shows up as a browser error when you click the link.
+  # The ports here also duplicate docker-compose.env and can drift from it.
+  if ! timeout 2 bash -c "</dev/tcp/127.0.0.1/$http" 2>/dev/null; then
+    printf '  %-15s SKIPPED - nothing listening on %s
+' "$name" "$http"
+    continue
+  fi
   tailscale serve --bg --https="$https" "http://127.0.0.1:$http" >/dev/null
   printf '  %-15s https://%s:%s\n' "$name" "$FQDN" "$https"
 done
