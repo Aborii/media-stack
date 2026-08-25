@@ -72,7 +72,7 @@
 
     - Processes:
         icon: glances.png
-        description: heaviest by CPU and memory
+        description: heaviest by memory
         widget:
           type: glances
           url: http://172.28.10.1:61208

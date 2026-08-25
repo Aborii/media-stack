@@ -417,6 +417,14 @@ curl -T good.tar.gz ...            # no key at all
 
 ### Homepage — the two widget gotchas
 
+**The process tile's order comes from glances, not from Homepage.** The widget
+shows the first few entries in the order the API hands them over and does no
+sorting of its own — there is no option for it. `--sort-processes
+memory_percent` on the glances container is the only way to change it. Memory is
+the better default here: CPU is spiky, so whatever happens to be busy the
+instant the page loads wins, while memory is the constrained resource on 8 GB
+and moves slowly enough for the answer to mean something.
+
 **The glances widget does not understand every glances metric.** It handles
 `cpu`, `memory`, `info`, `process`, `containers`, and the prefixed `disk:`,
 `network:`, `sensor:` and `gpu:` forms. Anything else — `load`, for instance —
