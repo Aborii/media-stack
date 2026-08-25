@@ -109,6 +109,7 @@ to the real connection. That is the kill switch working.
         ├── library/         tv, anime, movies, comics
         ├── torrents/        watch, incomplete, categories
         ├── books/           Kavita
+        ├── tdarr-cache/     Tdarr scratch space, safe to empty
         └── gallery/         Immich - app-managed, do not reorganise
 ```
 
