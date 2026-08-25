@@ -45,6 +45,40 @@
           version: 4
           metric: disk:sda
 
+    - Load:
+        icon: glances.png
+        # 1/5/15 minute average rather than the instantaneous CPU percentage
+        # above it. A number sampled the moment the page loads says very little
+        # on a 4-core box; the trend says whether it is actually busy.
+        #
+        # customapi rather than the glances widget: that widget only understands
+        # cpu, memory, info, process, containers and the prefixed disk:/network:
+        # forms. Given metric: load it renders the tile with no numbers in it and
+        # logs nothing, which reads as the endpoint being down.
+        description: 1, 5 and 15 minute average - 4 cores
+        widget:
+          type: customapi
+          url: http://172.28.10.1:61208/api/4/load
+          mappings:
+            - field: min1
+              label: 1 min
+              format: float
+            - field: min5
+              label: 5 min
+              format: float
+            - field: min15
+              label: 15 min
+              format: float
+
+    - Processes:
+        icon: glances.png
+        description: heaviest by CPU and memory
+        widget:
+          type: glances
+          url: http://172.28.10.1:61208
+          version: 4
+          metric: process
+
     - Portainer:
         icon: portainer.png
         siteMonitor: http://portainer:9000/api/system/status
@@ -98,9 +132,23 @@
         description: Drive health - the 10TB runs hot
         server: my-docker
         container: scrutiny
-        widget:
-          type: scrutiny
-          url: http://scrutiny:8080
+        widgets:
+          - type: scrutiny
+            url: http://scrutiny:8080
+          # The scrutiny widget is pass/fail only - it stays green at 40C and at
+          # 68C alike. This disk hit 68C in its old enclosure, stopped answering
+          # under write load and took the whole array read-only, so the actual
+          # number is the thing worth watching. The key is the drive's WWN.
+          - type: customapi
+            url: http://scrutiny:8080/api/summary
+            mappings:
+              - field:
+                  data:
+                    summary:
+                      "0x50014ee216baa995":
+                        smart: temp
+                label: Drive temp
+                suffix: "C"
 
     - Uptime Kuma:
         icon: uptime-kuma.png
