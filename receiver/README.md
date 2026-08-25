@@ -26,6 +26,22 @@ one thing: upload a backup to one endpoint.
 node backup-receiver.js
 ```
 
+### Layout
+
+```
+D:\Backups\pi├── backup-receiver.js            the program
+├── install-receiver-service.ps1
+├── receiver.key                  shared secret, not in this repo
+├── receiver.log
+└── archives\                     backups, and nothing else
+    ├── .incoming\                partial uploads, deleted on rejection
+    └── media-stack-*.tar.gz
+```
+
+Backups sit in `archives/` on their own. The folder you open when you actually
+need a restore should hold backups in date order, not a script and a key file
+with the thing you want buried among them.
+
 It reads a shared key from `receiver.key` next to it, refuses to start if that
 key is shorter than 32 characters, and binds to the **Tailscale address only** —
 never `0.0.0.0`. That last part matters: this machine sits on a wifi we do not
@@ -54,7 +70,8 @@ than left behind looking plausible.
 
 | | default |
 |---|---|
-| `BACKUP_DEST` | `D:\Backups\pi` |
+| `BACKUP_HOME` | `D:\Backups\pi` — program, key, log |
+| `BACKUP_DEST` | `<HOME>rchives` — the backups |
 | `BACKUP_BIND` | the Tailscale address |
 | `BACKUP_PORT` | `8899` |
 | `BACKUP_KEEP` | `7` |
@@ -95,4 +112,23 @@ To remove:
 
 ```powershell
 Unregister-ScheduledTask -TaskName 'Pi Backup Receiver' -Confirm:$false
+```
+
+## Checking whether it is running
+
+Running as SYSTEM, the receiver is **invisible to a non-elevated query**. Both of
+these mislead:
+
+```powershell
+Get-ScheduledTask -TaskName 'Pi Backup Receiver'          # returns nothing at all
+Get-CimInstance Win32_Process -Filter "Name='node.exe'"   # CommandLine is blank
+```
+
+Neither means it is not running. The tell is `schtasks /query /tn 'Pi Backup
+Receiver'` answering **"Access is denied" rather than "cannot find"** — the task
+exists, you just cannot see it. What works without elevation:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8899 -State Listen
+Get-Content D:\Backups\pieceiver.log -Tail 5
 ```

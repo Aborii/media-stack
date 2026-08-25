@@ -219,11 +219,10 @@ which `HOMEPAGE_EXTERNAL_URL` pins to a single name.
 | Jellyfin | `:8096` |
 | Uptime Kuma | `:3001` |
 
-Over Tailscale the same services also answer on **HTTPS**, with a real
-certificate and no warnings: `https://aboriis-pi.<tailnet>.ts.net` on the normal
-port **plus 10000** - Jellyfin at `:18096`, Immich at `:12283`. Run
-`scripts/tailscale-https.sh` to set it up. The LAN stays on plain HTTP by
-design, so local access never depends on Tailscale.
+`scripts/tailscale-https.sh` can put the same services behind real certificates
+on the tailnet, on the normal port plus 10000. It is **switched off** - it worked,
+but it gave every service a second URL that only applied from some places, and
+the dashboard had no way to tell which. `REBUILD.md` has the reasoning.
 
 `.local` is mDNS - a local broadcast that cannot cross Tailscale - so links
 built on it work at home and die remotely.
