@@ -19,3 +19,8 @@ config-data/
 # env backups - same secrets as the env itself
 *.env.bak*
 *.env.example.bak*
+
+# Python leaves these behind whenever a script in scripts/ is run or
+# syntax-checked, and they are per-interpreter-version so they churn.
+__pycache__/
+*.pyc
