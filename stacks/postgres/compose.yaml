@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared PostgreSQL 17
+#
+# One instance for every app that needs Postgres, each app getting its own
+# database and its own role. Immich deliberately stays on its own container:
+# it is pinned to PostgreSQL 14 with its own vectorchord/pgvectors build, so
+# it cannot join this cluster.
+#
+# Alpine, matching the coming-manager dev instance exactly. Dump/restore only
+# cares about the server version, but text collation comes from the C library —
+# keeping both ends on musl avoids index ordering surprises when a database
+# moves between them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    container_name: postgres17
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - POSTGRES_USER=${SHARED_POSTGRES_USER:?err}
+      - POSTGRES_PASSWORD=${SHARED_POSTGRES_PASSWORD:?err}
+      # The maintenance database only. Every app gets its own database created
+      # afterwards — nothing should ever store data in here.
+      - POSTGRES_DB=postgres
+      # Data checksums can only be turned on at initdb time and never
+      # afterwards, so this has to be right on the very first start.
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    volumes:
+      # A bind mount, not a named volume, so the cluster sits on the data disk
+      # with everything else and is visible for backup.
+      - ${FOLDER_FOR_DATA:?err}/postgres17/data:/var/lib/postgresql/data
+    ports:
+      # Published so the dev PC can restore dumps and connect a GUI client.
+      - '${SHARED_POSTGRES_PORT:-5432}:5432'
+    shm_size: 256mb
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${SHARED_POSTGRES_USER} -d postgres']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true
