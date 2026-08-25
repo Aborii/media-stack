@@ -188,4 +188,32 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, BIND, () => log(`listening on ${BIND}:${PORT}, writing to ${DEST}`));
+// Started at boot, this races Tailscale: the address it wants to bind to does
+// not exist until tailscaled has come up and been assigned it, and a bind to a
+// missing address fails immediately with EADDRNOTAVAIL. Without a retry the
+// service would die seconds into every boot and nothing would ever be received
+// - silently, because the failure happens before anything is listening to
+// complain about.
+let announced = false;
+function start() {
+  server.listen(PORT, BIND, () => {
+    announced = true;
+    log(`listening on ${BIND}:${PORT}, writing to ${DEST}`);
+  });
+}
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRNOTAVAIL' || e.code === 'EADDRINUSE') {
+    if (!announced) {
+      // Log the first attempt only. Retrying every 10s for a few minutes would
+      // otherwise fill the log with the same line before Tailscale is ready.
+      if (!start.warned) { log(`waiting for ${BIND} (${e.code})`); start.warned = true; }
+      setTimeout(start, 10000);
+      return;
+    }
+  }
+  log(`FATAL ${e.code || e.message}`);
+  process.exit(1);
+});
+
+start();

@@ -58,3 +58,41 @@ than left behind looking plausible.
 | `BACKUP_BIND` | the Tailscale address |
 | `BACKUP_PORT` | `8899` |
 | `BACKUP_KEEP` | `7` |
+
+## Starting it at boot, without anyone logging in
+
+```powershell
+# elevated PowerShell, once
+powershell -ExecutionPolicy Bypass -File D:\Backups\pi\install-receiver-service.ps1
+```
+
+Registers a scheduled task that runs **at startup as SYSTEM**, restarts on
+failure, and has no execution time limit (the default would kill a long-running
+server after three days).
+
+SYSTEM rather than a lower-privileged service account, for a specific reason:
+"without login" rules out running as the interactive user, since that requires
+storing the account password in the task. The natural alternative, LOCAL
+SERVICE, cannot execute `node.exe` — it grants access only to SYSTEM,
+Administrators and the owner — and granting it would not survive nvm, which
+repoints `C:
+vm4w
+odejs` at a new folder on every Node version switch and
+would silently take the grant with it.
+
+The trade-off is real: a bug in this receiver would be a bug running with full
+machine privilege. What bounds it is that the receiver binds only to the
+Tailscale address, never extracts an archive, executes nothing, and serves
+nothing back out.
+
+The receiver retries its own bind, because at boot it races Tailscale — the
+address it wants does not exist until `tailscaled` has been assigned it, and a
+bind to a missing address fails instantly with `EADDRNOTAVAIL`. Without the
+retry the service would die seconds into every boot, silently, since nothing is
+listening yet to report it.
+
+To remove:
+
+```powershell
+Unregister-ScheduledTask -TaskName 'Pi Backup Receiver' -Confirm:$false
+```
