@@ -415,6 +415,22 @@ curl -T notatar.gz  -H "X-Backup-Key: $KEY" ...
 curl -T good.tar.gz ...            # no key at all
 ```
 
+### Homepage — the two widget gotchas
+
+**The glances widget does not understand every glances metric.** It handles
+`cpu`, `memory`, `info`, `process`, `containers`, and the prefixed `disk:`,
+`network:`, `sensor:` and `gpu:` forms. Anything else — `load`, for instance —
+renders the tile with **no numbers in it and nothing in the log**, which reads
+as the endpoint being down. Reach past it with a `customapi` widget against the
+glances API directly.
+
+**Use `widgets:` (plural) to stack two on one service.** Scrutiny's own widget is
+pass/fail only: it is equally green at 40 °C and at 68 °C. Since this disk hit
+68 °C in its old enclosure, stopped answering under write load and took the array
+read-only, the number itself is what matters — so a `customapi` sits beside it
+reading `data.summary.<WWN>.smart.temp`. The key is the drive's WWN, which is
+also how the device is mapped into the Scrutiny container.
+
 ### Uptime Kuma
 
 ```bash
