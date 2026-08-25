@@ -37,6 +37,8 @@ DEST=${DEST:-/srv/storage/backups}
 APPDATA=${APPDATA:-/srv/storage/appdata}
 KEEP=${KEEP:-14}
 FULL=${FULL:-0}
+UPLOAD_URL=${UPLOAD_URL:-http://100.72.210.100:8899/upload}
+UPLOAD_KEY_FILE=${UPLOAD_KEY_FILE:-/srv/storage/appdata/backup-receiver.key}
 STAMP=$(date +%Y%m%d-%H%M%S)
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo - the database directories are not readable otherwise" >&2; exit 1; }
@@ -229,6 +231,31 @@ if tar czf "$ARCHIVE" "${tar_args[@]}" 2>/dev/null; then
   note "$(basename "$ARCHIVE")  $(du -h "$ARCHIVE" | cut -f1)"
 else
   note "ARCHIVE FAILED"; fail=1
+fi
+
+# --- send it to the PC ------------------------------------------------------
+# The Pi uploads; the PC never reaches in here. That way nothing on the PC holds
+# standing credentials to this machine, and this machine holds nothing but a
+# key that can only POST a backup to one endpoint.
+#
+# The receiver checks the archive before keeping it: the declared checksum, the
+# gzip magic, and the ustar marker inside. A truncated or wrong-shaped upload is
+# refused rather than filed away looking healthy.
+#
+# -T streams the file. --data-binary would read the whole archive into memory
+# first, which is a poor idea on an 8GB machine.
+#
+# A failure here does NOT fail the backup. The PC is often off, and the archive
+# staying on disk for the next attempt is the correct outcome - the local backup
+# already succeeded by this point.
+if [ -f "$UPLOAD_KEY_FILE" ] && [ -f "$ARCHIVE" ]; then
+  echo
+  echo "== upload =="
+  if curl -sS --fail --max-time 3600 -T "$ARCHIVE"        -H "X-Backup-Key: $(cat "$UPLOAD_KEY_FILE")"        -H "X-Backup-Name: $(basename "$ARCHIVE")"        -H "X-Backup-Sha256: $(cat "$ARCHIVE.sha256")"        "$UPLOAD_URL" >/dev/null 2>&1; then
+    note "sent to $UPLOAD_URL"
+  else
+    note "upload skipped - receiver unreachable or refused (local backup is fine)"
+  fi
 fi
 
 # Keep only a couple here - this is a staging area, not the backup. The real
