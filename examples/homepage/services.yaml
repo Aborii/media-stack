@@ -155,6 +155,10 @@
         description: Books, comics and manga
         server: my-docker
         container: kavita
+        widget:
+          type: kavita
+          url: http://kavita:5000
+          key: PASTE_API_KEY
 
     - Audiobookshelf:
         icon: audiobookshelf.png

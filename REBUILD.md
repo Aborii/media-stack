@@ -206,6 +206,26 @@ this repo. `examples/homepage/` holds sanitised copies. The Immich key needs onl
 `server.statistics`; Portainer needs the environment id from `/api/endpoints`,
 which is not always 2.
 
+### Kavita
+
+Every book must sit in **its own folder**. Kavita refuses a library that has
+files loose at its root — "One or more folders contains files at the root" —
+and it treats a folder as a series, so two books in one folder become one series
+with two chapters.
+
+Metadata is read from **inside the files**: the OPF block in an EPUB, or a
+ComicInfo.xml inside a CBZ. A PDF carries almost nothing, so PDFs stay bare no
+matter how long the scan runs. Matching against an external database is a
+Kavita+ feature and is not free. Run books through Calibre first if you want
+covers and descriptions.
+
+For a comic library pick the type **Comic (Flexible)**, not **Comic** — the
+latter is the strict ComicVine naming scheme and will misparse ordinary files.
+
+The Homepage widget needs an API key from **avatar > Settings > Account > API
+Key**, which is empty until you generate it. It shows two numbers, series count
+and file count — there is no queue or activity to display like the *arr widgets.
+
 ### Uptime Kuma
 
 ```bash
