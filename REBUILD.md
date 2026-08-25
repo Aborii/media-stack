@@ -168,6 +168,45 @@ curl -s -o /dev/null -w '%{http_code}
 ' -x http://<pi>:3128 https://ifconfig.me/ip  # must fail
 ```
 
+### gluetun — the control server answers 401 until you write a config
+
+Since v3.40 every control-server route is private by default. With no file at
+`/gluetun/auth/config.toml` the whole API returns 401 — including the routes the
+dashboard reads — and nothing in the log explains why, because 401 *is* the
+configured behaviour.
+
+Grant only what is needed. `PUT /v1/vpn/status` stops the tunnel, so a key that
+leaks should not reach it:
+
+```toml
+[[roles]]
+name = "homepage"
+routes = ["GET /v1/publicip/ip", "GET /v1/vpn/status", "GET /v1/portforward",
+          "GET /v1/openvpn/portforwarded"]
+auth = "apikey"
+apikey = "..."
+```
+
+`/v1/openvpn/portforwarded` is the old path and **301s** to `/v1/portforward`.
+Both are listed because a redirect lands on a route that must itself be granted.
+In Homepage this is what `version: 2` on the widget is for — version 1 asks for
+the old path, and a redirect the proxy will not follow fails the *entire*
+widget, not just the port field. The tile then renders with no numbers and no
+error anywhere, which reads as a bad API key.
+
+Validate the file before restarting the real thing, since a bad config takes the
+whole stack down with it:
+
+```bash
+docker run --rm --cap-add NET_ADMIN -v /path/auth:/gluetun/auth   -e VPN_SERVICE_PROVIDER=custom -e VPN_TYPE=wireguard ... qmcgaw/gluetun
+# want: "read 1 roles from authentication file"
+```
+
+**Recreating gluetun alone is not enough.** The four containers using
+`network_mode: service:gluetun` hold its old container id. Recreate gluetun by
+itself and all four keep pointing at a namespace that no longer exists — they
+report Up and have no network at all. Recreate the whole stack.
+
 ### Immich
 
 The database is **not** in the file store. Backing up `library/` and restoring it

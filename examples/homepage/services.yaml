@@ -63,10 +63,20 @@
 
     - Gluetun:
         icon: gluetun.png
-        href: http://aboriis-pi:8320
         description: ProtonVPN tunnel
         server: my-docker
         container: gluetun
+        # No href: 8320 is an API, not a page. Opening it in a browser only
+        # ever returned 401, which is what this tile used to link to.
+        widget:
+          type: gluetun
+          url: http://gluetun:8320
+          key: PASTE_API_KEY
+          # version 2 uses /v1/portforward directly. Version 1 asks for
+          # /v1/openvpn/portforwarded, which 301s - and a redirect the proxy
+          # does not follow fails the whole widget, not just that one field.
+          version: 2
+          fields: ["public_ip", "country", "port_forwarded"]
 
     - FlareSolverr:
         icon: flaresolverr.png
@@ -155,6 +165,10 @@
         description: Books, comics and manga
         server: my-docker
         container: kavita
+        widget:
+          type: kavita
+          url: http://kavita:5000
+          key: PASTE_API_KEY
 
     - Audiobookshelf:
         icon: audiobookshelf.png
