@@ -146,6 +146,18 @@ services:
       # the instant the page loads wins, which is rarely what you want to know.
       # Memory is the constrained resource on 8GB and it moves slowly, so the
       # tile answers "what is eating the RAM" - a question with a stable answer.
+      #
+      # READ THE NUMBER WITH CARE for qBittorrent. glances sorts and reports
+      # RSS, and libtorrent 2.0 reads and writes torrent data through mapped
+      # files, so every cached page of every torrent counts against it:
+      #
+      #   VmRSS    1148400 kB     what the tile shows
+      #   RssAnon    16224 kB     what qBittorrent actually owns
+      #   RssFile  1132176 kB     page cache, dropped the moment anything needs it
+      #
+      # So it heads this list on a gigabyte it is not really using. By private
+      # memory the real leader is jellyfin at ~168MB and qBittorrent is not in
+      # the top eight. There is no sort-by-private-memory option in glances.
       - GLANCES_OPT=-w --bind 172.28.10.1 --sort-processes memory_percent
       # NO docker integration on purpose. dockerproxy publishes no host port -
       # it is reachable only from inside the mediastack network - and this

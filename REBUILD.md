@@ -425,6 +425,25 @@ the better default here: CPU is spiky, so whatever happens to be busy the
 instant the page loads wins, while memory is the constrained resource on 8 GB
 and moves slowly enough for the answer to mean something.
 
+**qBittorrent will head that list on memory it is not using.** glances reports
+RSS, and libtorrent 2.0 maps torrent files into memory rather than reading them
+normally, so the kernel counts every cached page against the process:
+
+```
+VmRSS     1148400 kB   what the tile shows
+RssAnon     16224 kB   what qBittorrent actually owns
+RssFile   1132176 kB   page cache, reclaimed the instant anything needs it
+```
+
+Sorted by private memory it is not in the top eight — jellyfin leads at ~168 MB.
+This is the most common "qBittorrent is eating my RAM" false alarm and it
+arrived with libtorrent 2.0. There is no sort-by-private-memory option, so the
+caveat has to be carried rather than fixed. Check it with:
+
+```bash
+grep -E "^(VmRSS|RssAnon|RssFile)" /proc/$(pgrep -f qbittorrent-nox)/status
+```
+
 **The glances widget does not understand every glances metric.** It handles
 `cpu`, `memory`, `info`, `process`, `containers`, and the prefixed `disk:`,
 `network:`, `sensor:` and `gpu:` forms. Anything else — `load`, for instance —
