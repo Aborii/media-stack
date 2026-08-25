@@ -44,6 +44,9 @@ services:
       - "${QBIT_PORT:?err}:${QBIT_PORT:?err}/udp"
       - "${WEBUI_PORT_PROWLARR:?err}:9696"                               # Prowlarr WebUI
       - "${FLARESOLVERR_PORT:?err}:8191"                                 # FlareSolverr
+      - "${SHADOWSOCKS_PORT:?err}:8388/tcp"                              # Shadowsocks proxy
+      - "${SHADOWSOCKS_PORT:?err}:8388/udp"
+      - "${HTTPPROXY_PORT:?err}:8888/tcp"                                # HTTP proxy - not on 8888, dozzle has it
     volumes:
       - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun
     environment:
@@ -97,6 +100,33 @@ services:
       # also work but hands them every query, which the gluetun docs advise
       # against.
       - DNS_UPSTREAM_RESOLVER_TYPE=doh
+
+      # --- proxies for devices that are not containers ----------------------
+      # Only the four containers in this stack ride the tunnel. These two let a
+      # phone or a PC do the same without joining it, which is the whole reason
+      # the Tailscale exit node plan exists - and this is far less machinery.
+      #
+      # Shadowsocks encrypts the hop from the device to the Pi and carries UDP,
+      # so it is the one to use on a network you do not control. It needs a
+      # client app; there is no way to type it into browser settings.
+      #
+      # The HTTP proxy is the opposite trade: paste host:port into Windows or
+      # Chrome and it works with nothing installed, but the hop to the Pi is
+      # plaintext. HTTPS sites keep their own TLS - the exposure is the proxy
+      # credentials and any plain HTTP request, readable to anyone on the wifi.
+      # Hence a password on it, and a different one from Shadowsocks.
+      #
+      # Both are published to the LAN, so anyone who reaches the port and knows
+      # the password sends traffic out of the VPN subscription as us. That is
+      # why both passwords are long and random rather than memorable.
+      - SHADOWSOCKS=on
+      - SHADOWSOCKS_PASSWORD=${SHADOWSOCKS_PASSWORD:?err}
+      # Explicit rather than relying on the default: the client app has to be
+      # set to the same cipher, so it needs to be readable somewhere.
+      - SHADOWSOCKS_CIPHER=chacha20-ietf-poly1305
+      - HTTPPROXY=on
+      - HTTPPROXY_USER=${HTTPPROXY_USER:?err}
+      - HTTPPROXY_PASSWORD=${HTTPPROXY_PASSWORD:?err}
 
       # --- local access -----------------------------------------------------
       # Without these the firewall drops LAN traffic and every WebUI behind

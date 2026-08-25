@@ -137,6 +137,76 @@ healthcheck resolves a name, it fails and restarts the tunnel in a loop.
 
 That presents as "the VPN keeps dropping" for weeks. It is DNS.
 
+### gluetun — proxies for devices that are not containers
+
+Only the four containers in the `vpn` stack ride the tunnel. `SHADOWSOCKS=on`
+and `HTTPPROXY=on` let a phone or a PC do the same without joining it.
+
+Shadowsocks (8388 tcp **and** udp) encrypts the hop from the device to the Pi
+and needs a client app on each device. The HTTP proxy is typed straight into
+Windows or browser settings with nothing installed, but that hop is plaintext,
+so it carries its own password and a different one.
+
+**8888 is already dozzle**, which is why the HTTP proxy is published on 3128.
+Compose does not warn about this in advance — gluetun recreates fine and then
+fails to start with `Bind for 0.0.0.0:8888 failed: port is already allocated`,
+having already torn down qBittorrent, Prowlarr and FlareSolverr with it. Check
+`docker ps --format '{{.Ports}}'` before publishing any new port on this host.
+
+Both ports are open to the LAN, so anyone who reaches them and knows the
+password sends traffic out of the VPN subscription as you. Long random
+passwords, not memorable ones.
+
+Verify by comparing three addresses — the Pi's own, gluetun's, and the proxy's.
+The first must differ from the other two:
+
+```bash
+curl -s ifconfig.me/ip                                    # the Pi, not the VPN
+docker exec gluetun wget -qO- https://ifconfig.me/ip      # the VPN
+curl -s -x http://user:pass@<pi>:3128 https://ifconfig.me/ip   # must match gluetun
+curl -s -o /dev/null -w '%{http_code}
+' -x http://<pi>:3128 https://ifconfig.me/ip  # must fail
+```
+
+### gluetun — the control server answers 401 until you write a config
+
+Since v3.40 every control-server route is private by default. With no file at
+`/gluetun/auth/config.toml` the whole API returns 401 — including the routes the
+dashboard reads — and nothing in the log explains why, because 401 *is* the
+configured behaviour.
+
+Grant only what is needed. `PUT /v1/vpn/status` stops the tunnel, so a key that
+leaks should not reach it:
+
+```toml
+[[roles]]
+name = "homepage"
+routes = ["GET /v1/publicip/ip", "GET /v1/vpn/status", "GET /v1/portforward",
+          "GET /v1/openvpn/portforwarded"]
+auth = "apikey"
+apikey = "..."
+```
+
+`/v1/openvpn/portforwarded` is the old path and **301s** to `/v1/portforward`.
+Both are listed because a redirect lands on a route that must itself be granted.
+In Homepage this is what `version: 2` on the widget is for — version 1 asks for
+the old path, and a redirect the proxy will not follow fails the *entire*
+widget, not just the port field. The tile then renders with no numbers and no
+error anywhere, which reads as a bad API key.
+
+Validate the file before restarting the real thing, since a bad config takes the
+whole stack down with it:
+
+```bash
+docker run --rm --cap-add NET_ADMIN -v /path/auth:/gluetun/auth   -e VPN_SERVICE_PROVIDER=custom -e VPN_TYPE=wireguard ... qmcgaw/gluetun
+# want: "read 1 roles from authentication file"
+```
+
+**Recreating gluetun alone is not enough.** The four containers using
+`network_mode: service:gluetun` hold its old container id. Recreate gluetun by
+itself and all four keep pointing at a namespace that no longer exists — they
+report Up and have no network at all. Recreate the whole stack.
+
 ### Immich
 
 The database is **not** in the file store. Backing up `library/` and restoring it
