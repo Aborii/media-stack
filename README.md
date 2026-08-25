@@ -163,9 +163,37 @@ Notable gluetun settings, and why:
 
 ## Scripts
 
-`scripts/reorganise-media.sh` is a one-off that reshapes a migrated media tree
-into the layout above. It takes `--dry-run` and refuses to run while a transfer
-is active.
+| | |
+|---|---|
+| `backup.sh` | Nightly, as root. Dumps both databases, snapshots appdata, then packs and uploads an archive to the PC. Root is not optional - see below. |
+| `tailscale-https.sh` | Puts every web UI behind a real certificate on the tailnet. |
+| `vpn-health.sh` | Tells a genuine VPN drop apart from a reboot. |
+| `qbit-port-sync.sh` | Pushes Proton's forwarded port into qBittorrent, which changes on every reconnect. |
+| `post-boot-check.sh` | What to run after a reboot, since services take ~8 minutes to fully answer. |
+| `sync-homepage-examples.py` | Copies the live dashboard config into `examples/`, stripping secrets. |
+| `uptime-kuma-*.py` | Recreate the monitors, notifications and status page. |
+| `reorganise-media.sh` | One-off, reshapes a migrated media tree into the layout above. `--dry-run`, and refuses to run during a transfer. |
+
+**`backup.sh` must run as root.** `appdata/immich/postgres` and
+`appdata/postgres17/data` are mode 700 owned by the container's user. A copy
+running as you hits permission denied, **skips them, and reports success** -
+which is how Immich once arrived here with 61 GB of photos and an empty
+database.
+
+## Backups
+
+Nightly at 03:30. Databases are dumped rather than copied, because a live
+PostgreSQL directory copied file-by-file can capture a state that will not
+replay. Regenerable data - transcodes, thumbnails, posters, ML models, 35 of
+appdata's 36 GB - is excluded; what is kept is the ~1 GB of configuration.
+
+All of that lands on the same disk it is backing up, which covers a bad delete
+but not the disk dying. So the last step packs one dated archive and **uploads
+it to the PC**, where a small receiver (`receiver/`) verifies the checksum, the
+gzip magic and the tar header before keeping it.
+
+The Pi pushes; the PC never reaches in. That way nothing on the PC holds
+standing credentials to the Pi. See `receiver/README.md`.
 
 ## Remote access
 
@@ -190,6 +218,12 @@ which `HOMEPAGE_EXTERNAL_URL` pins to a single name.
 | Immich | `:2283` |
 | Jellyfin | `:8096` |
 | Uptime Kuma | `:3001` |
+
+Over Tailscale the same services also answer on **HTTPS**, with a real
+certificate and no warnings: `https://aboriis-pi.<tailnet>.ts.net` on the normal
+port **plus 10000** - Jellyfin at `:18096`, Immich at `:12283`. Run
+`scripts/tailscale-https.sh` to set it up. The LAN stays on plain HTTP by
+design, so local access never depends on Tailscale.
 
 `.local` is mDNS - a local broadcast that cannot cross Tailscale - so links
 built on it work at home and die remotely.
