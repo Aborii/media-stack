@@ -415,7 +415,7 @@ curl -T notatar.gz  -H "X-Backup-Key: $KEY" ...
 curl -T good.tar.gz ...            # no key at all
 ```
 
-### Homepage — the two widget gotchas
+### Homepage — widget gotchas
 
 **The process tile's order comes from glances, not from Homepage.** The widget
 shows the first few entries in the order the API hands them over and does no
