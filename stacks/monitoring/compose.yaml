@@ -104,7 +104,17 @@ services:
       - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
       # false = watch everything, no per-container labels needed
       - DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true
-      # Notifications are configured in the TODO - Telegram goes here.
+      # Telegram. Same bot as Radarr/Sonarr/Prowlarr already use, posting to
+      # its own forum topic so image updates do not mix with grab notices.
+      # Secrets come from docker-compose.env, which is gitignored.
+      - DIUN_NOTIF_TELEGRAM_TOKEN=${TELEGRAM_BOT_TOKEN:?err}
+      - DIUN_NOTIF_TELEGRAM_CHATIDS=${TELEGRAM_CHAT_ID:?err}:${TELEGRAM_TOPIC_STATUS:?err}
+      # Daily at 09:00, not on every push and not weekly. Diun only speaks when
+      # something actually CHANGED, so a quiet day is silent - the volume is a
+      # few lines on the days an image moves, not a digest to learn to ignore.
+      # Weekly was the first choice and was wrong: it means up to seven days of
+      # not knowing that gluetun or Immich shipped a security fix.
+      - DIUN_WATCH_SCHEDULE=0 9 * * *
     networks:
       - mediastack
 
