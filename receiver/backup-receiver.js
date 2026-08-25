@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Receives the Pi's nightly backup archive and files it away.
  *
  * WHAT THIS IS FOR
@@ -44,17 +44,23 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const DEST     = process.env.BACKUP_DEST || 'D:\\Backups\\pi';
+// HOME is where this program and its key and log live. ARCHIVES is where the
+// backups land, and nothing else does - so the folder you open when you need a
+// restore contains backups and only backups, sorted by name into date order.
+// Mixing the two means the thing you are looking for is buried among a script,
+// a key file and a log.
+const HOME     = process.env.BACKUP_HOME || 'D:\\Backups\\pi';
+const ARCHIVES = process.env.BACKUP_DEST || path.join(HOME, 'archives');
 const BIND     = process.env.BACKUP_BIND || '100.72.210.100';
 const PORT     = parseInt(process.env.BACKUP_PORT || '8899', 10);
 const KEEP     = parseInt(process.env.BACKUP_KEEP || '7', 10);
-const KEY_FILE = process.env.BACKUP_KEY_FILE || path.join(DEST, 'receiver.key');
+const KEY_FILE = process.env.BACKUP_KEY_FILE || path.join(HOME, 'receiver.key');
 
 const MIN_BYTES = 1 * 1024 * 1024;          // smaller than this is not a real backup
 const MAX_BYTES = 4 * 1024 * 1024 * 1024;   // refuse to be used as a disk filler
 const NAME_RE   = /^media-stack-\d{8}-\d{6}\.tar\.gz$/;
 
-const INCOMING = path.join(DEST, '.incoming');
+const INCOMING = path.join(ARCHIVES, '.incoming');
 fs.mkdirSync(INCOMING, { recursive: true });
 
 const KEY = fs.readFileSync(KEY_FILE, 'utf8').trim();
@@ -63,7 +69,7 @@ if (KEY.length < 32) { console.error('key too short - refusing to start'); proce
 function log(msg) {
   const line = `${new Date().toISOString().replace('T', ' ').slice(0, 19)}  ${msg}`;
   console.log(line);
-  fs.appendFileSync(path.join(DEST, 'receiver.log'), line + '\n');
+  fs.appendFileSync(path.join(HOME, 'receiver.log'), line + '\n');
 }
 
 // Length-independent compare. A plain === leaks how much of the key matched
@@ -110,9 +116,9 @@ function looksLikeTarGz(file) {
 }
 
 function rotate() {
-  const files = fs.readdirSync(DEST).filter((f) => NAME_RE.test(f)).sort().reverse();
+  const files = fs.readdirSync(ARCHIVES).filter((f) => NAME_RE.test(f)).sort().reverse();
   for (const f of files.slice(KEEP)) {
-    fs.unlinkSync(path.join(DEST, f));
+    fs.unlinkSync(path.join(ARCHIVES, f));
     log(`rotated out ${f}`);
   }
   return Math.min(files.length, KEEP);
@@ -132,7 +138,7 @@ const server = http.createServer((req, res) => {
   }
 
   // basename only, and it must match the Pi's own naming. This is what keeps
-  // the write confined to DEST no matter what the sender claims.
+  // the write confined to ARCHIVES no matter what the sender claims.
   const name = path.basename(String(req.headers['x-backup-name'] || ''));
   const want = String(req.headers['x-backup-sha256'] || '').toLowerCase();
   // Log these too. A rejected name is the signature of someone probing for a
@@ -179,7 +185,7 @@ const server = http.createServer((req, res) => {
       if (got !== want) return scrap(400, 'checksum mismatch');
       if (!(await looksLikeTarGz(tmp))) return scrap(400, 'not a gzipped tar');
 
-      fs.renameSync(tmp, path.join(DEST, name));
+      fs.renameSync(tmp, path.join(ARCHIVES, name));
       const kept = rotate();
       const mb = (size / 1048576).toFixed(0);
       log(`OK ${name}  ${mb} MB  verified  (${kept} kept)`);
@@ -198,7 +204,7 @@ let announced = false;
 function start() {
   server.listen(PORT, BIND, () => {
     announced = true;
-    log(`listening on ${BIND}:${PORT}, writing to ${DEST}`);
+    log(`listening on ${BIND}:${PORT}, writing to ${ARCHIVES}`);
   });
 }
 

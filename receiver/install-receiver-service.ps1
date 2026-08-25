@@ -52,19 +52,33 @@ $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRul
     'NT AUTHORITY\SYSTEM', 'Read', 'Allow')))
 Set-Acl -Path $key -AclObject $acl
 
-# A hand-started copy still holds port 8899, and the task would fail to bind.
+# Backups go here and nothing else does, so the folder you open during a restore
+# holds backups only, in date order, rather than burying them among a script, a
+# key and a log.
+$archives = Join-Path $Dir 'archives'
+if (-not (Test-Path $archives)) { New-Item -ItemType Directory -Path $archives | Out-Null }
+
+# Stop the task FIRST. Unregistering does not reliably kill a running instance,
+# and a surviving one keeps port 8899 so the fresh task fails to bind.
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Write-Host "stopping and replacing the existing task"
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+}
+
+# Then any copy started by hand. Note the CommandLine filter only matches
+# processes this account can read: a receiver already running as SYSTEM shows an
+# empty CommandLine to a non-elevated query. That is fine here, because this
+# script is elevated - but it is why the task has to be stopped above rather
+# than relying on this.
 Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like '*backup-receiver.js*' } |
     ForEach-Object {
-        Write-Host "stopping existing receiver (pid $($_.ProcessId))"
+        Write-Host "stopping stray receiver (pid $($_.ProcessId))"
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     }
 Start-Sleep -Seconds 2
-
-if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-    Write-Host "replacing the existing task"
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-}
 
 $action  = New-ScheduledTaskAction -Execute $Node -Argument "`"$script`"" -WorkingDirectory $Dir
 $trigger = New-ScheduledTaskTrigger -AtStartup
