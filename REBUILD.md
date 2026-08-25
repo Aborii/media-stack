@@ -296,7 +296,29 @@ The Homepage widget needs an API key from **avatar > Settings > Account > API
 Key**, which is empty until you generate it. It shows two numbers, series count
 and file count — there is no queue or activity to display like the *arr widgets.
 
-### HTTPS over Tailscale
+### HTTPS over Tailscale — built, then switched back off
+
+`scripts/tailscale-https.sh` still works and is still reversible, but it is
+**not in use**. It was turned off the same day it went in.
+
+It did what it claimed: fifteen services behind real certificates, validated by
+the client trust store with nothing installed anywhere. What sank it was the
+second set of URLs. Every service was suddenly reachable two ways, and which one
+applied depended on where you were standing — and the dashboard could not help,
+because arriving at `aboriis-pi` looks identical whether you came over the LAN or
+the tailnet, so the links had nothing to key off.
+
+Worth being honest about the value too. Tailscale already encrypts the tailnet
+path, so this bought browser behaviour — password managers, no insecure warning,
+secure-context APIs — not transport security. The genuine plaintext exposure is
+on the LAN, and this did not address that case at all. If LAN encryption is the
+goal, the internal-CA route is the one that gets there, at the cost of installing
+a root certificate on every device.
+
+Turn it back on with `./scripts/tailscale-https.sh`, off with `--off`. The rest
+of this section is the reasoning, kept because it is the part worth re-reading
+before trying again.
+
 
 `scripts/tailscale-https.sh` puts every web UI behind a real Let's Encrypt
 certificate on the tailnet name. Two things have to exist first, and neither can
