@@ -296,6 +296,42 @@ The Homepage widget needs an API key from **avatar > Settings > Account > API
 Key**, which is empty until you generate it. It shows two numbers, series count
 and file count — there is no queue or activity to display like the *arr widgets.
 
+### HTTPS over Tailscale
+
+`scripts/tailscale-https.sh` puts every web UI behind a real Let's Encrypt
+certificate on the tailnet name. Two things have to exist first, and neither can
+be done from the Pi by a script:
+
+1. **HTTPS Certificates** enabled at <https://login.tailscale.com/admin/dns>.
+   Until then `tailscale status --json` reports `CertDomains: null` and no
+   certificate can be issued.
+2. `sudo tailscale set --operator=$USER`, so certificates can be requested and
+   renewed without root.
+
+**Ports, not paths.** The certificate covers one name and Tailscale issues no
+wildcards, so everything shares a hostname. Paths would need each app to support
+a base URL — Immich and Portainer do not. Ports work with every app unchanged,
+so the rule is the HTTP port plus 10000. The *same* port cannot be reused:
+Docker publishes on `0.0.0.0`, which already includes the Tailscale address.
+
+**Homepage is deliberately excluded.** It pins its login callback to one
+hostname via `HOMEPAGE_EXTERNAL_URL`. Serve it under a second name and signing
+in bounces silently back to the login page — the cookie is set for a host the
+browser is not on, and nothing logs an error. It also gains nothing, because
+`aboriis-pi` already resolves on the LAN via mDNS and over the tailnet via
+MagicDNS. One name that works everywhere is what a pinned callback wants.
+
+**The LAN is untouched** and still plain HTTP on the original ports. That is
+deliberate: local access must keep working when the internet is down.
+
+Verify from a client, without `-k`. `ssl_verify_result: 0` means the system
+trust store accepted it, which is the whole point of using real certificates:
+
+```bash
+curl -s -o /dev/null -w '%{http_code} %{ssl_verify_result}
+'   https://<host>.<tailnet>.ts.net:18096/
+```
+
 ### Uptime Kuma
 
 ```bash
