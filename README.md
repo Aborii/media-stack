@@ -55,10 +55,8 @@ docker compose down
 | **Automation** | sonarr | 8989 | TV |
 | | radarr | 7878 | films |
 | | bazarr | 6767 | subtitles |
-| | mylar | 8090 | comics |
 | **Libraries** | jellyfin | 8096 | video |
 | | kavita | 5000 | books, comics, manga |
-| | audiobookshelf | 13378 | audiobooks, podcasts |
 | | immich | 2283 | photos and video |
 | **Management** | homepage | 80 | dashboard, password protected |
 | | portainer | 9000 | container management |
@@ -81,7 +79,7 @@ Only the acquisition services are tunnelled:
           │
   ════════╪════════ mediastack bridge ════════
           │
-  sonarr radarr bazarr mylar jellyfin kavita
+  sonarr radarr bazarr jellyfin kavita
 ```
 
 qBittorrent is tunnelled because BitTorrent announces your IP to every peer in
@@ -94,7 +92,7 @@ their own**. Two addresses that are easy to get wrong:
 
 | From | To | Use |
 |---|---|---|
-| Sonarr, Radarr, Mylar | qBittorrent | `gluetun:8200` — not `qbittorrent:8200` |
+| Sonarr, Radarr | qBittorrent | `gluetun:8200` — not `qbittorrent:8200` |
 | Sonarr, Radarr | Prowlarr | `gluetun:9696` |
 | Prowlarr | FlareSolverr | `http://localhost:8191` — same namespace |
 
@@ -111,7 +109,6 @@ to the real connection. That is the kill switch working.
         ├── library/         tv, anime, movies, comics
         ├── torrents/        watch, incomplete, categories
         ├── books/           Kavita
-        ├── audiobooks/      Audiobookshelf
         └── gallery/         Immich - app-managed, do not reorganise
 ```
 

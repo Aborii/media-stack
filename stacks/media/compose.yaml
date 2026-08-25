@@ -47,23 +47,6 @@ services:
     networks:
       - mediastack
 
-  audiobookshelf:
-    image: ghcr.io/advplyr/audiobookshelf:latest
-    container_name: audiobookshelf
-    restart: unless-stopped
-    volumes:
-      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/config:/config
-      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/metadata:/metadata
-      - ${FOLDER_FOR_MEDIA:?err}/audiobooks:/audiobooks
-    environment:
-      - PUID=${PUID:?err}
-      - PGID=${PGID:?err}
-      - TZ=${TIMEZONE:?err}
-    ports:
-      - "${WEBUI_PORT_AUDIOBOOKSHELF:?err}:80"
-    networks:
-      - mediastack
-
 networks:
   mediastack:
     name: mediastack

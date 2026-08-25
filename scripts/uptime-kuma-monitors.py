@@ -31,13 +31,11 @@ HTTP = [
     ("Radarr",         "http://radarr:7878/ping",                   OK2XX),
     ("Prowlarr",       "http://gluetun:9696/ping",                  OK2XX),
     ("Kavita",         "http://kavita:5000/api/health",             OK2XX),
-    ("Audiobookshelf", "http://audiobookshelf:80/healthcheck",      OK2XX),
     ("Portainer",      "http://portainer:9000/api/system/status",   OK2XX),
     ("Tdarr",          "http://tdarr:8265/",                        OK2XX),
     ("Dozzle",         "http://dozzle:8080/healthcheck",            OK2XX),
     ("qBittorrent",    "http://gluetun:8200/",                      OK2XX),
     ("Scrutiny",       "http://scrutiny:8080/",                     OK3XX),
-    ("Mylar",          "http://mylar:8090/",                        OK3XX),
     ("Bazarr",         "http://bazarr:6767/",                       OK4XX),
 ]
 # Homepage rejects unknown Host headers with 400, so an HTTP check would report
