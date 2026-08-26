@@ -38,7 +38,15 @@ while true; do
   i=$((i+1))
 
   OUT="$DIR/probe-$(date +%F).log"
-  [ -f "$OUT" ] || echo "# time host_ms tunnel_ms endpoint   (LOSS = no reply in 3s)" >> "$OUT"
+  if [ ! -f "$OUT" ]; then
+    echo "# time host_ms tunnel_ms endpoint   (LOSS = no reply in 3s)" >> "$OUT"
+    # A new day started. Compress the finished ones. This directory sits inside
+    # appdata, so every uncompressed byte is re-tarred and re-uploaded by the
+    # nightly backup for as long as it exists - a year of plain text would be
+    # ~250MB carried in every archive. gzip is about 10:1 on data this
+    # repetitive, and nothing is discarded.
+    find "$DIR" -maxdepth 1 -name 'probe-*.log' ! -name "$(basename "$OUT")"          -exec gzip -q {} \; 2>/dev/null || true
+  fi
 
   ts=$(date +%H:%M:%S)
   h=$(ping -c1 -W3 -q 1.1.1.1 2>/dev/null | awk -F'/' '/rtt/{printf "%.1f", $5}')
