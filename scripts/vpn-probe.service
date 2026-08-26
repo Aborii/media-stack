@@ -1,0 +1,24 @@
+[Unit]
+# nohup does not survive a reboot, and this measurement is only worth anything
+# if it keeps running across one - the loss bursts are hours apart and cluster
+# at particular times of day.
+Description=Measure packet loss inside vs outside the VPN tunnel
+After=docker.service
+Requires=docker.service
+# The data lives on the data disk. Starting before that is mounted would write
+# into the mount point on the SD card, which then vanishes under the mount.
+RequiresMountsFor=/srv/storage
+
+[Service]
+Type=simple
+User=aborii
+Group=aborii
+ExecStart=/srv/storage/appdata/vpn-measure/probe.sh
+Restart=always
+RestartSec=30
+# Diagnostics must never compete with the services being diagnosed.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target
