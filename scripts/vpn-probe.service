@@ -3,10 +3,16 @@
 # if it keeps running across one - the loss bursts are hours apart and cluster
 # at particular times of day.
 Description=Measure packet loss inside vs outside the VPN tunnel
+# Wants, NOT Requires. On 2026-08-27 containerd failed on the first boot
+# attempt and took docker.service with it; Requires= turned that into a failed
+# START JOB for this unit, and Restart=always does not apply to a job that never
+# ran. Docker recovered five minutes later, this did not, and 9.5 hours of
+# measurement were lost silently.
+Wants=docker.service
 After=docker.service
-Requires=docker.service
-# The data lives on the data disk. Starting before that is mounted would write
-# into the mount point on the SD card, which then vanishes under the mount.
+# This one stays strict. The data lives on the data disk, and starting before it
+# is mounted would write into the mount point on the SD card, where it then
+# disappears underneath the mount.
 RequiresMountsFor=/srv/storage
 
 [Service]

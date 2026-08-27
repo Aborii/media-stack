@@ -50,7 +50,19 @@ while true; do
 
   ts=$(date +%H:%M:%S)
   h=$(ping -c1 -W3 -q 1.1.1.1 2>/dev/null | awk -F'/' '/rtt/{printf "%.1f", $5}')
-  t=$(docker exec gluetun ping -c1 -W3 -q 1.1.1.1 2>/dev/null | awk -F'/' '/round-trip|rtt/{printf "%.1f", $5}')
-  printf '%s %-7s %-7s %s\n' "$ts" "${h:-LOSS}" "${t:-LOSS}" "$EP" >> "$OUT"
+  # Distinguish "gluetun could not be reached" from "the tunnel dropped the
+  # packet". Recording the first as LOSS would corrupt the very number this
+  # exists to measure - a docker restart would read as a VPN outage.
+  if docker exec gluetun true 2>/dev/null; then
+    t=$(docker exec gluetun ping -c1 -W3 -q 1.1.1.1 2>/dev/null | awk -F'/' '/round-trip|rtt/{printf "%.1f", $5}')
+    t=${t:-LOSS}
+  else
+    t=NOGLUETUN
+  fi
+  # %-10s because NOGLUETUN is 9 characters and would otherwise shove
+  # the endpoint column out of line. "$t" rather than "${t:-LOSS}":
+  # it is always set now, and a default that can never fire implies
+  # otherwise.
+  printf '%s %-7s %-10s %s\n' "$ts" "${h:-LOSS}" "$t" "$EP" >> "$OUT"
   sleep 5
 done
