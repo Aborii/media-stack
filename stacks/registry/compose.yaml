@@ -1,0 +1,110 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Private image registry — loopback only.
+#
+# Bound to 127.0.0.1 rather than published on the LAN, which is what makes this
+# painless: Docker treats `localhost` and `127.0.0.1` registries as trusted by
+# default, so neither this machine nor the dev PC needs an `insecure-registries`
+# entry in daemon.json, and neither needs a Docker restart. It also means
+# nothing else on the network can reach it.
+#
+# The dev PC pushes through an SSH tunnel, so the registry answers to
+# `localhost:5001` at BOTH ends and image references match:
+#
+#   ssh -N -L 5001:127.0.0.1:5001 pi          # on the dev PC, keep it running
+#   pnpm docker:build --platform=linux/arm64 \
+#     --push
+#
+# Then on this machine, `docker compose pull` in stacks/coming-manager resolves
+# the same `localhost:5001/...` names.
+#
+# Storage lives on the data disk with everything else. Deletes are enabled so
+# `registry garbage-collect` can actually reclaim space from old tags.
+# ─────────────────────────────────────────────────────────────────────────────
+name: registry
+
+services:
+  registry:
+    container_name: registry
+    image: registry:3
+    restart: unless-stopped
+    ports:
+      # The 127.0.0.1 prefix is the whole security model here — do not drop it
+      # to expose the registry on the LAN without also arranging TLS.
+      #
+      # Host port 5001, not 5000: kavita already binds 0.0.0.0:5000, which
+      # covers loopback too, so a 127.0.0.1:5000 binding here fails outright.
+      # The CONTAINER port stays 5000 — that is where registry:3 listens, and
+      # the healthcheck below runs inside the container.
+      - '127.0.0.1:${REGISTRY_PORT:-5001}:5000'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      # Without this, deleting a manifest is refused and garbage collection can
+      # never reclaim anything — the store only ever grows.
+      REGISTRY_STORAGE_DELETE_ENABLED: 'true'
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/registry:/var/lib/registry
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:5000/v2/ || exit 1']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      # Joined so Portainer and Homepage — both on mediastack — can reach the
+      # registry as http://registry:5000. This is container-to-container only
+      # and changes nothing about exposure: the host mapping above is still
+      # bound to 127.0.0.1, so the LAN still cannot reach it.
+      - mediastack
+
+
+  # Browsable UI for the registry. Portainer CE cannot fill this role: adding a
+  # registry is free, but browsing its repositories and tags is a Business
+  # Edition feature. And registry:3 itself serves only the /v2 API, with no
+  # interface of its own.
+  #
+  # Runs in PROXY mode deliberately. The registry is published to 127.0.0.1
+  # only, so a browser can never reach it directly; this container proxies /v2
+  # server-side over the docker network instead. That also sidesteps CORS,
+  # which the direct-connection mode would otherwise require configuring on the
+  # registry.
+  registry-ui:
+    container_name: registry-ui
+    image: joxit/docker-registry-ui:latest
+    restart: unless-stopped
+    ports:
+      # Published on the LAN, unlike the registry itself. That is the entire
+      # point of this container: something a browser can open, at
+      # http://aboriis-pi:5002.
+      - '${REGISTRY_UI_PORT:-5002}:80'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      SINGLE_REGISTRY: 'true'
+      REGISTRY_TITLE: ${REGISTRY_UI_TITLE:-aboriis-pi registry}
+      NGINX_PROXY_PASS_URL: http://registry:5000
+      SHOW_CONTENT_DIGEST: 'true'
+      # Defaults to false. This UI has no authentication of any kind, so
+      # enabling delete puts an unauthenticated "remove image" button in front
+      # of anyone who can reach port 5002. Flip REGISTRY_UI_DELETE to true when
+      # you actually want to prune; the registry already permits it via
+      # REGISTRY_STORAGE_DELETE_ENABLED above.
+      DELETE_IMAGES: ${REGISTRY_UI_DELETE:-false}
+    depends_on:
+      registry:
+        condition: service_healthy
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Ollama — embedding model server.
+#
+# Its own stack rather than part of coming-manager, for one practical reason:
+# this is the most memory-hungry optional thing on the box, and a separate
+# stack means it can be stopped on its own without touching the app.
+#
+# Only consumer today is coming-manager, which reaches it at
+# http://ollama:11434/v1 over mediastack. Without EMBEDDING_* set there, the
+# "Similar meaning (AI)" tag matching simply reports unavailable and matching
+# stays lexical - a supported state, so stopping this stack degrades the app
+# rather than breaking it.
+#
+# NOTE: starting the container is not enough. The model has to be pulled once:
+#   docker exec ollama ollama pull nomic-embed-text
+# ─────────────────────────────────────────────────────────────────────────────
+name: ollama
+
+services:
+  ollama:
+    container_name: ollama
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      # Loopback only. The app reaches it by service name over the docker
+      # network; the published port exists just for `ollama pull` and poking at
+      # it from a shell on this host.
+      - '127.0.0.1:${OLLAMA_PORT:-11434}:11434'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      # Unload the model after this long idle. The default keeps it resident,
+      # which is wasteful here: embedding runs in bursts during tag
+      # regeneration, not continuously.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30s}
+    volumes:
+      # Pulled models persist here; without it every restart re-downloads them.
+      - ${FOLDER_FOR_DATA:?err}/ollama:/root/.ollama
+    # Hard ceiling, deliberately set. Swap on this host is already fully
+    # consumed, so unbounded growth here would push the kernel into killing
+    # whichever process it likes least - possibly immich or jellyfin. Capping
+    # ollama makes IT the thing that dies under pressure instead, and a failed
+    # embedding degrades one optional subsystem rather than taking down media
+    # services. Raise only after watching real usage.
+    mem_limit: ${OLLAMA_MEM_LIMIT:-1500m}
+    healthcheck:
+      test: ['CMD-SHELL', 'ollama list >/dev/null 2>&1 || exit 1']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true
