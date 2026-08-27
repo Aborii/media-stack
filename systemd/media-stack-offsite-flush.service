@@ -1,0 +1,22 @@
+[Unit]
+Description=Send any undelivered media-stack backup archive to the offsite receiver
+# Nothing here touches docker - it only reads staged archives and uploads them.
+# It does need the network up, and specifically Tailscale, since the receiver is
+# only reachable on the tailnet address.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/aborii/media-stack/scripts/flush-offsite.sh
+# Root for the same reason backup.sh needs it: the offsite directory is
+# root-owned, and the run writes the .sent markers into it.
+User=root
+# An upload competes with playback and imports for the same USB disk and the
+# same uplink. Nothing here is urgent - a backup that arrives twenty minutes
+# later is worth more than a stutter in Jellyfin.
+Nice=10
+IOSchedulingClass=idle
+# A pending queue exits non-zero on purpose (refused archive, cap hit). That is
+# a report, not a crash, so do not let it look like a failed unit forever.
+SuccessExitStatus=0 1

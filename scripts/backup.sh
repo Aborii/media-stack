@@ -37,8 +37,9 @@ DEST=${DEST:-/srv/storage/backups}
 APPDATA=${APPDATA:-/srv/storage/appdata}
 KEEP=${KEEP:-14}
 FULL=${FULL:-0}
-UPLOAD_URL=${UPLOAD_URL:-http://100.72.210.100:8899/upload}
-UPLOAD_KEY_FILE=${UPLOAD_KEY_FILE:-/srv/storage/appdata/backup-receiver.key}
+# Where the archive goes and the key it travels with belong to flush-offsite.sh
+# now. Declaring them in both places would let the two defaults drift apart, and
+# the one that mattered would be whichever script you happened to read.
 STAMP=$(date +%Y%m%d-%H%M%S)
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo - the database directories are not readable otherwise" >&2; exit 1; }
@@ -233,45 +234,33 @@ else
   note "ARCHIVE FAILED"; fail=1
 fi
 
-# --- send it to the PC ------------------------------------------------------
+# --- hand it to the offsite flush -------------------------------------------
 # The Pi uploads; the PC never reaches in here. That way nothing on the PC holds
 # standing credentials to this machine, and this machine holds nothing but a
 # key that can only POST a backup to one endpoint.
 #
-# The receiver checks the archive before keeping it: the declared checksum, the
-# gzip magic, and the ustar marker inside. A truncated or wrong-shaped upload is
-# refused rather than filed away looking healthy.
+# Sending used to happen inline, right here, exactly once. The only retry was
+# therefore tomorrow's run - so a PC that is off at 03:30 but awake all day
+# received nothing, ever. Staging retention lived here too and pruned to "the 3
+# newest" without asking whether they had been sent, so a run of offline nights
+# deleted un-uploaded archives to make room for newer un-uploaded ones.
 #
-# -T streams the file. --data-binary would read the whole archive into memory
-# first, which is a poor idea on an 8GB machine.
+# Both jobs moved to flush-offsite.sh, which a timer also runs every 30 minutes.
+# Calling it here keeps the common case identical - PC awake, archive delivered
+# before this script exits - while an offline PC just leaves the archive queued
+# for whichever tick finds the receiver answering.
 #
-# A failure here does NOT fail the backup. The PC is often off, and the archive
-# staying on disk for the next attempt is the correct outcome - the local backup
-# already succeeded by this point.
-if [ -f "$UPLOAD_KEY_FILE" ] && [ -f "$ARCHIVE" ]; then
+# Its exit status reports on the QUEUE, not on this backup. A refused archive is
+# worth surfacing; the PC being off is not, and the flush already exits 0 for
+# that case precisely because the local backup has succeeded by this point.
+FLUSH=${FLUSH:-$(dirname "$0")/flush-offsite.sh}
+if [ -x "$FLUSH" ]; then
   echo
-  echo "== upload =="
-  err=$(curl -sS --fail --max-time 3600 -T "$ARCHIVE"        -H "X-Backup-Key: $(cat "$UPLOAD_KEY_FILE")"        -H "X-Backup-Name: $(basename "$ARCHIVE")"        -H "X-Backup-Sha256: $(cat "$ARCHIVE.sha256" 2>/dev/null)"        "$UPLOAD_URL" 2>&1 >/dev/null) && rc=0 || rc=$?
-
-  # These two are not the same problem and must not read the same in the log.
-  # The PC being off is expected. The receiver REFUSING the archive means it
-  # failed a checksum or is not a valid tar - a corrupt backup, worth knowing
-  # tonight rather than the day you need to restore. This whole script exists
-  # because rsync reported success while quietly skipping directories; a
-  # swallowed curl error is the same failure one step further along.
-  case "$rc" in
-    0)     note "sent to $UPLOAD_URL" ;;
-    7|28)  note "receiver unreachable - PC is probably off (local backup is fine)" ;;
-    *)     note "UPLOAD REFUSED (curl $rc): ${err:-no detail}"; fail=1 ;;
-  esac
-fi
-
-# Keep only a couple here - this is a staging area, not the backup. The real
-# retention lives on whatever machine collects them.
-n=$(ls -1t "$OFFSITE"/media-stack-*.tar.gz 2>/dev/null | wc -l || true)
-if [ "$n" -gt 3 ]; then
-  ls -1t "$OFFSITE"/media-stack-*.tar.gz | tail -n +4 | while read -r f; do rm -f -- "$f" "$f.sha256"; done
-  note "staged: removed $(( n - 3 )), 3 kept"
+  "$FLUSH" || fail=1
+else
+  echo
+  note "flush-offsite.sh missing at $FLUSH - archive is staged but NOT sent"
+  fail=1
 fi
 
 echo

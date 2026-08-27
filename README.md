@@ -163,7 +163,9 @@ Notable gluetun settings, and why:
 
 | | |
 |---|---|
-| `backup.sh` | Nightly, as root. Dumps both databases, snapshots appdata, then packs and uploads an archive to the PC. Root is not optional - see below. |
+| `backup.sh` | Nightly, as root. Dumps both databases, snapshots appdata, then packs a dated archive and hands it to the flush below. Root is not optional - see below. |
+| `flush-offsite.sh` | Sends any archive the PC has not accepted yet, newest first. Also runs on its own timer every 30 minutes, because the PC is rarely awake at 03:30. |
+| `install-offsite-flush.sh` | One-off. Installs and starts that timer. |
 | `tailscale-https.sh` | Puts every web UI behind a real certificate on the tailnet. |
 | `vpn-health.sh` | Tells a genuine VPN drop apart from a reboot. |
 | `qbit-port-sync.sh` | Pushes Proton's forwarded port into qBittorrent, which changes on every reconnect. |
@@ -192,6 +194,21 @@ gzip magic and the tar header before keeping it.
 
 The Pi pushes; the PC never reaches in. That way nothing on the PC holds
 standing credentials to the Pi. See `receiver/README.md`.
+
+**The upload is a queue, not a single attempt.** An archive with no `.sent`
+marker beside it in `backups/offsite/` has not been accepted, and
+`media-stack-offsite-flush.timer` retries every 30 minutes until it has. This
+matters because the retry used to be "tomorrow's backup run" - so a PC that is
+off at 03:30 but awake all day received nothing at all, ever. Staging retention
+also used to keep "the 3 newest" without checking whether they had been sent,
+which quietly deleted un-uploaded archives to make room for newer un-uploaded
+ones.
+
+Now delivered archives are pruned to 3 and undelivered ones are never dropped to
+make room - only if the queue passes 14, which means a fortnight offline and
+prints accordingly. An archive the receiver *refuses* (bad checksum, not a tar)
+gets a `.bad` marker and stops being retried, so one corrupt file cannot spend
+every half hour re-uploading itself.
 
 ## Remote access
 
