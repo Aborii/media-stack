@@ -3,7 +3,16 @@
 The Tdarr node is the one real item left. Everything else here is small.
 
 
-## Tdarr node on the Windows desktop
+## Tdarr node on the Windows desktop — PARKED
+
+**The Tdarr server is switched off** (2026-08-27). It is behind a `parked`
+compose profile in `stacks/management`, so `docker compose up -d` skips it and
+it stays off across reboots. Config and queue are untouched in
+`appdata/tdarr` (9.8 MB). Its Uptime Kuma monitor is paused rather than deleted.
+
+To bring it back: `cd stacks/management && docker compose --profile parked up -d tdarr`
+
+Everything below still applies whenever the node work happens.
 
 The Tdarr **server** runs on the Pi already and holds the queue, but nothing
 encodes until a node exists. The Pi deliberately does not encode

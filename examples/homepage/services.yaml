@@ -94,6 +94,35 @@
           env: 3
           key: PASTE_PORTAINER_TOKEN
 
+    - Registry:
+        icon: docker.png
+        description: private image registry
+        server: my-docker
+        container: registry
+        # href points at registry-ui, not at the registry: registry:3 serves
+        # only the /v2 API and has no page of its own. Portainer CE cannot fill
+        # that gap either, since browsing a registry is a Business Edition
+        # feature, so the UI container is what makes this tile clickable.
+        #
+        # href is the bare hostname because YOUR BROWSER opens it. siteMonitor
+        # and widget.url stay container names because HOMEPAGE fetches those
+        # server-side - and that distinction matters more here than anywhere
+        # else on this dashboard: the registry publishes to 127.0.0.1 ONLY, so
+        # a browser-reachable address for it deliberately does not exist.
+        # registry-ui proxies /v2 over the docker network instead.
+        href: http://aboriis-pi:5002
+        siteMonitor: http://registry:5000/v2/
+        widget:
+          type: customapi
+          url: http://registry:5000/v2/_catalog
+          mappings:
+            # /v2/_catalog returns {"repositories":[...]}, and format: size
+            # yields an array length. Homepage has no registry widget; this is
+            # the closest it gets to one.
+            - field: repositories
+              label: Repositories
+              format: size
+
 
     - Gluetun:
         icon: gluetun.png
@@ -291,14 +320,4 @@
           username: aborii
           password: PASTE_PASSWORD
 
-    - Tdarr:
-        icon: tdarr.png
-        siteMonitor: http://tdarr:8265/
-        href: http://aboriis-pi:8265
-        description: Transcoding queue - node runs on the desktop
-        server: my-docker
-        container: tdarr
-        widget:
-          type: tdarr
-          url: http://tdarr:8265
 
