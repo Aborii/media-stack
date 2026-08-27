@@ -73,6 +73,18 @@ services:
       - mediastack
 
   tdarr:
+    # PARKED. The server holds a queue but nothing encodes, because a Tdarr
+    # server without a node does nothing - and the node has to run on the
+    # Windows machine, which has the GPU. That is not happening for now, so this
+    # is off rather than idling and reporting healthy.
+    #
+    # A profile rather than a deleted block or restart: "no". `docker compose
+    # up -d` skips a profiled service entirely, so it stays off across reboots
+    # and stack restarts without anything to remember. Config and queue are
+    # untouched in appdata.
+    #
+    # To bring it back:  docker compose --profile parked up -d tdarr
+    profiles: ["parked"]
     image: ghcr.io/haveagitgat/tdarr:latest
     container_name: tdarr
     restart: unless-stopped
