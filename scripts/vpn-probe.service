@@ -1,4 +1,7 @@
 [Unit]
+# nohup does not survive a reboot, and this measurement is only worth anything
+# if it keeps running across one - the loss bursts are hours apart and cluster
+# at particular times of day.
 Description=Measure packet loss inside vs outside the VPN tunnel
 # Wants, NOT Requires. On 2026-08-27 containerd failed on the first boot
 # attempt and took docker.service with it; Requires= turned that into a failed
@@ -19,6 +22,7 @@ Group=aborii
 ExecStart=/srv/storage/appdata/vpn-measure/probe.sh
 Restart=always
 RestartSec=30
+# Diagnostics must never compete with the services being diagnosed.
 Nice=10
 IOSchedulingClass=idle
 

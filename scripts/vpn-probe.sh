@@ -59,6 +59,10 @@ while true; do
   else
     t=NOGLUETUN
   fi
-  printf '%s %-7s %-7s %s\n' "$ts" "${h:-LOSS}" "${t:-LOSS}" "$EP" >> "$OUT"
+  # %-10s because NOGLUETUN is 9 characters and would otherwise shove
+  # the endpoint column out of line. "$t" rather than "${t:-LOSS}":
+  # it is always set now, and a default that can never fire implies
+  # otherwise.
+  printf '%s %-7s %-10s %s\n' "$ts" "${h:-LOSS}" "$t" "$EP" >> "$OUT"
   sleep 5
 done
