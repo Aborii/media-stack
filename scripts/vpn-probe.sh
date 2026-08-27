@@ -40,6 +40,12 @@ while true; do
   OUT="$DIR/probe-$(date +%F).log"
   if [ ! -f "$OUT" ]; then
     echo "# time host_ms icmp_ms tcp443_ms endpoint   (LOSS = no reply)" >> "$OUT"
+  fi
+  # The header is written once, at file creation. A format change mid-day would
+  # otherwise leave earlier rows sitting under a header that no longer describes
+  # them - which is worse than no header, because it is confidently wrong.
+  if ! grep -q 'tcp443_ms' "$OUT" 2>/dev/null; then
+    echo "# format changed here: tcp443_ms column inserted after icmp_ms" >> "$OUT"
     # A new day started. Compress the finished ones. This directory sits inside
     # appdata, so every uncompressed byte is re-tarred and re-uploaded by the
     # nightly backup for as long as it exists - a year of plain text would be
@@ -65,6 +71,10 @@ while true; do
     # So measure both. TCP 443 is what applications actually do and what
     # gluetun's own healthcheck now dials; ICMP stays because the divergence
     # between the two columns is itself the evidence for this paragraph.
+    # NOTE: this times the whole `docker exec`, which costs ~48ms on this
+    # machine, so the figure reads about 50ms high. Fine for spotting LOSS and
+    # multi-second spikes, which is what the column is for. Not comparable to
+    # the icmp column as a latency measurement.
     s0=$(date +%s%N)
     if docker exec gluetun sh -c 'nc -z -w4 1.1.1.1 443' >/dev/null 2>&1; then
       c=$(( ($(date +%s%N) - s0) / 1000000 ))
