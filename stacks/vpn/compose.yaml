@@ -122,11 +122,14 @@ services:
       # Dialing IPs tests what actually matters (does the tunnel carry
       # traffic) without letting DNS latency kill it.
       - HEALTH_TARGET_ADDRESSES=1.1.1.1:443,8.8.8.8:443
-      # Proton drops ICMP inside the tunnel - measured, 100 percent loss to
-      # 1.1.1.1 while TCP 443 to the same host succeeds. The default small
-      # check is an ICMP echo, so it could never pass and was a second cause
-      # of restarts. A dial check uses the addresses above.
-      - HEALTH_SMALL_CHECK_TYPE=dns
+      # ICMP, NOT dns. The earlier "Proton drops ICMP" reading was taken while
+      # the tunnel was passing nothing at all - retested healthy it is 0%% loss
+      # to both 1.1.1.1 and 8.8.8.8. A dns small check ties the healthcheck to
+      # DoH, which times out often enough here that it restarted the tunnel
+      # every few hours ("small periodic check: all check tries failed").
+      # Valid values are only icmp or dns; anything else and gluetun refuses
+      # to start, taking the whole netns down with it.
+      - HEALTH_SMALL_CHECK_TYPE=icmp
 
       # --- proxies for devices that are not containers ----------------------
       # Only the four containers in this stack ride the tunnel. These two let a
