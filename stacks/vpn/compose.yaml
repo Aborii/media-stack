@@ -60,6 +60,12 @@ services:
       - VPN_TYPE=${VPN_TYPE:?err}
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:?err}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES:?err}
+      # Pinned, not auto-discovered. PMTUD fails on this link (both ICMP and
+      # TCP), so gluetun fell back to 1320 - still too big for the path. The
+      # symptom was small ICMP passing while every DoH POST to
+      # cloudflare-dns.com died with EOF, which failed the healthcheck and put
+      # the tunnel in a 6-second restart loop. 1280 is the safe floor.
+      - WIREGUARD_MTU=1280
 
       # --- server selection -------------------------------------------------
       # Deliberately NO VPN_ENDPOINT_IP. Pinning a single server by IP was why
@@ -100,6 +106,27 @@ services:
       # also work but hands them every query, which the gluetun docs advise
       # against.
       - DNS_UPSTREAM_RESOLVER_TYPE=doh
+      # Failover, not a privacy change - both are DoH on 443, neither is
+      # Proton. A single Cloudflare hiccup was answering every dns-query POST
+      # with EOF, which fails the healthcheck and restarts the tunnel, so one
+      # provider having a bad minute was taking the whole VPN down with it.
+      # Quad9 is deliberately absent: HTTPS to 9.9.9.9 does not pass this
+      # tunnel at all, so listing it would just add a dead entry.
+      - DNS_UPSTREAM_RESOLVERS=cloudflare,google
+
+      # --- health ----------------------------------------------------------
+      # Raw IPs on purpose. The default targets are hostnames, so the health
+      # probe must resolve DNS first - and on this Wi-Fi link a DoH query
+      # regularly blows the 2s budget, which then RESTARTS the tunnel.
+      # Restarting never fixed a slow lookup; it only dropped every session.
+      # Dialing IPs tests what actually matters (does the tunnel carry
+      # traffic) without letting DNS latency kill it.
+      - HEALTH_TARGET_ADDRESSES=1.1.1.1:443,8.8.8.8:443
+      # Proton drops ICMP inside the tunnel - measured, 100 percent loss to
+      # 1.1.1.1 while TCP 443 to the same host succeeds. The default small
+      # check is an ICMP echo, so it could never pass and was a second cause
+      # of restarts. A dial check uses the addresses above.
+      - HEALTH_SMALL_CHECK_TYPE=dns
 
       # --- proxies for devices that are not containers ----------------------
       # Only the four containers in this stack ride the tunnel. These two let a
@@ -135,6 +162,12 @@ services:
       - EXTRA_SUBNETS=${LOCAL_SUBNET:?err}
 
       - HTTP_CONTROL_SERVER_ADDRESS=:${GLUETUN_CONTROL_PORT:?err}
+      # Give a new tunnel time to settle before the first check. The default
+      # is 6s, which on a slow link fails, restarts the VPN, and spirals into
+      # a reconnect flood that Proton stops answering entirely.
+      - HEALTH_VPN_DURATION_INITIAL=30s
+      - HEALTH_SUCCESS_WAIT_DURATION=10s
+
     healthcheck:
       # Dependents wait on this with condition: service_healthy, which is what
       # stops them starting into a tunnel that is not up. Replaces the manual

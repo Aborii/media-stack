@@ -1,0 +1,21 @@
+[Unit]
+Description=Retry undelivered media-stack backups every 30 minutes
+
+[Timer]
+# Every half hour, all day. The point of this timer is that the PC is awake at
+# unpredictable times and almost never at 03:30 - so the send has to keep asking
+# rather than wait for the next nightly run.
+#
+# A tick with nothing pending costs a process start and exits in milliseconds,
+# so there is no reason to be clever about when it runs.
+OnCalendar=*:0/30
+# The Pi is not always on either. Persistent means a missed window runs shortly
+# after boot instead of waiting for the next half hour.
+Persistent=true
+# Do not land exactly on the nightly backup's own flush, and do not have every
+# timer on the box fire on the same second.
+RandomizedDelaySec=120
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

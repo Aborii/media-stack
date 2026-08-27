@@ -1,0 +1,226 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# coming-manager — API + web client.
+#
+# Deliberately runs NONE of its own dependencies. Everything it needs already
+# exists on this host, and duplicating any of it would be waste on a box that
+# is already swapping:
+#
+#   Postgres      the shared `postgres17` cluster (stacks/postgres), reached by
+#                 service name over the `mediastack` network. The database and
+#                 role were created there, not here.
+#   FlareSolverr  the existing container, which runs inside gluetun's network
+#                 namespace and therefore has no name of its own — address it
+#                 as `gluetun`, which IS on `mediastack`. Going through the VPN
+#                 is wanted: the scraped sources block direct exits.
+#   Ollama        the `ollama` stack, reached at http://ollama:11434/v1. Kept
+#                 separate so it can be stopped on its own: it is the most
+#                 memory-hungry optional thing on this host. With it down, or
+#                 with EMBEDDING_DRIVER back to noop, the "Similar meaning (AI)"
+#                 tag matching reports unavailable and matching stays lexical.
+#                 That is a supported state, not a degraded one.
+#
+# There is no `depends_on` for Postgres because it belongs to another compose
+# project and cannot be referenced from here. If it is down when this starts,
+# the API exits and `restart: unless-stopped` retries until it is up.
+#
+# Images come from the private registry — see stacks/registry and the server
+# repo's docs/DEPLOYMENT.md. Nothing here builds.
+# ─────────────────────────────────────────────────────────────────────────────
+name: coming-manager
+
+services:
+  api:
+    image: ${COMING_MANAGER_API_IMAGE:?run pnpm docker:build --push on the dev PC}
+    container_name: coming-manager-api
+    restart: unless-stopped
+    # Runs as the owner of the mounted folders rather than root, so nothing it
+    # writes needs sudo to clean up later.
+    user: '${PUID:?err}:${PGID:?err}'
+    ports:
+      - '${COMING_MANAGER_API_PORT:-4001}:4001'
+    volumes:
+      # Split by nature, not lumped under one folder.
+      #
+      # The library and its derivatives live under /srv/storage/media, which is
+      # deliberately NOT inside the [storage] Samba share (that share is
+      # /srv/storage/data), so none of it appears when browsing the NAS.
+      #
+      # Operational data lives under appdata, which is what appdata is for and
+      # which media-stack-backup.timer already backs up - so database dumps are
+      # covered by the existing backup job for free.
+      - ${COMING_MANAGER_DOWNLOADS:?err}:/app/downloads
+      - ${COMING_MANAGER_ALBUMS_BACKUP:?err}:/app/albums-manual-backup
+      # Read-only: the app loads these and never writes them.
+      - ${COMING_MANAGER_MODELS:?err}:/app/censor-models:ro
+      - ${COMING_MANAGER_LOGS:?err}:/app/logs
+      # Without this mount, `db:backup` output is written into the container
+      # layer and is lost on the next `docker compose up -d`.
+      - ${COMING_MANAGER_DB_BACKUPS:?err}:/app/db-backups
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      TZ: ${TIMEZONE:?err}
+
+      # These three are set explicitly rather than left to their defaults. Each
+      # default is a path relative to process.cwd(), which resolves to /app only
+      # because of the image WORKDIR - two unrelated settings happening to
+      # agree, not a contract. Naming them makes the mounts above authoritative.
+      DOWNLOADS_FOLDER: /app/downloads
+      ALBUMS_BACKUP_FOLDER: /app/albums-manual-backup
+      CENSOR_MODELS_DIR: /app/censor-models
+
+      # Shared cluster. `postgres17` is the container name in stacks/postgres,
+      # resolvable because both stacks sit on `mediastack`.
+      PG_HOST: postgres17
+      PG_PORT: 5432
+      # postgres:17-alpine ships ssl=on with a self-signed cert and a pg_hba
+      # rule of hostssl-only, so an unencrypted connection matches no rule at
+      # all and fails with "no pg_hba.conf entry ... no encryption". node-pg
+      # reads PGSSLMODE for options the caller leaves unset, so this makes the
+      # driver negotiate TLS without needing a code change or a pg_hba edit.
+      # no-verify encrypts but skips certificate validation, which is the
+      # only workable mode against a self-signed cert. The link never leaves
+      # this host, so there is no meaningful MITM surface to verify against.
+      PGSSLMODE: no-verify
+      # This deployment is plain HTTP. Left at its default the flag follows
+      # NODE_ENV=production and marks the auth cookies Secure, which a browser
+      # then DISCARDS over HTTP - login returns 200, no session is kept, and
+      # the sign-in button does nothing with no error anywhere.
+      #
+      # Acceptable here because the transport is already private: the LAN, or
+      # a WireGuard tunnel via tailscale. Set it back to true the moment this
+      # is served over HTTPS.
+      AUTH_COOKIE_SECURE: ${COMING_MANAGER_AUTH_COOKIE_SECURE:-false}
+      # The browser blocks every API call without this. The built-in allowlist
+      # is localhost-only, and the page is served from aboriis-pi - so its
+      # origin is aboriis-pi, which the built-in list rejects. Listing the
+      # realistic ways the UI gets opened avoids a silent failure that looks
+      # like a broken app while the server logs nothing wrong.
+      CORS_ORIGIN: ${COMING_MANAGER_CORS_ORIGIN:?err}
+      PG_USER: ${COMING_MANAGER_DB_USER:?err}
+      PG_PASSWORD: ${COMING_MANAGER_DB_PASSWORD:?err}
+      PG_DATABASE: ${COMING_MANAGER_DB_NAME:?err}
+
+      # Copied from the dev machine's .env, never regenerated: the restored
+      # database already holds the seeded admin row, so a new secret logs
+      # everyone out and a new password stops matching what is stored.
+      JWT_SECRET: ${COMING_MANAGER_JWT_SECRET:?err}
+      JWT_REFRESH_SECRET: ${COMING_MANAGER_JWT_REFRESH_SECRET:?err}
+      ADMIN_USERNAME: ${COMING_MANAGER_ADMIN_USERNAME:?err}
+      ADMIN_PASSWORD: ${COMING_MANAGER_ADMIN_PASSWORD:?err}
+
+      # gluetun, not flaresolverr — the solver shares gluetun's netns and has
+      # no network identity of its own.
+      FLARESOLVERR_URL: http://gluetun:8191
+      FLARESOLVERR_TIMEOUT_MS: ${COMING_MANAGER_FLARESOLVERR_TIMEOUT_MS:-60000}
+
+      # ── Scraped sources egress through the VPN, the app does not ────────
+      # Most of the scraped sites are blocked on this connection, so their
+      # traffic has to leave through gluetun. The app itself must NOT be
+      # tunneled: it has to stay reachable on the LAN, and its Postgres and
+      # Ollama traffic never leaves the host.
+      #
+      # gluetun runs its own HTTP proxy (HTTPPROXY=on) on :8888 inside its
+      # netns, reachable over mediastack. Axios reads these variables on its
+      # own, so every scrape, size probe and media download tunnels with no
+      # code change. Measured from this container: direct egress leaves on the
+      # ISP address, proxied egress leaves on the VPN address.
+      #
+      # Both cases are set because different tools read different ones and the
+      # cost of setting both is nothing.
+      #
+      # NO_PROXY keeps in-cluster calls direct. gluetun is in that list on
+      # purpose: FLARESOLVERR_URL above points at gluetun:8191, which is the
+      # solver itself, not this proxy port.
+      #
+      # KNOWN GAP: Node global fetch() ignores these variables entirely, so
+      # the media stream proxy and media probe still egress direct until they
+      # are given an explicit undici ProxyAgent.
+      HTTP_PROXY: http://${HTTPPROXY_USER:?err}:${HTTPPROXY_PASSWORD:?err}@gluetun:8888
+      HTTPS_PROXY: http://${HTTPPROXY_USER:?err}:${HTTPPROXY_PASSWORD:?err}@gluetun:8888
+      http_proxy: http://${HTTPPROXY_USER:?err}:${HTTPPROXY_PASSWORD:?err}@gluetun:8888
+      https_proxy: http://${HTTPPROXY_USER:?err}:${HTTPPROXY_PASSWORD:?err}@gluetun:8888
+      NO_PROXY: postgres17,ollama,gluetun,coming-manager-api,coming-manager-web,localhost,127.0.0.1
+      no_proxy: postgres17,ollama,gluetun,coming-manager-api,coming-manager-web,localhost,127.0.0.1
+
+      # Embedding model server for the "Similar meaning (AI)" tag matching.
+      # Driver, base URL and model are required TOGETHER - with any one missing
+      # the registry keeps the no-op driver and the subsystem reports
+      # unavailable, which looks identical to it being unconfigured.
+      #
+      # Points at the ollama stack over mediastack. Stopping that stack does
+      # not break this one: the subsystem degrades to lexical-only matching.
+      EMBEDDING_DRIVER: ${COMING_MANAGER_EMBEDDING_DRIVER:-noop}
+      EMBEDDING_BASE_URL: http://ollama:11434/v1
+      EMBEDDING_MODEL: ${COMING_MANAGER_EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_BATCH_SIZE: ${COMING_MANAGER_EMBEDDING_BATCH_SIZE:-64}
+      # The 15000 default is far too low for CPU inference on this hardware.
+      EMBEDDING_TIMEOUT_MS: ${COMING_MANAGER_EMBEDDING_TIMEOUT_MS:-120000}
+
+      # Telegram MTProto. All three are needed together; omit them all and the
+      # /telegram page simply reports account login unavailable.
+      TELEGRAM_API_ID: ${COMING_MANAGER_TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${COMING_MANAGER_TELEGRAM_API_HASH:-}
+      TELEGRAM_ENCRYPTION_KEY: ${COMING_MANAGER_TELEGRAM_ENCRYPTION_KEY:-}
+    healthcheck:
+      # /health is public and pings the database, so a pass means the API can
+      # serve rather than merely that the process is alive. node, not curl —
+      # neither curl nor wget exists in the runtime image.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  frontend:
+    image: ${COMING_MANAGER_WEB_IMAGE:?run pnpm docker:build --push on the dev PC}
+    container_name: coming-manager-web
+    restart: unless-stopped
+    ports:
+      - '${COMING_MANAGER_WEB_PORT:-4000}:4000'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      # Server-side rendering reaches the API over the compose network. The
+      # BROWSER uses whatever WEB_CLIENT_API_URL was set to when the image was
+      # built — it is compiled into the bundle and cannot be changed here.
+      API_URL: http://coming-manager-api:4001
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

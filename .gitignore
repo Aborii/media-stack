@@ -24,3 +24,11 @@ config-data/
 # syntax-checked, and they are per-interpreter-version so they churn.
 __pycache__/
 *.pyc
+
+# Editing scratch left beside compose files - compose.yaml.bak2,
+# .bak-preproxy, .bak-20260827-mtu and so on. Git already holds every previous
+# version, so these are duplicates that clutter status until someone commits
+# them by accident.
+*.bak
+*.bak[0-9]
+*.bak-*

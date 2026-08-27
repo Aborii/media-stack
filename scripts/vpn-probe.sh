@@ -39,7 +39,13 @@ while true; do
 
   OUT="$DIR/probe-$(date +%F).log"
   if [ ! -f "$OUT" ]; then
-    echo "# time host_ms tunnel_ms endpoint   (LOSS = no reply in 3s)" >> "$OUT"
+    echo "# time host_ms icmp_ms tcp443_ms endpoint   (LOSS = no reply)" >> "$OUT"
+  fi
+  # The header is written once, at file creation. A format change mid-day would
+  # otherwise leave earlier rows sitting under a header that no longer describes
+  # them - which is worse than no header, because it is confidently wrong.
+  if ! grep -q 'tcp443_ms' "$OUT" 2>/dev/null; then
+    echo "# format changed here: tcp443_ms column inserted after icmp_ms" >> "$OUT"
     # A new day started. Compress the finished ones. This directory sits inside
     # appdata, so every uncompressed byte is re-tarred and re-uploaded by the
     # nightly backup for as long as it exists - a year of plain text would be
@@ -56,13 +62,33 @@ while true; do
   if docker exec gluetun true 2>/dev/null; then
     t=$(docker exec gluetun ping -c1 -W3 -q 1.1.1.1 2>/dev/null | awk -F'/' '/round-trip|rtt/{printf "%.1f", $5}')
     t=${t:-LOSS}
+    # ICMP alone overstates loss. Measured on this link: 10 percent ICMP loss to
+    # 8.8.8.8 with a 2.2s worst case, while TCP 443 to the same host was 10 out
+    # of 10. Proton deprioritises ICMP rather than dropping it, so a ping that
+    # never comes back does NOT prove the tunnel stopped carrying traffic - and
+    # that is the only thing this file is for.
+    #
+    # So measure both. TCP 443 is what applications actually do and what
+    # gluetun's own healthcheck now dials; ICMP stays because the divergence
+    # between the two columns is itself the evidence for this paragraph.
+    # NOTE: this times the whole `docker exec`, which costs ~48ms on this
+    # machine, so the figure reads about 50ms high. Fine for spotting LOSS and
+    # multi-second spikes, which is what the column is for. Not comparable to
+    # the icmp column as a latency measurement.
+    s0=$(date +%s%N)
+    if docker exec gluetun sh -c 'nc -z -w4 1.1.1.1 443' >/dev/null 2>&1; then
+      c=$(( ($(date +%s%N) - s0) / 1000000 ))
+    else
+      c=LOSS
+    fi
   else
     t=NOGLUETUN
+    c=NOGLUETUN
   fi
   # %-10s because NOGLUETUN is 9 characters and would otherwise shove
   # the endpoint column out of line. "$t" rather than "${t:-LOSS}":
   # it is always set now, and a default that can never fire implies
   # otherwise.
-  printf '%s %-7s %-10s %s\n' "$ts" "${h:-LOSS}" "$t" "$EP" >> "$OUT"
+  printf '%s %-7s %-10s %-10s %s\n' "$ts" "${h:-LOSS}" "$t" "$c" "$EP" >> "$OUT"
   sleep 5
 done
