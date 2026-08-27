@@ -63,7 +63,6 @@ SERVICES=(
   "scrutiny      8081  18081"
   "uptime-kuma   3001  13001"
   "dozzle        8888  18888"
-  "tdarr         8265  18265"
 )
 
 if [ "${1:-}" = "--off" ]; then

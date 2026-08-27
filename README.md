@@ -60,7 +60,7 @@ docker compose down
 | | immich | 2283 | photos and video |
 | **Management** | homepage | 80 | dashboard, password protected |
 | | portainer | 9000 | container management |
-| | tdarr | 8265 | transcoding server, node runs elsewhere |
+| | ~~tdarr~~ | 8265 | **parked** - a server with no node does nothing; `docker compose --profile parked up -d tdarr` |
 | **Monitoring** | uptime-kuma | 3001 | 15 service checks |
 | | scrutiny | 8081 | drive SMART health |
 | | dozzle | 8888 | live container logs |
