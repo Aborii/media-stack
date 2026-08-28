@@ -1,0 +1,14 @@
+[Unit]
+Description=Watch for a manual backup request from the status page
+# The status service runs as aborii with NoNewPrivileges, so it cannot escalate
+# to root - by design, since it listens on the LAN with no authentication.
+# Rather than punching a hole in that to let it call sudo, it simply CREATES A
+# FILE, and systemd - which is already root - notices and does the privileged
+# part. The web service gains no ability to run anything at all.
+
+[Path]
+PathExists=/srv/storage/appdata/backup-trigger
+Unit=media-stack-backup-trigger.service
+
+[Install]
+WantedBy=multi-user.target
