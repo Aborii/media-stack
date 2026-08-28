@@ -153,7 +153,81 @@
         server: my-docker
         container: postgres17
 
+    - SFTPGo:
+        icon: sftpgo.png
+        # /healthz is the one endpoint that needs no auth, so this checks the
+        # service is actually serving rather than only that the container runs.
+        siteMonitor: http://sftpgo:8080/healthz
+        href: http://aboriis-pi:8080
+        description: SFTP accounts and share points
+        server: my-docker
+        container: sftpgo
+        # No widget block: Homepage has no native sftpgo type, and a customapi
+        # one would need an SFTPGo API key, which only exists once an admin
+        # account has been created in the web UI.
+
+    - Backups:
+        icon: mdi-backup-restore
+        # 172.28.10.1 is the docker bridge gateway - the same way the glances
+        # tiles reach a service on the host rather than in a container.
+        siteMonitor: http://172.28.10.1:9101/
+        # The hostname, not the gateway: this one a BROWSER opens, and it is a
+        # real page with a "Run backup now" button on it.
+        href: http://aboriis-pi:9101/ui
+        # New tab: clicking a status tile should not navigate you off the
+        # dashboard you were reading.
+        target: "_blank"
+        description: Nightly archive, and the offsite copy on the PC
+        widget:
+          type: customapi
+          url: http://172.28.10.1:9101/
+          # The Pi answers this, not the PC. Pointing Homepage at the receiver
+          # would paint the tile red every time the PC sleeps, which is most of
+          # the time and says nothing about whether backups are healthy.
+          mappings:
+            # "up to date" / "2 pending" / "sending 43%" / "backing up".
+            - field: state
+              label: State
+            # Two DIFFERENT events, and conflating them is what made the tile
+            # confusing: an archive built at 03:30 was only delivered at 16:44,
+            # so one said "14 hours ago" while the upload had just finished.
+            - field: last_backup
+              label: Built
+              format: relativeDate
+            - field: last_sent
+              label: Delivered
+              format: relativeDate
+            - field: pc_archives
+              label: On PC
+              format: number
+
 - Monitoring:
+    - Speedtest:
+        icon: speedtest-tracker.png
+        href: http://aboriis-pi:3030
+        target: "_blank"
+        siteMonitor: http://speedtest-tracker:80/api/healthcheck
+        description: Real line speed, measured every 6 hours
+        server: my-docker
+        container: speedtest-tracker
+        # NOT behind the VPN, deliberately: a test through gluetun would
+        # measure Proton's throughput to Madrid rather than whether the line
+        # itself is healthy.
+        #
+        widget:
+          type: speedtest
+          # The container name, not aboriis-pi: Homepage fetches this
+          # server-side from inside the mediastack network.
+          url: http://speedtest-tracker:80
+          # version 2 is required for speedtest-tracker 1.2.1 and newer, and it
+          # is what makes the API token mandatory. Version 1 is for the old
+          # henrywhitaker3 builds and would just 401 here.
+          version: 2
+          key: PASTE_API_KEY
+          # One decimal place. The default of 0 rounds 38.9 Mbps to 39, which
+          # hides exactly the drift worth noticing on a Wi-Fi-only link.
+          bitratePrecision: 1
+
     - Scrutiny:
         icon: scrutiny.png
         siteMonitor: http://scrutiny:8080/
