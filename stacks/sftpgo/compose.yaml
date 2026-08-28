@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SFTPGo — SFTP accounts and share points, managed from a web UI.
+#
+# Why this rather than more system accounts: SFTPGo users are VIRTUAL. They get
+# no shell, no /home, and no visibility outside the folders mapped to them. The
+# OpenSSH sftp subsystem on port 22 hands out real Linux accounts with the run
+# of the whole filesystem — fine for me, wrong for anybody else.
+#
+# "Share points" are virtual folders: a host path surfaced to the user at a
+# path of your choosing, with its own permissions and quota. They are created
+# in the web UI, not here — this file only decides which host trees SFTPGo is
+# ALLOWED to see. Nothing can be shared that is not mounted below.
+#
+# This touches neither smbd nor sshd. The [storage] Samba share and my own SSH
+# login keep working exactly as before.
+# ─────────────────────────────────────────────────────────────────────────────
+name: sftpgo
+
+services:
+  sftpgo:
+    container_name: sftpgo
+    image: drakkan/sftpgo:v2-alpine
+    restart: unless-stopped
+
+    # Run as aborii rather than root, so anything uploaded lands with the same
+    # ownership as everything else on the data disk instead of root-owned files
+    # that Samba users then cannot touch.
+    user: '${PUID:?err}:${PGID:?err}'
+
+    ports:
+      # 2022, not 22. sshd already owns 22 and must keep it — locking myself
+      # out of the host to run a file server would be a poor trade.
+      - '${SFTPGO_SFTP_PORT:-2022}:2022'
+      # Web admin and web client, on the LAN so a browser can reach it.
+      # There is no TLS in front of this. Do not port-forward it to the
+      # internet without putting a reverse proxy with a certificate first.
+      - '${SFTPGO_WEB_PORT:-8080}:8080'
+
+    environment:
+      TZ: ${TIMEZONE:?err}
+
+      # SQLite, deliberately. postgres17 is the house rule for real services,
+      # but this is a trial and SQLite keeps it entirely self-contained: no new
+      # role, no new database, and removing the stack leaves no orphan behind.
+      # Switching to Postgres later is a data-provider change plus an export
+      # and import, not a rebuild.
+      SFTPGO_DATA_PROVIDER__DRIVER: sqlite
+      SFTPGO_DATA_PROVIDER__NAME: /var/lib/sftpgo/sftpgo.db
+
+      # Empty address means all interfaces. The container is on the mediastack
+      # bridge, so this is reachable only through the published ports above.
+      SFTPGO_HTTPD__BINDINGS__0__ADDRESS: ''
+      SFTPGO_HTTPD__BINDINGS__0__PORT: 8080
+      SFTPGO_SFTPD__BINDINGS__0__ADDRESS: ''
+      SFTPGO_SFTPD__BINDINGS__0__PORT: 2022
+
+    volumes:
+      # Config, the SQLite database, and the generated SSH host keys. Losing
+      # this directory means every client sees a changed host key and refuses
+      # to connect until they clear it, so it belongs on the data disk with
+      # everything else rather than in an anonymous volume.
+      - ${FOLDER_FOR_DATA:?err}/sftpgo:/var/lib/sftpgo
+
+      # The only host tree SFTPGo can see. This is the same directory Samba
+      # publishes as [storage], so a file dropped over SFTP shows up over SMB
+      # and vice versa. Add another line here to make another tree shareable;
+      # until then the web UI cannot reach it, which is the point.
+      - ${SFTPGO_SHARE_ROOT:-/srv/storage/data}:/shares/storage
+
+    healthcheck:
+      # wget, not curl: the alpine image ships busybox wget and no curl.
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/healthz || exit 1']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true
