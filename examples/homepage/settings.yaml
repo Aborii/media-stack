@@ -14,13 +14,13 @@ layout:
     columns: 3
   Monitoring:
     style: row
-    columns: 4
+    columns: 3
   Libraries:
     style: row
-    columns: 4
+    columns: 3
   Automation:
     style: row
-    columns: 4
+    columns: 3
   Acquisition:
     style: row
-    columns: 3
+    columns: 2
