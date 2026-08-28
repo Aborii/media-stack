@@ -214,7 +214,27 @@ ARCHIVE="$OFFSITE/media-stack-$STAMP.tar.gz"
 # Build the file list explicitly. An unquoted glob that matches nothing would
 # leave tar with a -C and no operands, which fails with a message about tar
 # rather than about the missing dumps.
+# The SD card holds /etc, the login home and /boot/firmware, and NOTHING else
+# here protects them - everything above lives on the data disk. That card is a
+# counterfeit (its CID reports product name "asdfg", serial 472), so treating
+# it as expendable is the only safe posture.
+#
+# Some of what matters is not a file at all, so capture it first.
+STATE="$DEST/system-state"
+mkdir -p "$STATE"
+dpkg --get-selections > "$STATE/dpkg-selections.txt" 2>/dev/null || true
+# The boot order lives in EEPROM, not on any filesystem. A card image alone
+# would not record that NVMe boot had ever been configured.
+command -v rpi-eeprom-config >/dev/null 2>&1 && rpi-eeprom-config > "$STATE/eeprom-config.txt" 2>/dev/null
+# UUIDs and PARTUUIDs, needed to rebuild fstab and cmdline.txt correctly.
+lsblk -o NAME,SIZE,FSTYPE,UUID,PARTUUID,MOUNTPOINT > "$STATE/blkid.txt" 2>/dev/null || true
+
 tar_args=(-C "$DEST/appdata" "$STAMP")
+# Root filesystem config, relative to / so members are stored as etc/... rather
+# than /etc/... - tar strips the leading slash anyway and warns when it does.
+tar_args+=(-C / etc home/aborii boot/firmware)
+tar_args+=(-C "$DEST" system-state)
+
 shopt -s nullglob
 dumps=("$DEST"/dumps/*-"$STAMP".sql.gz)
 shopt -u nullglob
@@ -225,7 +245,22 @@ else
   note "no dumps for this run - archiving the snapshot only"
 fi
 
-if tar czf "$ARCHIVE" "${tar_args[@]}" 2>/dev/null; then
+# .vscode-server alone is 1.7G of regenerable remote-server install; it would
+# dominate both the archive and the nightly upload for no benefit. The kuma
+# venv and the caches rebuild themselves too. media-stack itself is only 4M
+# and is deliberately kept - it carries docker-compose.env, which is gitignored
+# and therefore exists nowhere else.
+sys_excludes=(
+  --exclude=home/aborii/.vscode-server
+  --exclude=home/aborii/.venv-kuma
+  --exclude=home/aborii/.cache
+  --exclude=home/aborii/.npm
+  --exclude=home/aborii/.local/share/Trash
+)
+# --warning=no-file-changed: /home is live and files WILL move under tar. That
+# is a warning, not a failure, and letting it set a non-zero exit would hide
+# the failures that do matter.
+if tar czf "$ARCHIVE" "${sys_excludes[@]}" --warning=no-file-changed "${tar_args[@]}" 2>/dev/null; then
   sha256sum "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
   chown "$OWNER":"$OWNER" "$ARCHIVE" "$ARCHIVE.sha256"
   chmod 640 "$ARCHIVE"; chmod 644 "$ARCHIVE.sha256"
