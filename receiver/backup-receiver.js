@@ -124,8 +124,44 @@ function rotate() {
   return Math.min(files.length, KEEP);
 }
 
+// What is arriving right now, for GET /status. The receiver is the only thing
+// that knows how many bytes have actually landed - the sender only knows what
+// it has handed to the kernel - so live upload progress has to come from here.
+let inflight = null;
+
 const server = http.createServer((req, res) => {
   const reply = (code, msg) => { res.writeHead(code, { 'Content-Type': 'text/plain' }); res.end(msg + '\n'); };
+
+  // Read-only status, for the dashboard on the Pi. This is the ONE thing this
+  // server answers besides an upload. It still requires the key, still writes
+  // nothing, and still reveals nothing but counts and sizes - so "the Pi
+  // pushes, the PC never reaches in" holds: the PC initiates nothing here
+  // either, it only answers a question the Pi asked.
+  if (req.method === 'GET' && req.url === '/status') {
+    if (!keyOk(req.headers['x-backup-key'])) return reply(401, 'no');
+    let files = [];
+    try {
+      files = fs.readdirSync(ARCHIVES)
+        .filter((f) => NAME_RE.test(f))
+        .map((f) => ({ name: f, st: fs.statSync(path.join(ARCHIVES, f)) }))
+        .sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+    } catch { /* fall through to an empty report rather than a 500 */ }
+    const body = {
+      archives: files.length,
+      bytes: files.reduce((n, f) => n + f.st.size, 0),
+      newest: files.length ? files[0].name : null,
+      newestAt: files.length ? new Date(files[0].st.mtimeMs).toISOString() : null,
+      keep: KEEP,
+      uploading: Boolean(inflight),
+      uploadName: inflight ? inflight.name : null,
+      uploadReceived: inflight ? inflight.received : 0,
+      uploadTotal: inflight ? inflight.total : 0,
+      uploadPercent: inflight && inflight.total
+        ? Math.round((inflight.received / inflight.total) * 100) : 0,
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(body));
+  }
 
   // PUT as well as POST: curl -T streams the file straight off disk, where
   // --data-binary @file reads the whole thing into memory first. On a Pi with
@@ -157,21 +193,44 @@ const server = http.createServer((req, res) => {
   const out = fs.createWriteStream(tmp);
   const hash = crypto.createHash('sha256');
   let size = 0, aborted = false;
+  inflight = {
+    name,
+    received: 0,
+    total: Number(req.headers['content-length'] || 0),
+    startedAt: Date.now(),
+  };
 
   const scrap = (code, msg) => {
     aborted = true;
+    inflight = null;
     out.destroy();
     fs.rm(tmp, { force: true }, () => {});
     log(`REFUSED ${name}: ${msg}`);
     reply(code, msg);
   };
 
+  // Destroying `out` inside scrap() makes it emit ERR_STREAM_DESTROYED. With
+  // no listener that is an unhandled stream error, which takes the WHOLE
+  // process down - which is precisely how this receiver died on 26 and again
+  // on 28 August, leaving the task gone and nothing receiving. The aborted
+  // guard keeps scrap() from re-entering itself when it destroys the stream.
+  out.on('error', (e) => {
+    if (!aborted) scrap(500, `write failed: ${e.code || e.message}`);
+  });
+
   req.on('data', (c) => {
     if (aborted) return;
     size += c.length;
+    if (inflight) inflight.received = size;
     if (size > MAX_BYTES) return scrap(413, 'too large');
     hash.update(c);
-    out.write(c);
+    // Respect backpressure. Ignoring the return value buffers the whole
+    // upload in memory when the disk cannot keep up, which on a multi-gigabyte
+    // archive is how a receiver runs itself out of heap.
+    if (!out.write(c)) {
+      req.pause();
+      out.once('drain', () => req.resume());
+    }
   });
 
   req.on('error', () => { if (!aborted) scrap(400, 'transfer error'); });
@@ -189,6 +248,7 @@ const server = http.createServer((req, res) => {
       const kept = rotate();
       const mb = (size / 1048576).toFixed(0);
       log(`OK ${name}  ${mb} MB  verified  (${kept} kept)`);
+      inflight = null;
       reply(200, 'ok');
     });
   });
@@ -200,6 +260,13 @@ const server = http.createServer((req, res) => {
 // service would die seconds into every boot and nothing would ever be received
 // - silently, because the failure happens before anything is listening to
 // complain about.
+// Node defaults server.requestTimeout to 300s, which silently caps every
+// upload at five minutes. The 288M and 1.1G archives finished inside that and
+// were delivered; 1.8G and 2.5G never could, so each attempt died at 408 and
+// the queue grew without ever draining. Match the sender, which already bounds
+// itself with curl --max-time 3600.
+server.requestTimeout = 3600 * 1000;
+
 let announced = false;
 function start() {
   server.listen(PORT, BIND, () => {

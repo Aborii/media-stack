@@ -1,0 +1,14 @@
+[Unit]
+Description=Start a backup because the status page asked for one
+# Runs as root, like every system unit, which is the whole point: the thing that
+# needs privilege is here, not in the LAN-facing web service.
+
+[Service]
+Type=oneshot
+# Remove the request FIRST. PathExists re-triggers for as long as the file is
+# there, so leaving it in place would start a backup, finish, see the file
+# still present, and start another - forever.
+ExecStartPre=/bin/rm -f /srv/storage/appdata/backup-trigger
+# --no-block so this unit finishes immediately rather than sitting for the
+# length of a backup. The path unit is then free to re-arm for the next request.
+ExecStart=/usr/bin/systemctl start --no-block media-stack-backup.service

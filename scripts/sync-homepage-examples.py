@@ -25,11 +25,11 @@ def redact(text):
         out.append(line)
     return "\n".join(out) + "\n"
 
-for name in ("services", "widgets", "bookmarks"):
+for name in ("services", "settings", "widgets", "bookmarks"):
     src = os.path.join(LIVE, name + ".yaml")
     dst = os.path.join(EX,   name + ".yaml")
     text = io.open(src, encoding="utf-8").read()
-    if name == "services":
+    if name in ("services", "settings"):
         text = redact(text)
     io.open(dst, "w", encoding="utf-8", newline="\n").write(text)
     print("  synced %s.yaml" % name)
@@ -41,7 +41,7 @@ for line in io.open(os.path.join(LIVE, "services.yaml"), encoding="utf-8"):
     if m and not m.group(1).startswith("PASTE_"):
         secrets.add(m.group(1).strip('"'))
 leaked = []
-for name in ("services", "widgets", "bookmarks"):
+for name in ("services", "settings", "widgets", "bookmarks"):
     body = io.open(os.path.join(EX, name + ".yaml"), encoding="utf-8").read()
     for sec in secrets:
         if sec and sec in body:

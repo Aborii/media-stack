@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# speedtest-tracker — records the real internet speed on a schedule, and feeds
+# the Speedtest tile on Homepage.
+#
+# DELIBERATELY NOT BEHIND THE VPN. Everything in stacks/vpn shares gluetun's
+# network namespace; this does not. A speedtest run through the tunnel would
+# measure Proton's throughput to Madrid, which is a different question from
+# "is the line working", and the tunnel already caps at about 6 MB/s.
+#
+# A speedtest SATURATES the link for its duration, and this Pi is on Wi-Fi with
+# no Ethernet. Every six hours is deliberate: often enough to catch a degraded
+# line, rare enough that it does not fight Jellyfin or an import. Raise the
+# frequency only if you are willing to pay for it in stutters.
+# ─────────────────────────────────────────────────────────────────────────────
+name: speedtest
+
+services:
+  speedtest-tracker:
+    container_name: speedtest-tracker
+    # LinuxServer's image, NOT ghcr.io/alexjustesen. As of v0.20.0 the original
+    # author stopped building an image and the app itself warns that the old one
+    # is deprecated. The env vars and the /config volume are identical, so the
+    # swap is a drop-in - only the image line changes.
+    #
+    # If this ever fails to pull with "error from registry: unauthorized", that
+    # is transient. It happened once here and sent me to the deprecated image by
+    # mistake; retry rather than switching away.
+    image: lscr.io/linuxserver/speedtest-tracker:latest
+    restart: unless-stopped
+    ports:
+      - '${SPEEDTEST_PORT:-3030}:80'
+    environment:
+      PUID: ${PUID:?err}
+      PGID: ${PGID:?err}
+      TZ: ${TIMEZONE:?err}
+      # Laravel encrypts stored settings with this. It lives in the shared env
+      # rather than here because losing or changing it makes every encrypted
+      # row unreadable - it is not a value to regenerate casually.
+      APP_KEY: ${SPEEDTEST_APP_KEY:?err}
+      APP_URL: http://aboriis-pi:${SPEEDTEST_PORT:-3030}
+      # SQLite, not the shared postgres17. One small table of results with no
+      # other consumer does not justify a role and a database, and it keeps the
+      # stack removable without leaving an orphan behind.
+      DB_CONNECTION: sqlite
+      # Every 6 hours, on the hour. See the note above about saturation.
+      SPEEDTEST_SCHEDULE: '0 */6 * * *'
+      PRUNE_RESULTS_OLDER_THAN: 90
+
+    volumes:
+      # The image symlinks /var/www/html/database/database.sqlite into /config
+      # but does NOT create the file. Without an existing (even empty)
+      # database.sqlite here the container boots, fails migrations with
+      # "Database file ... does not exist", and s6 kills it in a restart loop:
+      #   touch  <appdata>/speedtest-tracker/database.sqlite
+      #   chown 1000:1000 that file
+      - ${FOLDER_FOR_DATA:?err}/speedtest-tracker:/config
+
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1/api/healthcheck || exit 1']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      # Laravel migrates its database on first boot, which on a Pi off a USB
+      # disk is not quick. A short start_period would mark it unhealthy while
+      # it is doing exactly what it should.
+      start_period: 120s
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

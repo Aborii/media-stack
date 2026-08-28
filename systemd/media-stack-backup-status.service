@@ -1,0 +1,39 @@
+[Unit]
+Description=Serve backup queue and offsite status as JSON for the Homepage dashboard
+# It reads the staging directory and asks the receiver over the tailnet, so it
+# wants the network up - but it must not FAIL without it. An unreachable PC is a
+# field in the response, not an error, which is the whole reason this sits on
+# the Pi rather than pointing Homepage at the PC directly.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/aborii/media-stack/scripts/backup-status.py
+# aborii, not root. It only ever reads: the offsite directory is world-listable,
+# and the receiver key is mode 600 owned by aborii. Nothing here needs to write
+# anything except its own cache file, so root would buy nothing and risk more.
+User=aborii
+Group=aborii
+Restart=on-failure
+RestartSec=10
+# The dashboard polls this constantly; it is never urgent and must never
+# compete with a backup or with playback for the same disk.
+Nice=10
+
+# It answers a handful of small reads. Anything beyond that is a bug.
+MemoryMax=128M
+
+# Hardening: this process has no reason to write outside its cache, own a
+# terminal, or gain privileges.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/srv/storage/appdata
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

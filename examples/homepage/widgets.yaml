@@ -1,30 +1,38 @@
 ---
+# ONE resources block, not four. Homepage renders each block as its own boxed
+# group, so splitting cpu / data disk / SD card apart is what made the header
+# tall - the compact single bar is simply everything in one block.
+#
+# There is no per-metric icon option: the widget draws its own glyph for each
+# type, so both disks get the same disk icon and are told apart by the mount
+# path under them. Labels are dropped here because a label turns the block back
+# into a titled group, which is the shape being avoided.
+#
+# The SD card entry: Homepage can only stat filesystems mounted into it, and
+# mounting the host root would expose far more than is needed - so an empty
+# directory on the root partition is bind-mounted at /hostroot instead. statfs
+# reports the filesystem that CONTAINS the path, so this gives the SD card
+# figures while exposing nothing. Without it a full SD stops the Pi with no
+# warning on the dashboard.
+#
+# Deliberately NO `network:` here. The option exists, but this container is on
+# the mediastack bridge and can see only eth0 and lo - never wlan0 - so it would
+# report the container's own veth traffic and call it the Pi's network. The
+# Network tile below keeps using glances on the host, which can actually see
+# wlan0.
 - resources:
-    label: Pi
     cpu: true
     memory: true
     cputemp: true
-    uptime: true
     units: metric
-
-- resources:
-    label: Data disk
     disk:
       - /srv/storage
-
-# The SD card. Homepage can only stat filesystems mounted into it, and mounting
-# the host root would expose far more than is needed - so an empty directory on
-# the root partition is bind-mounted instead. statfs reports the filesystem that
-# CONTAINS the path, so this gives the SD card figures while exposing nothing.
-# Without it a full SD stops the Pi with no warning on the dashboard.
-- resources:
-    label: SD card
-    disk:
       - /hostroot
 
 - datetime:
     text_size: xl
     format:
-      timeStyle: short
       dateStyle: short
-      hour12: false
+      timeStyle: short
+      # 12-hour clock: 1:37 PM rather than 13:37.
+      hour12: true

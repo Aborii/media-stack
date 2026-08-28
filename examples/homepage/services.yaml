@@ -45,31 +45,6 @@
           version: 4
           metric: disk:sda
 
-    - Load:
-        icon: glances.png
-        # 1/5/15 minute average rather than the instantaneous CPU percentage
-        # above it. A number sampled the moment the page loads says very little
-        # on a 4-core box; the trend says whether it is actually busy.
-        #
-        # customapi rather than the glances widget: that widget only understands
-        # cpu, memory, info, process, containers and the prefixed disk:/network:
-        # forms. Given metric: load it renders the tile with no numbers in it and
-        # logs nothing, which reads as the endpoint being down.
-        description: 1, 5 and 15 minute average - 4 cores
-        widget:
-          type: customapi
-          url: http://172.28.10.1:61208/api/4/load
-          mappings:
-            - field: min1
-              label: 1 min
-              format: float
-            - field: min5
-              label: 5 min
-              format: float
-            - field: min15
-              label: 15 min
-              format: float
-
     - Processes:
         icon: glances.png
         description: heaviest by memory
@@ -123,7 +98,6 @@
               label: Repositories
               format: size
 
-
     - Gluetun:
         icon: gluetun.png
         description: ProtonVPN tunnel
@@ -153,7 +127,95 @@
         server: my-docker
         container: postgres17
 
+    - SFTPGo:
+        icon: sftpgo.png
+        # /healthz is the one endpoint that needs no auth, so this checks the
+        # service is actually serving rather than only that the container runs.
+        siteMonitor: http://sftpgo:8080/healthz
+        href: http://aboriis-pi:8080
+        description: SFTP accounts and share points
+        server: my-docker
+        container: sftpgo
+        # No widget block: Homepage has no native sftpgo type, and a customapi
+        # one would need an SFTPGo API key, which only exists once an admin
+        # account has been created in the web UI.
+
 - Monitoring:
+    - Speedtest:
+        icon: speedtest-tracker.png
+        href: http://aboriis-pi:3030
+        target: "_blank"
+        siteMonitor: http://speedtest-tracker:80/api/healthcheck
+        description: Real line speed, measured every 6 hours
+        server: my-docker
+        container: speedtest-tracker
+        # NOT behind the VPN, deliberately: a test through gluetun would
+        # measure Proton's throughput to Madrid rather than whether the line
+        # itself is healthy.
+        #
+        widget:
+          type: speedtest
+          # The container name, not aboriis-pi: Homepage fetches this
+          # server-side from inside the mediastack network.
+          url: http://speedtest-tracker:80
+          # version 2 is required for speedtest-tracker 1.2.1 and newer, and it
+          # is what makes the API token mandatory. Version 1 is for the old
+          # henrywhitaker3 builds and would just 401 here.
+          version: 2
+          key: PASTE_API_KEY
+          # One decimal place. The default of 0 rounds 38.9 Mbps to 39, which
+          # hides exactly the drift worth noticing on a Wi-Fi-only link.
+          bitratePrecision: 1
+
+    - Uptime Kuma:
+        icon: uptime-kuma.png
+        siteMonitor: http://uptime-kuma:3001/
+        href: http://aboriis-pi:3001
+        description: Service checks and Telegram alerts
+        server: my-docker
+        container: uptime-kuma
+        widget:
+          type: uptimekuma
+          url: http://uptime-kuma:3001
+          # Reads the PUBLISHED status page, not the admin API. It shows the
+          # monitors attached to this page only - an empty page reports 0 up.
+          slug: home-services
+
+    - Backups:
+        icon: mdi-backup-restore
+        # 172.28.10.1 is the docker bridge gateway - the same way the glances
+        # tiles reach a service on the host rather than in a container.
+        siteMonitor: http://172.28.10.1:9101/
+        # The hostname, not the gateway: this one a BROWSER opens, and it is a
+        # real page with a "Run backup now" button on it.
+        href: http://aboriis-pi:9101/ui
+        # New tab: clicking a status tile should not navigate you off the
+        # dashboard you were reading.
+        target: "_blank"
+        description: Nightly archive, and the offsite copy on the PC
+        widget:
+          type: customapi
+          url: http://172.28.10.1:9101/
+          # The Pi answers this, not the PC. Pointing Homepage at the receiver
+          # would paint the tile red every time the PC sleeps, which is most of
+          # the time and says nothing about whether backups are healthy.
+          mappings:
+            # "up to date" / "2 pending" / "sending 43%" / "backing up".
+            - field: state
+              label: State
+            # Two DIFFERENT events, and conflating them is what made the tile
+            # confusing: an archive built at 03:30 was only delivered at 16:44,
+            # so one said "14 hours ago" while the upload had just finished.
+            - field: last_backup
+              label: Built
+              format: relativeDate
+            - field: last_sent
+              label: Delivered
+              format: relativeDate
+            - field: pc_archives
+              label: On PC
+              format: number
+
     - Scrutiny:
         icon: scrutiny.png
         siteMonitor: http://scrutiny:8080/
@@ -185,20 +247,6 @@
                 label: Drive temp
                 suffix: "°C"
 
-    - Uptime Kuma:
-        icon: uptime-kuma.png
-        siteMonitor: http://uptime-kuma:3001/
-        href: http://aboriis-pi:3001
-        description: Service checks and Telegram alerts
-        server: my-docker
-        container: uptime-kuma
-        widget:
-          type: uptimekuma
-          url: http://uptime-kuma:3001
-          # Reads the PUBLISHED status page, not the admin API. It shows the
-          # monitors attached to this page only - an empty page reports 0 up.
-          slug: home-services
-
     - Dozzle:
         icon: dozzle.png
         siteMonitor: http://dozzle:8080/healthcheck
@@ -212,6 +260,7 @@
         description: Image update notices - reports only, never pulls
         server: my-docker
         container: diun
+
 - Libraries:
     - Jellyfin:
         icon: jellyfin.png
@@ -225,7 +274,11 @@
           url: http://jellyfin:8096
           key: PASTE_JELLYFIN_API_KEY
           enableBlocks: true
-          enableNowPlaying: true
+          # Off: the now-playing section adds two rows to this tile even when
+          # nothing is streaming, and a grid row is as tall as its tallest
+          # member - so it was leaving dead space under Immich and Kavita for
+          # the sake of the words "No Active Streams".
+          enableNowPlaying: false
 
     - Immich:
         icon: immich.png
@@ -319,5 +372,3 @@
           url: http://gluetun:8200
           username: aborii
           password: PASTE_PASSWORD
-
-
