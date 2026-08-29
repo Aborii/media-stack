@@ -245,6 +245,11 @@ services:
     network_mode: "service:gluetun"
     volumes:
       - ${FOLDER_FOR_DATA:?err}/gluetun:/gluetun:ro
+    # The watchdog half of the script talks to gluetun's control server on
+    # 127.0.0.1, which is gluetun itself here - it needs to know which port
+    # that is, and the port is only defined in .env.
+    environment:
+      - GLUETUN_CONTROL_PORT=${GLUETUN_CONTROL_PORT:?err}
     entrypoint: ["/bin/sh", "/gluetun/qbit-port-sync.sh"]
     depends_on:
       gluetun:
