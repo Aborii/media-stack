@@ -58,17 +58,22 @@ services:
       - ${COMING_MANAGER_DB_BACKUPS:?err}:/app/db-backups
       # Disposable render cache for censored images and HLS segments. Lives
       # on the media tree rather than appdata on purpose: it is regenerated
-      # on demand and would only bloat media-stack-backup.timer. Without
-      # this mount the container cannot create it at all - /app is root-owned
-      # in the image while this service runs as PUID:PGID, so the app failed
-      # with ENOENT on .tmp/<uuid> and the route reported it as a 404.
+      # on demand and would only bloat media-stack-backup.timer.
+      #
+      # Keeps the cache out of the container's writable layer and persists it
+      # across `docker compose up -d`, so a redeploy does not re-render
+      # everything. It was also the only way to have a cache at all on images
+      # before coming-manager-api-server#598: /app is root-owned while this
+      # service runs as PUID:PGID, so the app could not create the directory
+      # and every censored render died with ENOENT on .tmp/<uuid>, which the
+      # media route reported to the client as a 404.
       - ${COMING_MANAGER_CENSOR_CACHE:?err}:/app/censor-cache
     environment:
       NODE_ENV: production
       PORT: 4001
       TZ: ${TIMEZONE:?err}
 
-      # These three are set explicitly rather than left to their defaults. Each
+      # These four are set explicitly rather than left to their defaults. Each
       # default is a path relative to process.cwd(), which resolves to /app only
       # because of the image WORKDIR - two unrelated settings happening to
       # agree, not a contract. Naming them makes the mounts above authoritative.
