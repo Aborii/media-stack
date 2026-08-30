@@ -56,6 +56,13 @@ services:
       # Without this mount, `db:backup` output is written into the container
       # layer and is lost on the next `docker compose up -d`.
       - ${COMING_MANAGER_DB_BACKUPS:?err}:/app/db-backups
+      # Disposable render cache for censored images and HLS segments. Lives
+      # on the media tree rather than appdata on purpose: it is regenerated
+      # on demand and would only bloat media-stack-backup.timer. Without
+      # this mount the container cannot create it at all - /app is root-owned
+      # in the image while this service runs as PUID:PGID, so the app failed
+      # with ENOENT on .tmp/<uuid> and the route reported it as a 404.
+      - ${COMING_MANAGER_CENSOR_CACHE:?err}:/app/censor-cache
     environment:
       NODE_ENV: production
       PORT: 4001
@@ -68,6 +75,7 @@ services:
       DOWNLOADS_FOLDER: /app/downloads
       ALBUMS_BACKUP_FOLDER: /app/albums-manual-backup
       CENSOR_MODELS_DIR: /app/censor-models
+      CENSOR_CACHE_DIR: /app/censor-cache
 
       # Shared cluster. `postgres17` is the container name in stacks/postgres,
       # resolvable because both stacks sit on `mediastack`.
