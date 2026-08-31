@@ -76,7 +76,7 @@ Build from [ronnyf/AIC8800-Linux-Driver](https://github.com/ronnyf/AIC8800-Linux
 It compiles clean on 6.18 aarch64 with gcc 14, no patching:
 
 ```bash
-sudo apt install -y dkms     # headers, gcc, eject and usb-modeswitch are already present
+sudo apt install -y dkms build-essential linux-headers-rpi-2712 eject usb-modeswitch
 git clone --depth 1 https://github.com/ronnyf/AIC8800-Linux-Driver.git
 cd AIC8800-Linux-Driver/drivers/aic8800 && make -j4
 
@@ -92,12 +92,15 @@ do need it: the onboard radio is deliberately down (below), so a kernel update
 that drops this driver leaves the Pi with no Wi-Fi at all.
 
 ```bash
-sudo install -dm755 /usr/src/aic8800-fdrv-dkms-6.4.3.0
-sudo cp -r aic_load_fw aic8800_fdrv Makefile Kconfig /usr/src/aic8800-fdrv-dkms-6.4.3.0/
-sudo cp ../../dkms.conf /usr/src/aic8800-fdrv-dkms-6.4.3.0/
-sudo dkms add     -m aic8800-fdrv-dkms -v 6.4.3.0
-sudo dkms build   -m aic8800-fdrv-dkms -v 6.4.3.0 -k "$(uname -r)"
-sudo dkms install -m aic8800-fdrv-dkms -v 6.4.3.0 -k "$(uname -r)" --force
+# the version is PACKAGE_VERSION in the driver's own dkms.conf - read it rather
+# than hardcoding, or a newer upstream registers a version these paths do not use
+VER=$(awk -F'"' '/^PACKAGE_VERSION=/{print $2}' ../../dkms.conf)
+sudo install -dm755 "/usr/src/aic8800-fdrv-dkms-$VER"
+sudo cp -r aic_load_fw aic8800_fdrv Makefile Kconfig "/usr/src/aic8800-fdrv-dkms-$VER/"
+sudo cp ../../dkms.conf "/usr/src/aic8800-fdrv-dkms-$VER/"
+sudo dkms add     -m aic8800-fdrv-dkms -v "$VER"
+sudo dkms build   -m aic8800-fdrv-dkms -v "$VER" -k "$(uname -r)"
+sudo dkms install -m aic8800-fdrv-dkms -v "$VER" -k "$(uname -r)" --force
 ```
 
 Cold boot to working radio takes about **five seconds** and needs no help:
