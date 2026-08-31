@@ -82,7 +82,7 @@ services:
       #
       # /srv/storage/data is also what Samba publishes as [storage], so a file
       # dropped over SFTP shows up over SMB and vice versa.
-      - ${SFTPGO_SHARE_ROOT:-/srv/storage}:/srv/storage
+      - ${SFTPGO_SHARE_ROOT:-/srv/storage}:${SFTPGO_SHARE_ROOT:-/srv/storage}
 
     healthcheck:
       # wget, not curl: the alpine image ships busybox wget and no curl.
