@@ -168,6 +168,69 @@ services:
     volumes:
       - /:/rootfs:ro
 
+  # A SECOND glances, for exactly one reason: --sort-processes is a LAUNCH FLAG,
+  # not an API parameter. /api/4/processlist always comes back in the order the
+  # running instance was told to sort in, a ?sort= query string is ignored, and
+  # the Homepage process widget does no sorting of its own - it calls splice()
+  # on whatever order it is handed. So a CPU-ordered tile and a memory-ordered
+  # tile cannot share one instance. It is two processes or it is one tile.
+  #
+  # Port 61209 because the instance above already owns the default 61208. Same
+  # --bind 172.28.10.1 for the same reason given there: with host networking the
+  # default 0.0.0.0 would publish an unauthenticated process list to the whole
+  # wifi, which is an open network we do not control.
+  #
+  # Same image as above deliberately - it is already pulled, so this shares
+  # every layer and costs only the ~70MB the second process actually runs in.
+  #
+  # Read this tile knowing what the note above says about CPU being spiky: it
+  # answers "what is burning a core RIGHT NOW", which is the question when the
+  # box feels slow. The memory tile answers the slower-moving "what is eating
+  # the RAM". They are different questions, which is why both tiles exist.
+  glances-cpu:
+    image: nicolargo/glances:latest-full
+    container_name: glances-cpu
+    restart: unless-stopped
+    pid: host
+    network_mode: host
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - GLANCES_OPT=-w --bind 172.28.10.1 --port 61209 --sort-processes cpu_percent
+      # No docker integration here either - same reasoning as the instance above.
+    volumes:
+      - /:/rootfs:ro
+
+  # A password gate in front of glances, so its dashboard opens in a browser
+  # rather than needing an ssh tunnel every time.
+  #
+  # Why a separate container instead of just giving glances a password: glances
+  # binds ONE address, and that address (172.28.10.1) is what both Homepage
+  # tiles read. Changing it to reach a browser would break them; adding auth to
+  # it would make them carry credentials. A proxy in front changes neither -
+  # stop this container and the tiles are completely unaffected.
+  #
+  # Published to 127.0.0.1 ONLY, never 0.0.0.0. The wifi here is an open network
+  # (see the glances notes above), and basic auth over plain http would put a
+  # barely-obscured password on it. Instead `tailscale serve` fronts this with
+  # real HTTPS on aboriis-pi.tail54d520.ts.net, so the only ways in are a
+  # tailnet device key AND the password.
+  #
+  # If you ever DO want it on the LAN, change the binding below to
+  # "${WEBUI_PORT_GLANCESWEB}:80" - but read the paragraph above first.
+  glances-web:
+    image: caddy:2-alpine
+    container_name: glances-web
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/glances-web/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy writes nothing important here - no certs, tailscale does TLS - but
+      # without it Caddy warns about a non-persistent data directory on boot.
+      - ${FOLDER_FOR_DATA:?err}/glances-web/data:/data
+    ports:
+      - "127.0.0.1:${WEBUI_PORT_GLANCESWEB:?err}:80"
+    networks:
+      - mediastack
+
 networks:
   mediastack:
     name: mediastack

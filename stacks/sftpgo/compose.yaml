@@ -61,11 +61,28 @@ services:
       # everything else rather than in an anonymous volume.
       - ${FOLDER_FOR_DATA:?err}/sftpgo:/var/lib/sftpgo
 
-      # The only host tree SFTPGo can see. This is the same directory Samba
-      # publishes as [storage], so a file dropped over SFTP shows up over SMB
-      # and vice versa. Add another line here to make another tree shareable;
-      # until then the web UI cannot reach it, which is the point.
-      - ${SFTPGO_SHARE_ROOT:-/srv/storage/data}:/shares/storage
+      # The whole data disk, mounted at the SAME path it has on the host.
+      #
+      # Matching paths matter more than they look: the admin UI resolves paths
+      # INSIDE the container. Mounting somewhere like /shares/storage means
+      # typing the path you can actually see on the pi gets you
+      # "lstat /srv/storage: no such file or directory" AFTER a successful
+      # login - which reads like a permissions fault and is not one.
+      #
+      # The boundary is the PER-USER HOME DIRECTORY, not this list. SFTPGo
+      # confines each account to its own home, so what a user can reach is
+      # decided per account in the UI - which is the point of mounting the
+      # disk whole rather than adding a line here per share.
+      #
+      # What that means in practice: /srv/storage also holds appdata (every
+      # container's config, including gluetun and SFTPGo's own database) and
+      # backups, whose archives contain /etc/shadow and the Wi-Fi PSK. A home
+      # pointed at /srv/storage itself, or anywhere above backups, hands those
+      # over. Point every home at a specific subdirectory.
+      #
+      # /srv/storage/data is also what Samba publishes as [storage], so a file
+      # dropped over SFTP shows up over SMB and vice versa.
+      - ${SFTPGO_SHARE_ROOT:-/srv/storage}:${SFTPGO_SHARE_ROOT:-/srv/storage}
 
     healthcheck:
       # wget, not curl: the alpine image ships busybox wget and no curl.
