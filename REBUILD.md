@@ -50,6 +50,154 @@ the tailnet.
 
 ---
 
+### Wi-Fi — the UGREEN AX900 adapter carries the link
+
+The onboard radio is no longer the uplink. A **UGREEN AX900** USB adapter is,
+and it is worth about seven times the throughput: **16.6 MB/s against 2.27
+MB/s**, measured on the same box minutes apart, on a *weaker* signal (-59 dBm
+against -54).
+
+**It is not the chipset the marketing implies.** It enumerates as an **AICSemi
+AIC8800D80**, and nothing in the kernel binds it:
+
+```bash
+lsusb
+# as plugged in:  a69c:5724 aicsemi "Aic MSC"   <- a 3.9 MB read-only vfat disk
+# after eject:    368b:8d88 AICSemi AIC 8800D80 <- the actual radio
+```
+
+The advertised "built-in Linux driver" is a **file on that fake disk**. The
+adapter only becomes a radio once something ejects it, which is what the udev
+rule below does. Do not infer the chipset from the product name — `lsusb` after
+plugging in is the only answer that counts, and mass-storage is the normal first
+state.
+
+Build from [ronnyf/AIC8800-Linux-Driver](https://github.com/ronnyf/AIC8800-Linux-Driver).
+It compiles clean on 6.18 aarch64 with gcc 14, no patching:
+
+```bash
+sudo apt install -y dkms     # headers, gcc, eject and usb-modeswitch are already present
+git clone --depth 1 https://github.com/ronnyf/AIC8800-Linux-Driver.git
+cd AIC8800-Linux-Driver/drivers/aic8800 && make -j4
+
+sudo cp -r ../../fw/aic8800D80 /lib/firmware/
+sudo cp ../../tools/aic.rules /etc/udev/rules.d/     # the eject rule; a69c:5724 is listed by name
+sudo udevadm control --reload && sudo udevadm trigger
+```
+
+Three things are needed and they live in three places — firmware in
+`/lib/firmware/aic8800D80`, the udev rule in `/etc/udev/rules.d`, and the two
+modules. **Only the modules are kernel-bound, so only they need DKMS**, but they
+do need it: the onboard radio is deliberately down (below), so a kernel update
+that drops this driver leaves the Pi with no Wi-Fi at all.
+
+```bash
+sudo install -dm755 /usr/src/aic8800-fdrv-dkms-6.4.3.0
+sudo cp -r aic_load_fw aic8800_fdrv Makefile Kconfig /usr/src/aic8800-fdrv-dkms-6.4.3.0/
+sudo cp ../../dkms.conf /usr/src/aic8800-fdrv-dkms-6.4.3.0/
+sudo dkms add     -m aic8800-fdrv-dkms -v 6.4.3.0
+sudo dkms build   -m aic8800-fdrv-dkms -v 6.4.3.0 -k "$(uname -r)"
+sudo dkms install -m aic8800-fdrv-dkms -v 6.4.3.0 -k "$(uname -r)" --force
+```
+
+Cold boot to working radio takes about **five seconds** and needs no help:
+`Aic MSC` at 1.1s, ejected at 2.1s, `AIC Wlan` at 4.2s, `AIC 8800D80` at 5.2s.
+`AICWFDBG(LOGERROR) Number of interfaces: 1 not supported` and the two
+`invalid cmd:` lines appear on every load and are harmless.
+
+### Wi-Fi — one radio up, one deliberately down
+
+`wlan1` (the AX900) is the only Wi-Fi link. `wlan0` is **disconnected on
+purpose**, and the fallback is the direct Ethernet cable to the dev PC. This is
+not a fault to fix:
+
+```bash
+nmcli connection modify netplan-wlan0-Ap_606 connection.autoconnect no
+```
+
+Set it on the **profile**, not with `nmcli device set` — the device flag is
+runtime only and does not survive a reboot.
+
+**Why both cannot be up:** each interface sends the DHCP hostname `aboriis-pi`,
+so with two associated the router registers two addresses for one name and
+flip-flops between them. One radio means one address means one correct DNS
+record.
+
+**Pin profiles by MAC, not by interface name.** Netplan owns
+`netplan-wlan0-Ap_606` and silently strips `connection.interface-name` — it
+reads back empty and the setting appears to have worked. MAC binding survives
+that, and survives interface renames:
+
+```bash
+nmcli connection modify Ap_606-5GHz 802-11-wireless.mac-address 6C:1F:F7:E2:B9:68 \
+                                    connection.autoconnect-priority 10
+```
+
+Priority matters too: the 2.4 GHz profile ships at priority 5 and the 5 GHz one
+at 0, and NetworkManager takes the **higher** number — which is why the Pi kept
+choosing the slow band on its own.
+
+### Wi-Fi — the name `aboriis-pi`, and the three resolvers that disagree
+
+Losing this costs you LAN access from every phone in the house while the dev PC
+carries on working, which makes it look like a client problem when it is not.
+
+1. **The router (`192.168.0.1`) is what phones and other LAN clients ask.** It
+   builds its record from the **DHCP hostname**, and it will keep answering an
+   address that no longer exists.
+2. **The Windows hosts file** carries a Tailscale-written line per node
+   (`100.77.199.76 ... aboriis-pi`). It overrides the router, and Tailscale
+   **rewrites it if deleted** — which is why one machine can keep working while
+   everything else fails. Do not hand-edit those lines.
+3. **`aboriis-pi.local`** resolves over mDNS to whatever address the Pi
+   currently holds, with no configuration, and fails cleanly when you are away.
+   It is the most robust local name.
+
+To make the router publish the right address, put the hostname on the lease of
+the interface that actually holds it, then re-activate:
+
+```bash
+nmcli connection modify Ap_606-5GHz ipv4.dhcp-send-hostname yes \
+                                    ipv4.dhcp-hostname aboriis-pi
+nmcli connection up Ap_606-5GHz ifname wlan1
+```
+
+The router picked this up immediately — no waiting for the stale lease to
+expire. **Verify from a LAN client**, not from the Pi: `nslookup aboriis-pi
+192.168.0.1`. On the Pi itself `getent hosts aboriis-pi` just returns its own
+`127.0.1.1` line, and `nslookup` is not installed there.
+
+Bounce `wlan1` **detached** (`setsid nohup ... &` writing to a log). It is the
+only link, so an SSH stall would otherwise kill the command half-way through.
+
+### Wi-Fi — do not build a hotspot on this box
+
+Both radios can run an access point, and it works, but the throughput does not
+justify it and the cause is physical rather than configuration:
+
+| state | the Pi's own uplink |
+| --- | --- |
+| no AP | 16.6 MB/s |
+| 5 GHz AP up and **idle**, no clients | 12.6 MB/s |
+| a client routing through it | ~46 Mbps at the client |
+
+`wlan1`'s signal and negotiated rate were unchanged throughout, so this is not
+link quality — two 5 GHz radios centimetres apart deafen each other's receivers.
+An idle AP on channel 36 cost 24% of an uplink on channel 149, and those are
+~600 MHz apart. The house router's own 2.4 GHz band beat the Pi's 5 GHz hotspot.
+Fixing it needs the external antenna physically moved well away, or the AP on
+2.4 GHz — not a setting.
+
+Two findings worth keeping if an AP is ever needed anyway:
+
+- **`802-11-wireless.channel-width` defaults to `auto`, and `man
+  nm-settings-nmcli` says auto means the "safest (smallest)" width.** That
+  silently gives a 20 MHz AP — 86.6 Mbit/s PHY, ~29 Mbps real. Always set it
+  explicitly (`20mhz`, `40mhz`, `80mhz`; 2.4 GHz caps at 40).
+- **A client that associates then drops ~17 seconds later is a DHCP timeout, not
+  a bad password.** `AP-STA-CONNECTED` followed by `EAPOL-4WAY-HS-COMPLETED`
+  means the PSK was accepted. Look at dnsmasq and the firewall instead.
+
 ## Phase 2 — the stack
 
 ```bash
