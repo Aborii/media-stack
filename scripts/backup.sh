@@ -69,6 +69,7 @@ EXCLUDES=(
   'postgres17/data/'              # dumped below, and unsafe to copy live
   'immich/server/encoded-video/'  # 19G  video transcodes
   'jellyfin/data/metadata/'       # 12G  posters, fanart, backdrops
+  'registry/'                     # 2.1G pull-through cache of Docker Hub, re-pulled on demand
   'radarr/MediaCover/'            # 2.1G movie posters
   'immich/server/thumbs/'         # 1.8G photo thumbnails
   'immich/model-cache/'           # 786M ML models, re-downloaded
