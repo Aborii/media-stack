@@ -64,11 +64,19 @@ while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); do
 
 # Regenerable, and large. Every one of these is rebuilt by its own application
 # from the originals on the media disk.
+# Patterns here are shared with du via du_args below, and the two tools
+# disagree about a leading slash: rsync honours it, du ignores the entry
+# entirely. So a single-component pattern cannot be anchored. Anchoring
+# 'registry/' as '/registry/' makes rsync drop the directory while du keeps
+# counting it, and the size check below then fails the run with
+# "COPY IS SHORT - something was skipped" when nothing was skipped.
+# Multi-component patterns like 'immich/postgres/' work in both.
 EXCLUDES=(
   'immich/postgres/'              # dumped below, and unsafe to copy live
   'postgres17/data/'              # dumped below, and unsafe to copy live
   'immich/server/encoded-video/'  # 19G  video transcodes
   'jellyfin/data/metadata/'       # 12G  posters, fanart, backdrops
+  'registry/'                     # 2.1G pull-through cache of Docker Hub, re-pulled on demand
   'radarr/MediaCover/'            # 2.1G movie posters
   'immich/server/thumbs/'         # 1.8G photo thumbnails
   'immich/model-cache/'           # 786M ML models, re-downloaded
