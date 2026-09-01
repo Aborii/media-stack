@@ -41,9 +41,25 @@ printf "  resolver          : %s\n" \
      | grep DNS_UPSTREAM_RESOLVER_TYPE | cut -d= -f2)"
 printf "  exit ip           : %s\n" \
   "$(docker exec gluetun wget -qO- -T8 https://ifconfig.me/ip 2>/dev/null)"
-printf "  forwarded port    : %s (written %s)\n" \
-  "$(cat /srv/storage/appdata/gluetun/forwarded_port 2>/dev/null)" \
-  "$(stat -c %y /srv/storage/appdata/gluetun/forwarded_port 2>/dev/null | cut -d. -f1)"
+# Ask the container where its own /gluetun is rather than naming a host path.
+# This file moved when appdata moved to the NVMe, and the hardcoded path went on
+# reporting a port that had been stale for days - silently, because cat on a
+# missing file is empty and the 2>/dev/null hid it. An unreadable file now says
+# so instead of printing a blank. The check is -r AND -s: the abandoned file was
+# readable and empty, so testing readability alone would have stayed quiet in
+# exactly the way this is meant to prevent.
+gluetun_dir=$(docker inspect gluetun \
+  --format '{{range .Mounts}}{{if eq .Destination "/gluetun"}}{{.Source}}{{end}}{{end}}' \
+  2>/dev/null)
+if [ -z "$gluetun_dir" ]; then
+  printf "  forwarded port    : cannot resolve - gluetun has no /gluetun mount, or is gone\n"
+elif [ -r "$gluetun_dir/forwarded_port" ] && [ -s "$gluetun_dir/forwarded_port" ]; then
+  printf "  forwarded port    : %s (written %s)\n" \
+    "$(cat "$gluetun_dir/forwarded_port")" \
+    "$(stat -c %y "$gluetun_dir/forwarded_port" | cut -d. -f1)"
+else
+  printf "  forwarded port    : UNREADABLE OR EMPTY at %s/forwarded_port\n" "$gluetun_dir"
+fi
 docker exec gluetun wget -qO- -T8 "http://127.0.0.1:8200/api/v2/transfer/info" 2>/dev/null \
   | python3 -c "import json,sys; d=json.load(sys.stdin); print('  qbittorrent       : %s, dht %d' % (d['connection_status'], d['dht_nodes']))" 2>/dev/null
 
