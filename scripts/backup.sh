@@ -34,7 +34,7 @@
 set -euo pipefail
 
 DEST=${DEST:-/srv/storage/backups}
-APPDATA=${APPDATA:-/srv/storage/appdata}
+APPDATA=${APPDATA:-/srv/appdata}
 KEEP=${KEEP:-14}
 FULL=${FULL:-0}
 # Where the archive goes and the key it travels with belong to flush-offsite.sh
