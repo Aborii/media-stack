@@ -1,7 +1,32 @@
-import io, re, shutil, os
+import io, re, os, subprocess, sys
 
-LIVE = "/srv/storage/appdata/homepage"
-EX   = "/home/aborii/media-stack/examples/homepage"
+# Both paths used to be absolute constants. The live one pointed at
+# /srv/storage/appdata/homepage, which stopped being homepage's config
+# directory when appdata moved to the NVMe on 2026-08-30. Nothing failed and
+# nothing was reported: the two trees still matched byte for byte, so this went
+# on syncing a copy that was no longer live and would have kept doing so
+# silently until the day they diverged.
+#
+# HOMEPAGE_CONFIG overrides the lookup, which is also how this gets tested
+# without a running container.
+def live_config_dir():
+    try:
+        out = subprocess.run(
+            ["docker", "inspect", "homepage", "--format",
+             '{{range .Mounts}}{{if eq .Destination "/app/config"}}{{.Source}}{{end}}{{end}}'],
+            capture_output=True, text=True).stdout.strip()
+    except OSError as e:
+        sys.exit("cannot run docker (%s) - set HOMEPAGE_CONFIG to the live config directory" % e)
+    if not out:
+        sys.exit("cannot resolve homepage's /app/config mount - is the container running? "
+                 "set HOMEPAGE_CONFIG to override")
+    return out
+
+LIVE = os.environ.get("HOMEPAGE_CONFIG") or live_config_dir()
+# Derived from this file, so a second checkout syncs into itself rather than
+# into whichever one happened to be at the old hardcoded path.
+EX   = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "examples", "homepage")
 
 # Secrets never leave the Pi. Anything that looks like a credential is replaced
 # with a placeholder before the file is copied into the repo.
