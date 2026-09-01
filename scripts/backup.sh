@@ -21,7 +21,7 @@
 #
 # WHAT IS DELIBERATELY NOT BACKED UP
 #
-# 35 of appdata's 36GB is derived data that any of these apps will rebuild from
+# Nearly all of appdata is derived data that any of these apps will rebuild from
 # the media files themselves - transcodes, thumbnails, posters, ML models. This
 # backup protects CONFIGURATION, which is about 1GB: the databases, config.xml,
 # settings, and Immich's uploads. Regenerating artwork costs time after a
@@ -43,6 +43,24 @@ FULL=${FULL:-0}
 STAMP=$(date +%Y%m%d-%H%M%S)
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo - the database directories are not readable otherwise" >&2; exit 1; }
+
+# The source used to live on the same disk as DEST, so an unmounted data disk
+# produced an empty source and the run failed safely. It does not any more:
+# appdata is on the NVMe and is always there, so with the disk unmounted this
+# would read a complete appdata and write the whole snapshot into a bare
+# directory on the root filesystem - succeeding, reporting success, and
+# vanishing the moment the disk mounts over it. fstab has nofail, so nothing
+# else stops that happening.
+#
+# Walk to the nearest existing ancestor: on a first run DEST does not exist yet
+# and findmnt answers nothing at all for a missing path.
+probe=$DEST
+while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); done
+[ "$(findmnt -T "$probe" -no TARGET)" != "/" ] || {
+  echo "$DEST resolves to the root filesystem - refusing to back up onto it" >&2
+  echo "  the data disk is probably not mounted; check 'findmnt /srv/storage'" >&2
+  exit 1
+}
 
 # Regenerable, and large. Every one of these is rebuilt by its own application
 # from the originals on the media disk.
