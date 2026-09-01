@@ -169,12 +169,15 @@ services:
       # is 6s, which on a slow link fails, restarts the VPN, and spirals into
       # a reconnect flood that Proton stops answering entirely.
       - HEALTH_VPN_DURATION_INITIAL=30s
-      # Each successive failure waits this much longer than the last. Left at
-      # the 5s default the retries stayed tight enough to be a flood in their
-      # own right - the 2026-09-02 00:56 burst restarted at :27 :28 :34 :35
-      # :41, which is the behaviour the comment above says Proton stops
-      # answering. Backing off gives a congested server room to recover
-      # instead of hammering it while it is already struggling.
+      # Each successive failure waits longer than the last. The default 5s
+      # leaves the restart ATTEMPTS tightly packed: the 2026-09-02 00:56 burst
+      # went :27 :28 :34 :35 :41, spacing that matches the 6s startup-check
+      # dial timeout rather than the periodic check. So these are retries
+      # failing to establish, back to back, against a server the comment above
+      # says stops answering during a flood. This spaces them out; it does not
+      # make the check itself more tolerant, which it does not need to be - the
+      # small periodic check already takes 3 tries at 10s, 20s and 30s before
+      # it declares the tunnel down.
       - HEALTH_VPN_DURATION_ADDITION=15s
       # Not HEALTH_SUCCESS_WAIT_DURATION: that sat here looking like tuning and
       # is not a gluetun variable at all. It appears in neither the binary's
