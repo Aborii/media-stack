@@ -169,7 +169,22 @@ services:
       # is 6s, which on a slow link fails, restarts the VPN, and spirals into
       # a reconnect flood that Proton stops answering entirely.
       - HEALTH_VPN_DURATION_INITIAL=30s
-      - HEALTH_SUCCESS_WAIT_DURATION=10s
+      # Each successive failure waits longer than the last. The default 5s
+      # leaves the restart ATTEMPTS tightly packed: the 2026-09-02 00:56 burst
+      # went :27 :28 :34 :35 :41, spacing that matches the 6s startup-check
+      # dial timeout rather than the periodic check. So these are retries
+      # failing to establish, back to back, against a server the comment above
+      # says stops answering during a flood. This spaces them out; it does not
+      # make the check itself more tolerant, which it does not need to be - the
+      # small periodic check already takes 3 tries at 10s, 20s and 30s before
+      # it declares the tunnel down.
+      - HEALTH_VPN_DURATION_ADDITION=15s
+      # Not HEALTH_SUCCESS_WAIT_DURATION: that sat here looking like tuning and
+      # is not a gluetun variable at all. It appears in neither the binary's
+      # string table nor the settings block gluetun prints at startup, and
+      # gluetun warns about renamed variables (see EXTRA_SUBNETS above) but is
+      # silent about ones it has never heard of. Check new knobs against
+      #   docker exec gluetun grep -ao 'HEALTH_[A-Z_]*' /gluetun-entrypoint
 
     healthcheck:
       # Dependents wait on this with condition: service_healthy, which is what
