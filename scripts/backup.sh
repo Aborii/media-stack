@@ -64,6 +64,13 @@ while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); do
 
 # Regenerable, and large. Every one of these is rebuilt by its own application
 # from the originals on the media disk.
+# Patterns here are shared with du via du_args below, and the two tools
+# disagree about a leading slash: rsync honours it, du ignores the entry
+# entirely. So a single-component pattern cannot be anchored. Anchoring
+# 'registry/' as '/registry/' makes rsync drop the directory while du keeps
+# counting it, and the size check below then fails the run with
+# "COPY IS SHORT - something was skipped" when nothing was skipped.
+# Multi-component patterns like 'immich/postgres/' work in both.
 EXCLUDES=(
   'immich/postgres/'              # dumped below, and unsafe to copy live
   'postgres17/data/'              # dumped below, and unsafe to copy live
