@@ -45,12 +45,30 @@
           version: 4
           metric: disk:sda
 
-    - Processes:
+    - Processes (RAM):
         icon: glances.png
         description: heaviest by memory
         widget:
           type: glances
           url: http://172.28.10.1:61208
+          version: 4
+          metric: process
+
+    # Its own glances on 61209, not a second widget against 61208. The sort
+    # order of /api/4/processlist is fixed by the --sort-processes launch flag
+    # of the instance serving it: ?sort= is ignored by the API, and the widget
+    # shows the first few in whatever order it is handed without sorting. So
+    # two orders means two instances - see stacks/monitoring/compose.yaml.
+    #
+    # Answers a different question from the tile above. This one is "what is
+    # burning a core right now" and is spiky by nature; that one is "what is
+    # eating the RAM" and moves slowly. Neither replaces the other.
+    - Processes (CPU):
+        icon: glances.png
+        description: heaviest by CPU
+        widget:
+          type: glances
+          url: http://172.28.10.1:61209
           version: 4
           metric: process
 
@@ -307,6 +325,23 @@
           key: PASTE_API_KEY
 
 - Automation:
+    - Seerr:
+        icon: seerr.png
+        # /api/v1/status is the only route that answers without the API key,
+        # and it keeps answering before setup has been run - so a red tile
+        # here means the container is actually down, not unconfigured.
+        siteMonitor: http://seerr:5055/api/v1/status
+        href: http://aboriis-pi:5055
+        description: Requests - hands them to Sonarr and Radarr
+        server: my-docker
+        container: seerr
+        widget:
+          # type: seerr, not jellyseerr. Jellyseerr and Overseerr merged into
+          # Seerr and both old names are now aliases onto this same widget.
+          type: seerr
+          url: http://seerr:5055
+          key: PASTE_SEERR_API_KEY
+
     - Sonarr:
         icon: sonarr.png
         siteMonitor: http://sonarr:8989/ping

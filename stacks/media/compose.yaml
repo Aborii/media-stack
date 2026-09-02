@@ -1,6 +1,11 @@
 ###########################################################################
 ##
-##  Media servers.
+##  Media servers, and the request front end that feeds them.
+##
+##  Seerr reaches jellyfin, radarr and sonarr by container name over
+##  mediastack. It does NOT take PUID/PGID - it runs as the image's own
+##  node user, uid 1000, so its config directory is chowned 1000:1000 on
+##  the host instead.
 ##
 ##  Part of the mediastack network, which is shared by every stack and
 ##  created outside them - so containers still reach each other by name
@@ -44,6 +49,31 @@ services:
       - TZ=${TIMEZONE:?err}
     ports:
       - "${WEBUI_PORT_KAVITA:?err}:5000"
+    networks:
+      - mediastack
+
+  seerr:
+    # Formerly Jellyseerr. That project stopped at v2.7.3 in Aug 2025 and
+    # development moved here under the seerr-team org - fallenbagel/jellyseerr
+    # is the stale image, not this one.
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    # PID 1 in this image does not reap children; init gives it a real one.
+    init: true
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/seerr:/app/config
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_SEERR:?err}:5055"
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
     networks:
       - mediastack
 

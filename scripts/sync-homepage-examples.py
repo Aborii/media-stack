@@ -34,6 +34,7 @@ PLACEHOLDER = {
     "jellyfin":  "PASTE_JELLYFIN_API_KEY",
     "immich":    "PASTE_IMMICH_API_KEY",
     "portainer": "PASTE_PORTAINER_TOKEN",
+    "seerr":     "PASTE_SEERR_API_KEY",
 }
 
 def redact(text):

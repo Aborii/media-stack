@@ -211,6 +211,11 @@ cp docker-compose.env.example docker-compose.env    # then fill it in
 docker network create mediastack --driver bridge \
   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
+# Seerr runs as the image's own node user, uid 1000, and ignores PUID.
+# Skip this and Docker creates the directory as root, Seerr cannot write
+# to its own config, and the container crash-loops.
+mkdir -p /srv/appdata/seerr && chown 1000:1000 /srv/appdata/seerr
+
 for s in vpn arr media immich monitoring management postgres; do
   (cd stacks/$s && docker compose up -d)
 done
@@ -278,6 +283,23 @@ health complaining — 256 collections and one import list also needed changing.
   running headless Chrome through a VPN exiting in another country is slower
   than the desktop that default was chosen for, and a challenge needing 65
   seconds fails purely on the clock. It costs nothing on the fast path.
+
+### Seerr
+
+The Radarr and Sonarr servers are seeded into `appdata/seerr/settings.json`
+and come back with a restore. **The Jellyfin connection does not** — Seerr
+authenticates against Jellyfin with an admin username and password, so that
+half is a browser step every time.
+
+Open `http://aboriis-pi:5055`, sign in with a Jellyfin admin account, and
+pick the libraries to sync. The API returns **403 on every route** until that
+is done, so there is no way to script around it.
+
+- Internal addresses are `radarr:7878` and `sonarr:8989`; `externalUrl` is
+  what ends up in links handed to a browser, so it is `aboriis-pi` instead.
+- Anime is split off to `/data/library/anime` with `animeSeriesType: anime`.
+  Without that, anime requests land in `/data/library/tv` and Sonarr numbers
+  them by season rather than absolute episode.
 
 ### gluetun — DNS
 
