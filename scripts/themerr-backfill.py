@@ -24,6 +24,7 @@ always skipped, so re-running after any interruption is safe and cheap.
 
 import argparse
 import json
+import posixpath
 import random
 import re
 import subprocess
@@ -38,7 +39,18 @@ MOVIES = Path("/srv/storage/data/media/library/movies")
 YTDLP = Path("/srv/appdata/bin/yt-dlp")
 STATE = Path("/srv/appdata/themerr-backfill-state.json")
 LOG = Path("/srv/appdata/themerr-backfill.log")
+
+HOST_PREFIX = "/srv/storage/data/media/library"
+CONTAINER_PREFIX = "/data/media"
+
+# Built once on first use - one API call, not one per movie.
+_ITEM_INDEX = None
 THEMERRDB = "https://app.lizardbyte.dev/ThemerrDB/movies/themoviedb/{}.json"
+
+# Jellyfin picks up a theme song when it scans the folder, not when the file
+# appears, so each download has to be announced or it stays silent.
+JELLYFIN = "http://127.0.0.1:8096"
+JELLYFIN_API_KEY = "6545ac98160f41aa9963647a8d2a3f88"
 
 
 def log(msg):
@@ -83,6 +95,72 @@ def themerrdb_url(tmdb_id):
     except Exception:
         return None
     return data.get("youtube_theme_url") or "MISSING"
+
+
+# yt-dlp's wording for a video that is gone rather than a request that was
+# refused. These never succeed on a retry, so they must not drive the
+# throttling cool-off or consume retry attempts.
+DEAD_LINK_MARKERS = (
+    "video is unavailable",
+    "video unavailable",
+    "video is not available",
+    "video is private",
+    "video has been removed",
+    "account associated with this video has been terminated",
+    "this video is no longer available",
+)
+
+
+def is_dead_link(msg):
+    low = (msg or "").lower()
+    return any(marker in low for marker in DEAD_LINK_MARKERS)
+
+
+def notify_jellyfin(folder):
+    """Ask Jellyfin to rescan one movie so it registers the new theme.
+
+    Deliberately the gentle refresh: metadataRefreshMode=Default with
+    replaceAllMetadata=false picks up local media without re-reading the
+    NFO, so titles are left alone. A full refresh would rewrite them.
+
+    Best effort - a theme that fails to register is a silent theme, not a
+    lost one, and the next library scan will catch it.
+    """
+    item_id = jellyfin_item_id(folder)
+    if not item_id:
+        return False
+    url = (f"{JELLYFIN}/Items/{item_id}/Refresh?metadataRefreshMode=Default"
+           f"&imageRefreshMode=None&replaceAllMetadata=false&replaceAllImages=false"
+           f"&api_key={JELLYFIN_API_KEY}")
+    try:
+        req = urllib.request.Request(url, method="POST")
+        urllib.request.urlopen(req, timeout=30).close()
+        return True
+    except Exception:
+        return False
+
+
+def jellyfin_item_id(folder):
+    """The Jellyfin id for the movie in this folder, or None.
+
+    Jellyfin reports Path as the video FILE and in the container's own view
+    of the library, so the lookup keys on the parent of that path after
+    translating the host prefix.
+    """
+    global _ITEM_INDEX
+    if _ITEM_INDEX is None:
+        _ITEM_INDEX = {}
+        url = (f"{JELLYFIN}/Items?IncludeItemTypes=Movie&Recursive=true&Limit=5000"
+               f"&fields=Path&api_key={JELLYFIN_API_KEY}")
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r:
+                for it in json.load(r)["Items"]:
+                    if it.get("Path"):
+                        _ITEM_INDEX[posixpath.dirname(it["Path"])] = it["Id"]
+        except Exception:
+            log("  could not read the Jellyfin item list; themes will need a manual rescan")
+    container = str(folder).replace(HOST_PREFIX, CONTAINER_PREFIX, 1)
+    return _ITEM_INDEX.get(container)
 
 
 def download(url, dest, args):
@@ -195,7 +273,18 @@ def main():
             }
             done += 1
             consecutive_failures = 0
-            log(f"[{i}/{len(todo)}] OK   {folder.name[:44]} ({msg})")
+            told = notify_jellyfin(folder)
+            log(f"[{i}/{len(todo)}] OK   {folder.name[:44]} ({msg})"
+                + ("" if told else "  [jellyfin not notified]"))
+        elif is_dead_link(msg):
+            # ThemerrDB points at a video that no longer exists. Permanent,
+            # so record it beside the movies ThemerrDB never had and do not
+            # let it trigger the throttling cool-off.
+            state["no_theme"][tmdb] = f"{folder.name} (dead link: {url})"
+            state["failed"].pop(tmdb, None)
+            nodb += 1
+            consecutive_failures = 0
+            log(f"[{i}/{len(todo)}] DEAD {folder.name[:44]}: {msg}")
         else:
             prev = state["failed"].get(tmdb, {}).get("attempts", 0)
             state["failed"][tmdb] = {
@@ -214,7 +303,7 @@ def main():
         save_state(state)
         time.sleep(random.uniform(args.min_sleep, args.max_sleep))
 
-    log(f"finished: downloaded={done} failed={failed} not_in_themerrdb={nodb}")
+    log(f"finished: downloaded={done} failed={failed} no_theme_or_dead={nodb}")
     log(f"totals so far: done={len(state['done'])} no_theme={len(state['no_theme'])} "
         f"failed={len(state['failed'])}")
 
