@@ -143,7 +143,13 @@ def main():
         if not tmdb:
             no_tmdb += 1
             continue
-        if tmdb in state["no_theme"] or tmdb in state["failed"]:
+        if tmdb in state["no_theme"]:
+            skipped_known += 1
+            continue
+        # A failure here is usually throttling or a dropped socket, so it is
+        # worth retrying on a later run. Only give up after it has failed
+        # repeatedly, which is what a genuinely dead video looks like.
+        if state["failed"].get(tmdb, {}).get("attempts", 1) >= 3:
             skipped_known += 1
             continue
         todo.append((folder, tmdb))
@@ -191,7 +197,10 @@ def main():
             consecutive_failures = 0
             log(f"[{i}/{len(todo)}] OK   {folder.name[:44]} ({msg})")
         else:
-            state["failed"][tmdb] = {"folder": folder.name, "url": url, "error": msg}
+            prev = state["failed"].get(tmdb, {}).get("attempts", 0)
+            state["failed"][tmdb] = {
+                "folder": folder.name, "url": url, "error": msg, "attempts": prev + 1,
+            }
             failed += 1
             consecutive_failures += 1
             log(f"[{i}/{len(todo)}] FAIL {folder.name[:44]}: {msg}")

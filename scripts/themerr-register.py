@@ -6,16 +6,15 @@ skips an item only when its own row already holds the same YouTube URL and
 a matching file hash. A theme.mp3 it did not record is a theme.mp3 it will
 try to download again on every run, failing and filling the log each time.
 
-Run this with Jellyfin STOPPED. Themerr uses EF Core over sqlite in WAL
-mode and holds rows in memory, so a write underneath a running server can
-be silently overwritten on its next save.
+Safe to run while Jellyfin is up. Themerr opens a fresh DbContext per call
+rather than caching rows, so a concurrent write is a lock race and not a
+lost update - hence the busy timeout below rather than a shutdown. --apply
+still asks for --force as a deliberate speed bump.
 
 Two steps, because the item GUIDs only exist while Jellyfin is up:
 
-    themerr-register.py --dump-items      # Jellyfin running
-    docker stop jellyfin
-    themerr-register.py --apply           # Jellyfin stopped
-    docker start jellyfin
+    themerr-register.py --dump-items
+    themerr-register.py --apply --force
 """
 
 import argparse
@@ -156,7 +155,11 @@ def main():
     if args.dry_run:
         con = sqlite3.connect(f"file:{DB}?immutable=1", uri=True)
     else:
-        con = sqlite3.connect(DB)
+        con = sqlite3.connect(DB, timeout=60)
+        # Themerr opens a fresh DbContext per call rather than caching rows,
+        # so a concurrent write is a lock race and not a lost update. Wait
+        # the lock out instead of failing the whole run on one busy moment.
+        con.execute("PRAGMA busy_timeout = 60000")
     con.row_factory = sqlite3.Row
     existing = {r["ItemKey"]: dict(r) for r in con.execute("SELECT * FROM ThemerrMediaItems")}
 
