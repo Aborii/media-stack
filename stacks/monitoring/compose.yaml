@@ -209,14 +209,16 @@ services:
   # it would make them carry credentials. A proxy in front changes neither -
   # stop this container and the tiles are completely unaffected.
   #
-  # Published to 127.0.0.1 ONLY, never 0.0.0.0. The wifi here is an open network
-  # (see the glances notes above), and basic auth over plain http would put a
-  # barely-obscured password on it. Instead `tailscale serve` fronts this with
-  # real HTTPS on aboriis-pi.tail54d520.ts.net, so the only ways in are a
-  # tailnet device key AND the password.
+  # Published on ALL interfaces, so http://aboriis-pi:61210 works from the LAN
+  # and the Homepage tiles can link to it. This was a deliberate choice made
+  # knowing the trade-off: the wifi here is an open network (see the glances
+  # notes above), and the login form posts over plain http, so the password
+  # crosses the LAN unencrypted at sign-in. The gate itself still stands; it is
+  # only the transport that is open. `tailscale serve` still fronts the same
+  # container with real HTTPS on aboriis-pi.tail54d520.ts.net - prefer that
+  # URL when away.
   #
-  # If you ever DO want it on the LAN, change the binding below to
-  # "${WEBUI_PORT_GLANCESWEB}:80" - but read the paragraph above first.
+  # To pull it back off the LAN, prefix the binding below with 127.0.0.1: .
   glances-web:
     image: caddy:2-alpine
     container_name: glances-web
@@ -227,7 +229,39 @@ services:
       # without it Caddy warns about a non-persistent data directory on boot.
       - ${FOLDER_FOR_DATA:?err}/glances-web/data:/data
     ports:
-      - "127.0.0.1:${WEBUI_PORT_GLANCESWEB:?err}:80"
+      - "${WEBUI_PORT_GLANCESWEB:?err}:80"
+    networks:
+      - mediastack
+
+  # The login gate for glances-web. Read login.py for the full story; the
+  # short version: every ready-made gate (Tinyauth, Authelia...) scopes its
+  # session cookie to a DOMAIN and refuses a bare hostname outright - Tinyauth
+  # will not even start on http://aboriis-pi. This one sets a HOST-ONLY cookie,
+  # so ONE instance covers aboriis-pi, the raw IP and the tailscale name.
+  #
+  # Standard library only, mounted as a plain file - no image build, no pip,
+  # nothing to go stale. No published ports: only Caddy talks to it, by name.
+  #
+  # To change the password:  printf %s 'newpass' | docker exec -i glances-login
+  #   python /app/login.py hash     then put  aborii:<output>  in auth/users.
+  glances-login:
+    image: python:3.12-alpine
+    container_name: glances-login
+    restart: unless-stopped
+    command: ["python", "/app/login.py", "serve"]
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/glances-web/login.py:/app/login.py:ro
+      # users file + the signing secret (auto-created on first start). Losing
+      # this dir only logs everyone out and needs the users line recreated.
+      - ${FOLDER_FOR_DATA:?err}/glances-web/auth:/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - mediastack
 
