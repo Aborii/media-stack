@@ -60,7 +60,7 @@ docker compose down
 | | immich | 2283 | photos and video |
 | **Management** | homepage | 80 | dashboard, password protected |
 | | portainer | 9000 | container management |
-| | ~~tdarr~~ | 8265 | **parked** - a server with no node does nothing; `docker compose --profile parked up -d tdarr` |
+| | tdarr | 8265 | transcode queue; the encoding runs on the node on the Windows desktop |
 | **Monitoring** | uptime-kuma | 3001 | 15 service checks |
 | | scrutiny | 8081 | drive SMART health |
 | | dozzle | 8888 | live container logs |
@@ -133,7 +133,8 @@ is gone. That is correct, not a bug.
 
 **No hardware video encoder.** The Pi 5 decodes H.265 but cannot encode at all,
 so Jellyfin transcoding runs on CPU and is slow. Prefer direct play. This is also
-why Tdarr is not in the stack.
+why the Tdarr server here never encodes (`internalNode=false`): its node runs on
+the Windows desktop, which has an NVENC-capable GPU.
 
 **Immich machine learning runs on CPU.** Its accelerated images target Mali,
 NVIDIA, Intel and Rockchip; the Pi 5's VideoCore VII matches none of them.
