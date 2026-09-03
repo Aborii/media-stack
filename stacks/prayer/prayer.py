@@ -359,7 +359,7 @@ def fetch_iacad_month(year, month):
         iacad_status = f"HTTP {e.code}"
         log("iacad", f"{year:04d}-{month:02d}: {iacad_status}")
         return None
-    except (urllib.error.URLError, OSError) as e:
+    except OSError as e:                    # URLError and timeouts are OSErrors
         iacad_status = f"unreachable: {getattr(e, 'reason', e)}"
         log("iacad", f"{year:04d}-{month:02d}: {iacad_status}")
         return None
@@ -669,19 +669,29 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "prayer/1"
 
     def do_GET(self):
+        self.route(head=False)
+
+    # Homepage's siteMonitor probes with HEAD first and only falls back to GET
+    # when it has to. Without this, BaseHTTPRequestHandler answers HEAD with
+    # 501 and the tile's status dot goes red against a container that is
+    # serving perfectly.
+    def do_HEAD(self):
+        self.route(head=True)
+
+    def route(self, head):
         path = self.path.split("?", 1)[0]
         if path in ("/", "/api/status"):
-            self.reply(200, status())
+            self.reply(200, status(), head)
         elif path == "/api/coverage":
-            self.reply(200, coverage())
+            self.reply(200, coverage(), head)
         elif path == "/health":
             with LOCK:
                 have = today_entry is not None
-            self.reply(200, {"ok": True, "haveTimes": have})
+            self.reply(200, {"ok": True, "haveTimes": have}, head)
         else:
-            self.reply(404, {"ok": False, "error": "not found"})
+            self.reply(404, {"ok": False, "error": "not found"}, head)
 
-    def reply(self, code, obj):
+    def reply(self, code, obj, head=False):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -689,7 +699,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(body)
+        if not head:
+            self.wfile.write(body)
 
     # Homepage polls every few seconds; a line per poll would bury the lines
     # that matter. Fetches and failures log themselves above.
@@ -697,10 +708,29 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def probe_store():
+    """Refuse to start on a store that cannot be written.
+
+    Otherwise a bind mount with the wrong permissions is invisible: every
+    fetch succeeds, every save raises, the fetcher backs off ten minutes and
+    asks IACAD for the same month again, for ever, while the tile says "no
+    times yet" and the healthcheck says ok. A restart loop in `docker ps` is
+    the honest way to report it.
+    """
+    marker = os.path.join(DATA_DIR, ".write-test")
+    try:
+        with open(marker, "w") as f:
+            f.write("ok")
+        os.remove(marker)
+    except OSError as e:
+        sys.exit(f"[boot] cannot write to the store at {DATA_DIR}: {e}")
+
+
 def main():
     log("boot", f"prayer times for {IACAD_CITIES[CITY]} (city {CITY}), "
                 f"UTC{UTC_OFFSET:+g}, window {WINDOW_MONTHS} months + {KEEP_DAYS} days, "
                 f"store {DATA_DIR}")
+    probe_store()
     threading.Thread(target=fetcher, name="fetcher", daemon=True).start()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     httpd.daemon_threads = True
