@@ -221,7 +221,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=4')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=5')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
