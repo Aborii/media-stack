@@ -250,6 +250,54 @@ pages:
               <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
               </a>
 
+          # The desktop's power switch: an ESP32 on its front-panel header,
+          # reporting the PC's real state off the PWR_LED wire and able to
+          # press the button.
+          #
+          # Everything here goes through the pcswitch proxy on the Pi rather
+          # than the device: the device wants a token on every call, and a
+          # token in this page would be readable by anyone who opens the
+          # dashboard. The proxy holds it. See stacks/glance/pcswitch.py.
+          #
+          # Read server-side on a 10 s cache and marked data-live, so the
+          # state on screen is at most fifteen seconds old without touching
+          # anything. The buttons ask live.js to press and then poll the
+          # state until it settles, so a boot shows up in a few seconds
+          # rather than at the next cache expiry.
+          - type: custom-api
+            title: Desktop
+            title-url: http://aboriis-pi:9102/
+            cache: 10s
+            url: http://172.28.10.1:9102/
+            template: |
+              {{ $ok := .JSON.Bool "ok" }}{{ $p := .JSON.String "power" }}
+              <div data-live="pc">
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/desktop-tower.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between items-center text-center">
+                  <div>
+                    <div data-pc="power" class="size-h3 {{ if eq $p "on" }}color-positive{{ else if eq $p "sleep" }}color-highlight{{ else if eq $p "off" }}color-negative{{ else }}color-paragraph{{ end }}">
+                      {{ if $ok }}{{ if $p }}{{ $p }}{{ else }}unknown{{ end }}{{ else }}no switch{{ end }}
+                    </div>
+                    <div class="size-h6">POWER</div>
+                  </div>
+                  <div>
+                    <div class="size-h4">
+                      {{ if $ok }}
+                      <button data-pc="press" style="font:inherit;font-size:.8em;padding:3px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer" onclick="glanceLive.pcPress(this,'press')">{{ if eq $p "off" }}Power on{{ else if eq $p "on" }}Shut down{{ else if eq $p "sleep" }}Wake{{ else }}Press{{ end }}</button>
+                      <button data-pc="force" style="font:inherit;font-size:.8em;padding:3px 10px;margin-left:6px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.75" onclick="glanceLive.pcPress(this,'force-off')">Force off</button>
+                      {{ else }}
+                      <span class="color-paragraph size-h6">{{ .JSON.String "error" }}</span>
+                      {{ end }}
+                    </div>
+                    <div class="size-h6"><span data-pc="msg">tap boots or asks it to stop</span></div>
+                  </div>
+                  <div><div data-pc="rssi" class="color-highlight size-h4">{{ if $ok }}{{ .JSON.Int "rssi" }} dBm{{ else }}-{{ end }}</div><div class="size-h6">SWITCH WIFI</div></div>
+                </div>
+              </div>
+              <p class="size-h6 margin-top-10">{{ if $ok }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">UNREACHABLE</span>{{ end }} <span class="color-paragraph">&middot; via {{ .JSON.String "via" }}</span></p>
+              </div>
+
           # ── Libraries ──
           - type: split-column
             widgets:

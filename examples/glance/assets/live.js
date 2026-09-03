@@ -18,6 +18,7 @@
 const CONTENT = '/api/pages/home/content/';
 const EVERY   = 5000;
 const BACKUP  = 'http://aboriis-pi:9101/';   // the browser's route to it
+const PCSW    = 'http://aboriis-pi:9102/';   // the power switch proxy
 
 // Replaces every [data-live] element, and the server-stats widget, with the
 // freshly rendered copy. Skipped while the tab is hidden: a dashboard left
@@ -101,6 +102,64 @@ async function runBackup(btn) {
   }, 3000);
 }
 
+// The Desktop tile's buttons. Presses through the proxy - the token lives
+// there, not here - then watches the state until it settles.
+//
+// The watch is the point. The PC's own power LED takes about six seconds to
+// be classified (the switch counts edges to tell a sleep blink from a boot),
+// so pressing and then waiting for the tile's ordinary refresh would look
+// like nothing happened. This polls every 2 s for a minute and stops the
+// moment the state changes, which is the "detected refetch" a boot deserves.
+async function pcPress(btn, what) {
+  const tile = btn.closest('.widget') || document;
+  const set = (k, v) => tile.querySelectorAll(`[data-pc="${k}"]`).forEach((e) => { e.textContent = v; });
+  const buttons = [...tile.querySelectorAll('[data-pc="press"],[data-pc="force"]')];
+
+  if (what === 'force-off' &&
+      !confirm('Force off? This cuts power like holding the button in - unsaved work is lost.')) return;
+
+  buttons.forEach((b) => { b.disabled = true; });
+  set('msg', what === 'force-off' ? 'holding 6s…' : 'pressing…');
+
+  let before = null;
+  try {
+    before = (await (await fetch(PCSW, { cache: 'no-store' })).json()).power;
+  } catch { /* the press is worth trying anyway */ }
+
+  try {
+    const r = await fetch(PCSW + what, { method: 'POST' });
+    const j = await r.json();
+    if (!j.ok) { set('msg', j.error || 'the switch refused'); buttons.forEach((b) => { b.disabled = false; }); return; }
+  } catch {
+    set('msg', 'proxy unreachable');
+    buttons.forEach((b) => { b.disabled = false; });
+    return;
+  }
+  set('msg', 'sent, watching…');
+
+  const started = Date.now();
+  const poll = setInterval(async () => {
+    let d;
+    try {
+      d = await (await fetch(PCSW, { cache: 'no-store' })).json();
+    } catch {
+      return;
+    }
+    if (d.ok) {
+      set('power', d.power || 'unknown');
+      set('rssi', d.rssi + ' dBm');
+    }
+    const changed = d.ok && d.power && d.power !== before && d.power !== 'unknown';
+    if (changed || Date.now() - started > 60000) {
+      clearInterval(poll);
+      buttons.forEach((b) => { b.disabled = false; });
+      // The next 5 s swap redraws the whole tile from the server, which is
+      // what puts the right label back on the button.
+      set('msg', changed ? 'now ' + d.power : 'no change yet');
+    }
+  }, 2000);
+}
+
 if (!window.glanceLive) {
-  window.glanceLive = { refresh, runBackup, timer: setInterval(refresh, EVERY) };
+  window.glanceLive = { refresh, runBackup, pcPress, timer: setInterval(refresh, EVERY) };
 }

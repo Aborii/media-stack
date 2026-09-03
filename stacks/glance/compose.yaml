@@ -77,6 +77,52 @@ services:
     networks:
       - mediastack
 
+  # The dashboard's press button for the ESP32 power switch on the desktop.
+  #
+  # It exists to hold the switch's token: a button in the browser would have
+  # to carry that token in the page, where anyone opening the dashboard could
+  # read it, and the token is the only thing between the LAN and a PC that can
+  # be powered off. It also adds the CORS headers the ESP32 does not send.
+  #
+  # HOST NETWORKING, and no ports block, for one reason: the switch is
+  # addressed by NAME so a new DHCP lease cannot strand it, and only the Pi's
+  # own resolver can answer that name. `pcswitch.local` is mDNS, which
+  # Docker's embedded resolver does not do, and the router's DNS does not
+  # answer for the bare name either - both were tried from a container on the
+  # bridge and neither resolved. On the host's stack it resolves.
+  #
+  # That also means PCSWITCH_PROXY_PORT IS the published port, on every
+  # interface. It is reachable by anyone on the wifi, which is the same
+  # bargain the Backups tile's Run button already makes - do not port-forward
+  # it. Glance reaches it at the docker gateway, 172.28.10.1, the way the
+  # glances and backup tiles do.
+  pcswitch:
+    image: python:3.12-alpine
+    container_name: pcswitch
+    restart: unless-stopped
+    network_mode: host
+    command: ["python", "-u", "/app/pcswitch.py"]
+    volumes:
+      - ./pcswitch.py:/app/pcswitch.py:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # By name, not by address. Its shared token is copied out of the
+      # switch's gitignored config.h into the env file.
+      - PCSWITCH_URL=${PCSWITCH_URL:-http://pcswitch.local}
+      - PCSWITCH_TOKEN=${PCSWITCH_TOKEN:-}
+      - PCSWITCH_PROXY_PORT=${WEBUI_PORT_PCSWITCH:?err}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['PCSWITCH_PROXY_PORT']+'/',timeout=5)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
 networks:
   mediastack:
     name: mediastack
