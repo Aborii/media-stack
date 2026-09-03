@@ -95,23 +95,36 @@ services:
       - VPN_PORT_FORWARDING_STATUS_FILE=/gluetun/forwarded_port
 
       # --- dns ------------------------------------------------------------
-      # DoT (the default) CANNOT work behind Proton. Port 853 accepts the TCP
-      # connection and then resets the TLS handshake, so every lookup fails,
-      # gluetun own healthcheck fails on a DNS lookup, and it restarts the
-      # tunnel in a loop - which is what made this container look unreliable.
-      # Proton also blocks plain DNS to anything but its own resolver.
+      # This has flipped once already, so both observations are kept here.
       #
-      # DoH rides on 443 and is not interfered with. Verified by hand inside
-      # the namespace before changing this. Using Proton DNS (10.2.0.1) would
-      # also work but hands them every query, which the gluetun docs advise
-      # against.
-      - DNS_UPSTREAM_RESOLVER_TYPE=doh
-      # Failover, not a privacy change - both are DoH on 443, neither is
-      # Proton. A single Cloudflare hiccup was answering every dns-query POST
-      # with EOF, which fails the healthcheck and restarts the tunnel, so one
-      # provider having a bad minute was taking the whole VPN down with it.
-      # Quad9 is deliberately absent: HTTPS to 9.9.9.9 does not pass this
-      # tunnel at all, so listing it would just add a dead entry.
+      # Originally: DoT (the default) could NOT work behind Proton. Port 853
+      # accepted the TCP connection and then reset the TLS handshake, every
+      # lookup failed, and the (older) gluetun healthcheck, which did a DNS
+      # lookup, restarted the tunnel in a loop. DoH on 443 was the fix.
+      #
+      # 2026-09-03: the reverse. DoH to 1.1.1.1:443 and 8.8.8.8:443 through
+      # the Spain exits times out or gets reset for most queries - hundreds
+      # of "exchanging over https connection ... context deadline exceeded"
+      # warnings per hour, and the public IP lookup right after a reconnect
+      # loses its race with DNS often enough that the Homepage tile goes red.
+      # A ten-minute A/B on the same box, same key, same country: DoT on
+      # node-es-17 logged 0 upstream failures, DoH on node-es-14 logged 666,
+      # the live DoH tunnel logged 892. So the transport is the variable.
+      #
+      # REVERT: set this back to `doh` and run `docker compose up -d` in this
+      # directory. Nothing else changed. If port 853 starts resetting again,
+      # the symptom is every lookup failing at once, not a slow trickle.
+      #
+      # Proton still blocks plain DNS to anything but its own resolver, and
+      # using that (10.2.0.1) hands them every query, which the gluetun docs
+      # advise against.
+      - DNS_UPSTREAM_RESOLVER_TYPE=dot
+      # Failover, not a privacy change - both are the same providers on 853,
+      # neither is Proton. Under DoH a single Cloudflare hiccup was answering
+      # every dns-query POST with EOF, which failed the healthcheck and
+      # restarted the tunnel, so one provider having a bad minute was taking
+      # the whole VPN down with it. Quad9 is deliberately absent: it did not
+      # pass this tunnel at all on 443, and has not been retested on 853.
       - DNS_UPSTREAM_RESOLVERS=cloudflare,google
 
       # --- health ----------------------------------------------------------
