@@ -49,6 +49,9 @@
 
 server:
   port: 8080
+  # assets/live.js, beside this file: the script that keeps the marked tiles
+  # updating - see the "Live updates" note below.
+  assets-path: /app/config/assets
 
 # Sign-in. Glance has it built in; it is off here only because the two
 # values it needs do not exist yet. To turn it on, run on the Pi:
@@ -111,7 +114,7 @@ pages:
           - type: custom-api
             title: Internet load
             title-url: http://aboriis-pi:61210
-            cache: 15s
+            cache: 5s
             url: http://172.28.10.1:61208/api/4/network
             template: |
               {{ $down := 0.0 }}{{ $up := 0.0 }}{{ $names := "" }}
@@ -120,7 +123,7 @@ pages:
                 {{ $up = add $up (.Float "bytes_sent_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "interface_name") }}
               {{ end }}
-              <a href="http://aboriis-pi:61210" class="block" style="color:inherit;text-decoration:none">
+              <a data-live="net" href="http://aboriis-pi:61210" class="block" style="color:inherit;text-decoration:none">
               <div class="flex items-center gap-10">
                 <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/wifi.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
                 <div class="grow flex justify-between text-center">
@@ -138,7 +141,7 @@ pages:
           - type: custom-api
             title: Disk I/O
             title-url: http://aboriis-pi:61210
-            cache: 15s
+            cache: 5s
             url: http://172.28.10.1:61208/api/4/diskio
             template: |
               {{ $r := 0.0 }}{{ $w := 0.0 }}{{ $names := "" }}
@@ -147,7 +150,7 @@ pages:
                 {{ $w = add $w (.Float "write_bytes_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "disk_name") }}
               {{ end }}
-              <a href="http://aboriis-pi:61210" class="block" style="color:inherit;text-decoration:none">
+              <a data-live="disk" href="http://aboriis-pi:61210" class="block" style="color:inherit;text-decoration:none">
               <div class="flex items-center gap-10">
                 <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/harddisk.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
                 <div class="grow flex justify-between text-center">
@@ -166,10 +169,10 @@ pages:
           # mostly page cache, as that file explains.
           - type: custom-api
             title: Top 10 by CPU
-            cache: 30s
+            cache: 10s
             url: http://172.28.10.1:61209/api/4/processlist
             template: |
-              <ul class="list list-gap-4">
+              <ul data-live="cpu" class="list list-gap-4">
               {{ range $i, $p := .JSON.Array "" }}{{ if lt $i 10 }}
                 <li class="flex justify-between items-center">
                   <span class="text-truncate">{{ $p.String "name" }}</span>
@@ -179,10 +182,10 @@ pages:
               </ul>
           - type: custom-api
             title: Top 10 by memory
-            cache: 30s
+            cache: 10s
             url: http://172.28.10.1:61208/api/4/processlist
             template: |
-              <ul class="list list-gap-4">
+              <ul data-live="mem" class="list list-gap-4">
               {{ range $i, $p := .JSON.Array "" }}{{ if lt $i 10 }}
                 <li class="flex justify-between items-center">
                   <span class="text-truncate">{{ $p.String "name" }}</span>
@@ -200,14 +203,22 @@ pages:
           # left, Fajr on the right, as Arabic reads. All of it from one JSON
           # reply; nothing is recomputed here. Its check is the service's own
           # /health.
+          #
+          # Live updates. Glance renders on page load and then stops; the
+          # hidden image below loads assets/live.js (a dynamic import from an
+          # onload attribute, the one kind of script that survives innerHTML),
+          # which every 5 s re-fetches the rendered page and swaps in every
+          # element marked data-live. The cache here is what governs how often
+          # the server re-reads the prayer service: 5 s, it is local and cheap.
           - type: custom-api
             title: Prayer times
             title-url: http://aboriis-pi:3003/
-            cache: 30s
+            cache: 5s
             url: http://prayer:8000/api/status
             template: |
               {{ $t0 := now }}{{ $h := newRequest "http://prayer:8000/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-              <a href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js')">
+              <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
               {{ else }}
@@ -561,30 +572,31 @@ pages:
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
                     <div class="grow flex justify-between text-center">
-                      <div><div class="color-highlight size-h4">{{ .JSON.String "state" }}</div><div class="size-h6">STATE</div></div>
-                      <div><div class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
+                      <div><div data-backup="state" class="color-highlight size-h4">{{ .JSON.String "state" }}</div><div class="size-h6">STATE</div></div>
+                      <div><div data-backup="onpc" class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
                     </div>
                   </div>
                   {{ $bm := ((now).Sub (parseTime "rfc3339" (printf "%s+04:00" (.JSON.String "last_backup")))).Minutes | toInt }}
                   {{ $dm := ((now).Sub (parseTime "rfc3339" (.JSON.String "last_sent"))).Minutes | toInt }}
                   <ul class="list margin-top-10 size-h6 color-paragraph">
-                    <li>built {{ if lt $bm 1 }}just now{{ else if lt $bm 60 }}{{ $bm }} minute{{ if ne $bm 1 }}s{{ end }} ago{{ else if lt $bm 1440 }}{{ $x := div ($bm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($bm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</li>
-                    <li>delivered {{ if lt $dm 1 }}just now{{ else if lt $dm 60 }}{{ $dm }} minute{{ if ne $dm 1 }}s{{ end }} ago{{ else if lt $dm 1440 }}{{ $x := div ($dm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($dm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</li>
+                    <li>built <span data-backup="built">{{ if lt $bm 1 }}just now{{ else if lt $bm 60 }}{{ $bm }} minute{{ if ne $bm 1 }}s{{ end }} ago{{ else if lt $bm 1440 }}{{ $x := div ($bm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($bm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</span></li>
+                    <li>delivered <span data-backup="delivered">{{ if lt $dm 1 }}just now{{ else if lt $dm 60 }}{{ $dm }} minute{{ if ne $dm 1 }}s{{ end }} ago{{ else if lt $dm 1440 }}{{ $x := div ($dm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($dm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</span></li>
                   </ul>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
                   <!-- The same button the backup page has, posting to the same
                        /run. Outside the <a>, since a button inside a link is
-                       not a thing. An inline handler rather than a <script>:
-                       Glance inserts widget HTML with innerHTML, which never
-                       runs script tags but does keep on* attributes. The
-                       service answers in words (started, already running, the
-                       cooldown), shown here once it sends a CORS header; until
-                       then the POST still lands and the button says so. -->
+                       not a thing. The handler lives in assets/live.js: it
+                       shows the service's reply (started, already running,
+                       the cooldown) and then follows the run, polling the
+                       status JSON into the data-backup fields above until the
+                       backup has finished. This tile is deliberately NOT
+                       data-live - the 5 s swap would wipe that in-progress
+                       state, and its own cache is 5 min. -->
                   {{ if .JSON.Bool "backing_up" }}
                   <button disabled style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;opacity:.5">Backup running&hellip;</button>
                   {{ else }}
-                  <button style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;cursor:pointer" onclick="this.disabled=true;this.textContent='Starting…';fetch('http://aboriis-pi:9101/run',{method:'POST'}).then(r=>r.text()).then(t=>{this.textContent=t.trim()}).catch(()=>{this.textContent='Requested - open Backups to confirm'})">Run backup now</button>
+                  <button style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;cursor:pointer" onclick="glanceLive.runBackup(this)">Run backup now</button>
                   {{ end }}
 
           # The Homepage groups, link for link.
