@@ -120,6 +120,13 @@ services:
       - NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000
       # A read-only view has nothing to delete.
       - WUD_SERVER_FEATURE_DELETE=false
+      # Login. Without it the page is open to the whole wifi, which is an
+      # open network we do not control - the same call made for Homepage.
+      # The hash is htpasswd-style (openssl passwd -apr1) and lives in
+      # docker-compose.env single-quoted, because it is full of $ signs.
+      # The Homepage tile carries the same username and password.
+      - WUD_AUTH_BASIC_ABORII_USER=${WUD_AUTH_USER:?err}
+      - WUD_AUTH_BASIC_ABORII_HASH=${WUD_AUTH_HASH:?err}
       # Through the socket proxy, like Dozzle - never the raw socket. The
       # proxy allows exactly what a watcher needs: containers, images, events.
       - WUD_WATCHER_LOCAL_HOST=dockerproxy

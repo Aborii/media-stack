@@ -287,8 +287,10 @@
           type: whatsupdocker
           # Container name: Homepage fetches /api/containers server-side.
           url: http://wud:3000
-          # No username/password: the UI has no login, same as Dozzle. To add
-          # one, set WUD_AUTH_BASIC_* on the container and both keys here.
+          # The basic-auth login from WUD_AUTH_BASIC_* on the container. With
+          # auth on, every wud route needs it, this widget included.
+          username: aborii
+          password: PASTE_WUD_PASSWORD
 
 - Libraries:
     - Jellyfin:
