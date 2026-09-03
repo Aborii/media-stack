@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# glance — a second dashboard, running beside Homepage on its own port, so the
+# two can be compared live before either replaces the other.
+#
+# Why try it: Homepage is groups of equal tiles in rows, and the only way past
+# that is custom.css. Glance is a single Go binary with a YAML config whose
+# custom-api widget renders a template you write, server-side, as real HTML -
+# so a tile can look exactly the way you want with no iframe and no CSS hacks.
+# It idles in a few tens of MB.
+#
+# The config is ONE file, glance.yml, at ${FOLDER_FOR_DATA}/glance. The
+# reference copy lives in examples/glance/ in this repo and mirrors the
+# Homepage dashboard: the same groups, links, status checks and the prayer
+# tile. Glance reloads the file on change, so editing it is the whole deploy.
+# ─────────────────────────────────────────────────────────────────────────────
+name: glance
+
+services:
+  glance:
+    # Docker Hub, not ghcr.io: ghcr.io/glanceapp/glance answers "denied" to an
+    # anonymous pull (tried from the PC and the Pi on 2026-09-03), so this is
+    # the one published image. wud watches Docker Hub anonymously too, within
+    # its rate limit.
+    image: glanceapp/glance:latest
+    container_name: glance
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/glance:/app/config
+      # Read-only, purely so the server-stats widget reports the data disk
+      # and the SD card rather than the container's own filesystem - the same
+      # two mounts Homepage's resources widget uses, for the same reason.
+      # /var/lib/homepage-diskstat is an EMPTY directory on the root partition:
+      # statfs reports the filesystem containing a path, so this surfaces the
+      # SD card without exposing anything on it.
+      - /srv/storage:/srv/storage:ro
+      - /var/lib/homepage-diskstat:/hostroot:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # The docker-containers widget reads the daemon through dockerproxy
+      # (read-only: list and inspect, no exec, POST refused) rather than the
+      # raw socket, the same way Homepage does. glance.yml points sock-path at
+      # it; this is here only so the config can say ${DOCKER_HOST_PROXY}.
+      - DOCKER_HOST_PROXY=tcp://dockerproxy:2375
+    ports:
+      - "${WEBUI_PORT_GLANCE:?err}:8080"
+    healthcheck:
+      # Glance ships no curl or wget; its own binary has a health check.
+      test: ["CMD", "/app/glance", "--config", "/app/config/glance.yml", "config:validate"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true
