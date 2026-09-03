@@ -3,7 +3,9 @@
 #
 # Do not write a dollar-brace variable anywhere in this file that is not
 # meant to be one, comments included: Glance substitutes them all before
-# parsing and refuses to start on one it cannot find.
+# parsing and refuses to start on one it cannot find. A backslash in front
+# of the dollar keeps one literal, which is how the commented blocks below
+# survive.
 #
 # Mirrors the Homepage dashboard: the same groups, the same links, the same
 # status checks, the same tiles - so the two can be compared on equal terms.
@@ -22,6 +24,10 @@
 # API keys come from the env file, passed through by compose.yaml. They are
 # the same keys the Homepage config carries.
 #
+# Icons: a custom-api widget has no icon field, so each template puts the
+# app's icon in its own body, from the same icon set Glance's di: and mdi:
+# prefixes resolve to. Material icons are black line art, hence the filter.
+#
 # Layout: a page is columns, each `small` or `full`, with widgets stacked in
 # each; split-column puts two side by side. A widget is as tall as it needs
 # to be - there are no rows of equal tiles.
@@ -32,6 +38,27 @@
 
 server:
   port: 8080
+
+# Sign-in. Glance has it built in; it is off here only because the two
+# values it needs do not exist yet. To turn it on, run on the Pi:
+#
+#   docker run --rm glanceapp/glance secret:make
+#   docker run --rm glanceapp/glance password:hash 'the password'
+#
+# put the results in the env file - the hash in SINGLE quotes, it is full
+# of dollar signs -
+#
+#   GLANCE_SECRET_KEY=...
+#   GLANCE_PASSWORD_HASH='$2a$10$...'
+#
+# then uncomment this block and drop the two backslashes. compose.yaml
+# already passes both variables through.
+#
+# auth:
+#   secret-key: \${GLANCE_SECRET_KEY}
+#   users:
+#     aborii:
+#       password-hash: \${GLANCE_PASSWORD_HASH}
 
 theme:
   # Dark slate, near Homepage's, with the prayer clock's green as the accent.
@@ -82,9 +109,12 @@ pages:
                 {{ $up = add $up (.Float "bytes_sent_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "interface_name") }}
               {{ end }}
-              <div class="flex justify-between text-center">
-                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $down 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
-                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $up 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/wifi.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between text-center">
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $down 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $up 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
+                </div>
               </div>
               <p class="size-h6 color-paragraph margin-top-10 text-center">{{ $names }}, as of the last page load</p>
 
@@ -104,40 +134,52 @@ pages:
                 {{ $w = add $w (.Float "write_bytes_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "disk_name") }}
               {{ end }}
-              <div class="flex justify-between text-center">
-                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $r 1048576) }}</div><div class="size-h6">MB/S READ</div></div>
-                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $w 1048576) }}</div><div class="size-h6">MB/S WRITE</div></div>
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/harddisk.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between text-center">
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $r 1048576) }}</div><div class="size-h6">MB/S READ</div></div>
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $w 1048576) }}</div><div class="size-h6">MB/S WRITE</div></div>
+                </div>
               </div>
               <p class="size-h6 color-paragraph margin-top-10 text-center">{{ $names }}</p>
 
-          # Homepage's two process tiles. Two glances instances, because the
-          # sort order is a launch flag of the instance serving it - see
-          # stacks/monitoring/compose.yaml. Read the memory figure knowing
-          # qBittorrent's RSS is mostly page cache, as that file explains.
+          # Homepage's two process tiles, ten rows each. Glances ignores a
+          # limit in the query string and hands over every process, so the
+          # cut is made here. Two instances, because the sort order is a
+          # launch flag of the instance serving it - see stacks/monitoring/
+          # compose.yaml. Read the memory figure knowing qBittorrent's RSS is
+          # mostly page cache, as that file explains.
           - type: custom-api
-            title: Processes by memory
+            title: Top 10 by CPU
             cache: 30s
-            url: http://172.28.10.1:61208/api/4/processlist?limit=5
+            url: http://172.28.10.1:61209/api/4/processlist
             template: |
               <ul class="list list-gap-4">
-              {{ range .JSON.Array "" }}
-                <li class="flex justify-between"><span class="text-truncate">{{ .String "name" }}</span><span class="color-highlight">{{ printf "%.1f" (.Float "memory_percent") }}%</span></li>
-              {{ end }}
+              {{ range $i, $p := .JSON.Array "" }}{{ if lt $i 10 }}
+                <li class="flex justify-between items-center">
+                  <span class="text-truncate">{{ $p.String "name" }}</span>
+                  <span class="flex gap-10" style="flex:none"><span><span class="color-highlight">{{ printf "%.1f" ($p.Float "cpu_percent") }}%</span> <span class="size-h6 color-paragraph">CPU</span></span><span><span class="color-paragraph">{{ printf "%.1f" ($p.Float "memory_percent") }}%</span> <span class="size-h6 color-paragraph">MEM</span></span></span>
+                </li>
+              {{ end }}{{ end }}
               </ul>
           - type: custom-api
-            title: Processes by CPU
+            title: Top 10 by memory
             cache: 30s
-            url: http://172.28.10.1:61209/api/4/processlist?limit=5
+            url: http://172.28.10.1:61208/api/4/processlist
             template: |
               <ul class="list list-gap-4">
-              {{ range .JSON.Array "" }}
-                <li class="flex justify-between"><span class="text-truncate">{{ .String "name" }}</span><span class="color-highlight">{{ printf "%.1f" (.Float "cpu_percent") }}%</span></li>
-              {{ end }}
+              {{ range $i, $p := .JSON.Array "" }}{{ if lt $i 10 }}
+                <li class="flex justify-between items-center">
+                  <span class="text-truncate">{{ $p.String "name" }}</span>
+                  <span class="flex gap-10" style="flex:none"><span><span class="color-highlight">{{ printf "%.1f" ($p.Float "memory_percent") }}%</span> <span class="size-h6 color-paragraph">MEM</span></span><span><span class="color-paragraph">{{ printf "%.1f" ($p.Float "cpu_percent") }}%</span> <span class="size-h6 color-paragraph">CPU</span></span></span>
+                </li>
+              {{ end }}{{ end }}
               </ul>
 
           # Container state, read through dockerproxy rather than the socket.
           # Names, links and icons are set here rather than as labels on every
           # compose file, so this dashboard can be removed without a trace.
+          # Four icons are full URLs because the set has them only as PNG.
           - type: docker-containers
             sock-path: ${DOCKER_HOST_PROXY}
             format-container-names: true
@@ -157,15 +199,15 @@ pages:
               portainer:        { name: Portainer,   icon: di:portainer,  url: http://aboriis-pi:9000, hide: false }
               registry:         { name: Registry,    icon: di:docker,     url: http://aboriis-pi:5002, hide: false }
               postgres17:       { name: PostgreSQL,  icon: di:postgres,   hide: false }
-              sftpgo:           { name: SFTPGo,      icon: di:sftpgo,     url: http://aboriis-pi:8080, hide: false }
-              speedtest-tracker: { name: Speedtest,  icon: di:speedtest-tracker, url: http://aboriis-pi:3030, hide: false }
+              sftpgo:           { name: SFTPGo,      icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png, url: http://aboriis-pi:8080, hide: false }
+              speedtest-tracker: { name: Speedtest,  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png, url: http://aboriis-pi:3030, hide: false }
               uptime-kuma:      { name: Uptime Kuma, icon: di:uptime-kuma, url: http://aboriis-pi:3001, hide: false }
               scrutiny:         { name: Scrutiny,    icon: di:scrutiny,   url: http://aboriis-pi:8081, hide: false }
               dozzle:           { name: Dozzle,      icon: di:dozzle,     url: http://aboriis-pi:8888, hide: false }
               wud:              { name: What's Up Docker, icon: di:whats-up-docker, url: http://aboriis-pi:3002, hide: false }
-              tdarr:            { name: Tdarr,       icon: di:tdarr,      url: http://aboriis-pi:8265, hide: false }
+              tdarr:            { name: Tdarr,       icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tdarr.png, url: http://aboriis-pi:8265, hide: false }
               prayer:           { name: Prayer times, icon: mdi:mosque,   url: http://aboriis-pi:3003/, hide: false }
-              homepage:         { name: Homepage,    icon: di:homepage,   url: http://aboriis-pi/, hide: false }
+              homepage:         { name: Homepage,    icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/homepage.png, url: http://aboriis-pi/, hide: false }
               glance:           { name: Glance,      icon: di:glance,     hide: false }
 
       # ── middle: the apps ──────────────────────────────────────────────────
@@ -187,7 +229,10 @@ pages:
               {{ else }}
               <div dir="rtl">
                 <div class="flex justify-between items-center">
-                  <div class="size-h1 color-primary">{{ .JSON.String "nextArabic" }}</div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/mosque.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
+                    <div class="size-h1 color-primary">{{ .JSON.String "nextArabic" }}</div>
+                  </div>
                   <div dir="ltr" class="flex items-center gap-10">
                     <span class="size-h2">{{ .JSON.String "nextTime" }}</span>
                     <span class="size-h4 color-primary">({{ .JSON.String "nextIn" }})</span>
@@ -220,10 +265,13 @@ pages:
                 headers:
                   X-Emby-Token: ${JELLYFIN_API_KEY}
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "MovieCount" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "SeriesCount" | formatNumber }}</div><div class="size-h6">SERIES</div></div>
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "EpisodeCount" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "MovieCount" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "SeriesCount" | formatNumber }}</div><div class="size-h6">SERIES</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "EpisodeCount" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                    </div>
                   </div>
               # Homepage's Immich tile. The key needs only server.statistics.
               - type: custom-api
@@ -235,10 +283,13 @@ pages:
                   x-api-key: ${IMMICH_API_KEY}
                   Accept: application/json
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "photos" | formatNumber }}</div><div class="size-h6">PHOTOS</div></div>
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "videos" | formatNumber }}</div><div class="size-h6">VIDEOS</div></div>
-                    <div><div class="color-highlight size-h3">{{ div (.JSON.Int "usage" | toFloat) 1073741824 | toInt }} GB</div><div class="size-h6">USAGE</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/immich.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "photos" | formatNumber }}</div><div class="size-h6">PHOTOS</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "videos" | formatNumber }}</div><div class="size-h6">VIDEOS</div></div>
+                      <div><div class="color-highlight size-h3">{{ div (.JSON.Int "usage" | toFloat) 1073741824 | toInt }} GB</div><div class="size-h6">USAGE</div></div>
+                    </div>
                   </div>
 
           # ── Automation ──
@@ -246,7 +297,7 @@ pages:
             widgets:
               # Homepage's Sonarr tile: wanted, queued, series. Three requests,
               # as Homepage makes; the series list is fetched only for its
-              # length, so it is cached longest.
+              # length.
               - type: custom-api
                 title: Sonarr
                 title-url: http://aboriis-pi:8989
@@ -264,10 +315,13 @@ pages:
                     headers:
                       X-Api-Key: ${SONARR_API_KEY}
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
-                    <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
-                    <div><div class="color-highlight size-h3">{{ len ((.Subrequest "series").JSON.Array "") }}</div><div class="size-h6">SERIES</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/sonarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
+                      <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
+                      <div><div class="color-highlight size-h3">{{ len ((.Subrequest "series").JSON.Array "") }}</div><div class="size-h6">SERIES</div></div>
+                    </div>
                   </div>
               - type: custom-api
                 title: Radarr
@@ -286,10 +340,13 @@ pages:
                     headers:
                       X-Api-Key: ${RADARR_API_KEY}
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
-                    <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
-                    <div><div class="color-highlight size-h3">{{ len ((.Subrequest "movies").JSON.Array "") | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/radarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
+                      <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
+                      <div><div class="color-highlight size-h3">{{ len ((.Subrequest "movies").JSON.Array "") | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                    </div>
                   </div>
 
           - type: split-column
@@ -303,10 +360,13 @@ pages:
                 headers:
                   X-Api-Key: ${SEERR_API_KEY}
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "pending" }}</div><div class="size-h6">PENDING</div></div>
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "approved" }}</div><div class="size-h6">APPROVED</div></div>
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "available" }}</div><div class="size-h6">AVAILABLE</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/seerr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "pending" }}</div><div class="size-h6">PENDING</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "approved" }}</div><div class="size-h6">APPROVED</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "available" }}</div><div class="size-h6">AVAILABLE</div></div>
+                    </div>
                   </div>
               # Homepage's Bazarr tile: what is missing subtitles.
               - type: custom-api
@@ -322,9 +382,12 @@ pages:
                     headers:
                       X-API-KEY: ${BAZARR_API_KEY}
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ .JSON.Int "total" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
-                    <div><div class="color-highlight size-h3">{{ (.Subrequest "movies").JSON.Int "total" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/bazarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "total" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                      <div><div class="color-highlight size-h3">{{ (.Subrequest "movies").JSON.Int "total" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                    </div>
                   </div>
                   <p class="size-h6 color-paragraph margin-top-10 text-center">missing subtitles</p>
 
@@ -352,11 +415,14 @@ pages:
                     {{ $queries = add $queries (.Int "numberOfQueries") }}
                     {{ $fails = add $fails (.Int "numberOfFailedQueries") }}
                   {{ end }}
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ len ((.Subrequest "indexers").JSON.Array "#(enable==true)#") }}</div><div class="size-h6">INDEXERS</div></div>
-                    <div><div class="color-highlight size-h3">{{ $grabs | formatNumber }}</div><div class="size-h6">GRABS</div></div>
-                    <div><div class="color-highlight size-h3">{{ $queries | formatNumber }}</div><div class="size-h6">QUERIES</div></div>
-                    <div><div class="{{ if gt $fails 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ $fails | formatNumber }}</div><div class="size-h6">FAILED</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/prowlarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ len ((.Subrequest "indexers").JSON.Array "#(enable==true)#") }}</div><div class="size-h6">INDEXERS</div></div>
+                      <div><div class="color-highlight size-h3">{{ $grabs | formatNumber }}</div><div class="size-h6">GRABS</div></div>
+                      <div><div class="color-highlight size-h3">{{ $queries | formatNumber }}</div><div class="size-h6">QUERIES</div></div>
+                      <div><div class="{{ if gt $fails 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ $fails | formatNumber }}</div><div class="size-h6">FAILED</div></div>
+                    </div>
                   </div>
               # Homepage's Gluetun tile: where the tunnel comes out, and the
               # forwarded port. /v1/portforward directly, as Homepage's
@@ -373,10 +439,13 @@ pages:
                     headers:
                       X-API-Key: ${GLUETUN_API_KEY}
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h4">{{ .JSON.String "public_ip" }}</div><div class="size-h6">PUBLIC IP</div></div>
-                    <div><div class="color-highlight size-h4">{{ .JSON.String "city" }}, {{ .JSON.String "country" }}</div><div class="size-h6">EXIT</div></div>
-                    <div><div class="color-highlight size-h4">{{ (.Subrequest "port").JSON.Int "port" }}</div><div class="size-h6">PORT</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gluetun.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h4">{{ .JSON.String "public_ip" }}</div><div class="size-h6">PUBLIC IP</div></div>
+                      <div><div class="color-highlight size-h4">{{ .JSON.String "city" }}, {{ .JSON.String "country" }}</div><div class="size-h6">EXIT</div></div>
+                      <div><div class="color-highlight size-h4">{{ (.Subrequest "port").JSON.Int "port" }}</div><div class="size-h6">PORT</div></div>
+                    </div>
                   </div>
 
           # ── System and Monitoring ──
@@ -394,10 +463,13 @@ pages:
                   X-API-Key: ${PORTAINER_TOKEN}
                 template: |
                   {{ $all := len (.JSON.Array "") }}{{ $running := len (.JSON.Array "#(State==running)#") }}
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ $running }}</div><div class="size-h6">RUNNING</div></div>
-                    <div><div class="{{ if gt (sub $all $running) 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ sub $all $running }}</div><div class="size-h6">STOPPED</div></div>
-                    <div><div class="color-highlight size-h3">{{ $all }}</div><div class="size-h6">TOTAL</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/portainer.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ $running }}</div><div class="size-h6">RUNNING</div></div>
+                      <div><div class="{{ if gt (sub $all $running) 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ sub $all $running }}</div><div class="size-h6">STOPPED</div></div>
+                      <div><div class="color-highlight size-h3">{{ $all }}</div><div class="size-h6">TOTAL</div></div>
+                    </div>
                   </div>
               # Homepage's Speedtest tile: the real line speed, measured every
               # six hours - NOT through the VPN. Bearer token, API v1.
@@ -410,10 +482,13 @@ pages:
                   Authorization: Bearer ${SPEEDTEST_API_KEY}
                   Accept: application/json
                 template: |
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.download_bits") 1000000) }}</div><div class="size-h6">MBPS DOWN</div></div>
-                    <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.upload_bits") 1000000) }}</div><div class="size-h6">MBPS UP</div></div>
-                    <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.download_bits") 1000000) }}</div><div class="size-h6">MBPS DOWN</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.upload_bits") 1000000) }}</div><div class="size-h6">MBPS UP</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
+                    </div>
                   </div>
                   <p class="size-h6 color-paragraph margin-top-10 text-center">measured {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}</p>
 
@@ -429,9 +504,12 @@ pages:
                 template: |
                   {{ $n := 0 }}{{ range .JSON.Array "publicGroupList" }}{{ $n = add $n (len (.Array "monitorList")) }}{{ end }}
                   {{ $inc := len (.JSON.Array "incidents") }}
-                  <div class="flex justify-between text-center">
-                    <div><div class="color-highlight size-h3">{{ $n }}</div><div class="size-h6">MONITORS</div></div>
-                    <div><div class="{{ if gt $inc 0 }}color-negative{{ else }}color-positive{{ end }} size-h3">{{ $inc }}</div><div class="size-h6">INCIDENTS</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/uptime-kuma.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ $n }}</div><div class="size-h6">MONITORS</div></div>
+                      <div><div class="{{ if gt $inc 0 }}color-negative{{ else }}color-positive{{ end }} size-h3">{{ $inc }}</div><div class="size-h6">INCIDENTS</div></div>
+                    </div>
                   </div>
               # Homepage's Scrutiny tile - and the temperature it could not
               # show: this disk hit 68C in its old enclosure and took the
@@ -445,9 +523,12 @@ pages:
                 url: http://scrutiny:8080/api/summary
                 template: |
                   {{ $t := .JSON.Int "data.summary.0x50014ee216baa995.smart.temp" }}
-                  <div class="flex justify-between text-center">
-                    <div><div class="{{ if ge $t 55 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ if $t }}{{ $t }}°C{{ else }}-{{ end }}</div><div class="size-h6">SDA TEMP</div></div>
-                    <div><div class="color-highlight size-h4">{{ .JSON.String "data.summary.0x50014ee216baa995.device.model_name" }}</div><div class="size-h6">{{ div (.JSON.Int "data.summary.0x50014ee216baa995.device.capacity" | toFloat) 1000000000000 | toInt }} TB</div></div>
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/scrutiny.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="{{ if ge $t 55 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ if $t }}{{ $t }}°C{{ else }}-{{ end }}</div><div class="size-h6">DISK TEMP</div></div>
+                      <div><div class="color-highlight size-h4">{{ .JSON.String "data.summary.0x50014ee216baa995.device.model_name" }}</div><div class="size-h6">{{ div (.JSON.Int "data.summary.0x50014ee216baa995.device.capacity" | toFloat) 1000000000000 | toInt }} TB</div></div>
+                    </div>
                   </div>
 
           # The Homepage groups, link for link. The monitor widget on the
@@ -505,8 +586,8 @@ pages:
               - { title: qBittorrent, url: http://aboriis-pi:8200, check-url: http://gluetun:8200/,                   icon: di:qbittorrent }
               - { title: Portainer,   url: http://aboriis-pi:9000, check-url: http://portainer:9000/api/system/status, icon: di:portainer }
               - { title: Registry,    url: http://aboriis-pi:5002, check-url: http://registry:5000/v2/,               icon: di:docker }
-              - { title: SFTPGo,      url: http://aboriis-pi:8080, check-url: http://sftpgo:8080/healthz,             icon: di:sftpgo }
-              - { title: Speedtest,   url: http://aboriis-pi:3030, check-url: http://speedtest-tracker:80/api/healthcheck, icon: di:speedtest-tracker }
+              - { title: SFTPGo,      url: http://aboriis-pi:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
+              - { title: Speedtest,   url: http://aboriis-pi:3030, check-url: http://speedtest-tracker:80/api/healthcheck, icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png }
               - { title: Uptime Kuma, url: http://aboriis-pi:3001, check-url: http://uptime-kuma:3001/,               icon: di:uptime-kuma }
               - { title: Scrutiny,    url: http://aboriis-pi:8081, check-url: http://scrutiny:8080/,                  icon: di:scrutiny }
               - { title: Dozzle,      url: http://aboriis-pi:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
@@ -522,9 +603,12 @@ pages:
             cache: 5m
             url: http://172.28.10.1:9101/
             template: |
-              <div class="flex justify-between text-center">
-                <div><div class="color-highlight size-h4">{{ .JSON.String "state" }}</div><div class="size-h6">STATE</div></div>
-                <div><div class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between text-center">
+                  <div><div class="color-highlight size-h4">{{ .JSON.String "state" }}</div><div class="size-h6">STATE</div></div>
+                  <div><div class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
+                </div>
               </div>
               <ul class="list margin-top-10 size-h6 color-paragraph">
                 <li>built {{ .JSON.String "last_backup" }}</li>
@@ -540,9 +624,12 @@ pages:
             cache: 10m
             url: http://registry:5000/v2/_catalog
             template: |
-              <div class="text-center">
-                <div class="color-highlight size-h3">{{ .JSON.Array "repositories" | len }}</div>
-                <div class="size-h6">REPOSITORIES</div>
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg" alt="" style="width:30px;height:30px;flex:none">
+                <div class="grow text-center">
+                  <div class="color-highlight size-h3">{{ .JSON.Array "repositories" | len }}</div>
+                  <div class="size-h6">REPOSITORIES</div>
+                </div>
               </div>
 
           # Homepage's What's Up Docker tile: containers with an update
@@ -551,8 +638,7 @@ pages:
           # is stored, so there is nothing here to send. To turn it on, put
           #   WUD_BASIC=<base64 of user:password>
           # in the env file, pass it through in compose.yaml, uncomment, and
-          # drop the backslash below - it is there because Glance substitutes
-          # variables even inside comments and fails on one it cannot find.
+          # drop the backslash below.
           #
           # - type: custom-api
           #   title: Image updates
