@@ -20,6 +20,57 @@
 #
 # widget.url below is a different thing entirely - HOMEPAGE fetches those
 # server-side from inside the docker network, so they stay as container names.
+
+# The prayer tile sits alone in its own group, first in the layout and one
+# column wide (see settings.yaml), so it runs the full width of the dashboard
+# as a strip rather than standing as a tall tile in a three-column row. For
+# the same reason everything on it is a block, not a list: nine blocks across
+# rather than nine rows down.
+- Prayer:
+    - Prayer times:
+        icon: mdi-mosque
+        # /health answers as soon as the process is serving, whether or not a
+        # month has arrived yet - so a red tile means the container is down,
+        # not that IACAD is. The status reply carries `stale` for that.
+        siteMonitor: http://prayer:8000/health
+        # The bare hostname, because YOUR BROWSER opens it. It is a JSON page:
+        # everything the tile shows, and /api/coverage lists the stored months.
+        href: http://aboriis-pi:3003/
+        target: "_blank"
+        description: Dubai (IACAD), cached a year ahead
+        server: my-docker
+        container: prayer
+        widget:
+          type: customapi
+          # Container name: Homepage fetches this server-side.
+          url: http://prayer:8000/api/status
+          # The countdown is a string the service formats, so it only moves
+          # when this fires. 15 s keeps "1h 56m" honest without polling a
+          # local container to death.
+          refreshInterval: 15000
+          mappings:
+            - field: nextLabel
+              label: Next
+            - field: nextIn
+              label: In
+            # `tile`, not `today`: its Fajr carries TOMORROW's time once Isha
+            # has passed - the one still ahead of you - exactly as the panel
+            # does. `today` stays today's own six.
+            - field: tile.fajr
+              label: Fajr
+            - field: tile.sunrise
+              label: Sunrise
+            - field: tile.dhuhr
+              label: Dhuhr
+            - field: tile.asr
+              label: Asr
+            - field: tile.maghrib
+              label: Maghrib
+            - field: tile.isha
+              label: Isha
+            - field: hijriDate
+              label: Hijri
+
 - System:
     # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
     # flags and silently ignores "metric" - only the service widget understands
@@ -157,49 +208,6 @@
         # No widget block: Homepage has no native sftpgo type, and a customapi
         # one would need an SFTPGo API key, which only exists once an admin
         # account has been created in the web UI.
-
-    - Prayer times:
-        icon: mdi-mosque
-        # /health answers as soon as the process is serving, whether or not a
-        # month has arrived yet - so a red tile means the container is down,
-        # not that IACAD is. The status reply carries `stale` for that.
-        siteMonitor: http://prayer:8000/health
-        # The bare hostname, because YOUR BROWSER opens it. It is a JSON page:
-        # everything the tile shows, and /api/coverage lists the stored months.
-        href: http://aboriis-pi:3003/
-        target: "_blank"
-        description: Dubai (IACAD), cached a year ahead
-        server: my-docker
-        container: prayer
-        # Two widgets on one tile, as Scrutiny does below: the block says what
-        # is next, the list carries the whole day.
-        widgets:
-          - type: customapi
-            # Container name: Homepage fetches this server-side.
-            url: http://prayer:8000/api/status
-            # The countdown is a string the service formats, so it only moves
-            # when this fires. 15 s keeps "1h 56m" honest without polling a
-            # local container to death.
-            refreshInterval: 15000
-            mappings:
-              - field: nextName
-                label: Next
-              - field: nextTime
-                label: At
-              - field: nextIn
-                label: In
-              - field: hijriDate
-                label: Hijri
-          - type: customapi
-            url: http://prayer:8000/api/status
-            refreshInterval: 60000
-            display: dynamic-list
-            mappings:
-              # Fajr shows TOMORROW's time once Isha has passed - the one
-              # still ahead of you - exactly as the panel does.
-              items: list
-              name: name
-              label: time
 
 - Monitoring:
     - Speedtest:

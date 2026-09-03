@@ -602,6 +602,11 @@ def status():
     hijri_date = (f"{hijri[2]} {HIJRI_MONTHS[hijri[1] - 1]} {hijri[0]}"
                   if 1 <= hijri[1] <= 12 and hijri[0] else "--")
 
+    # The six as flat strings for a block-style tile, with the Fajr row
+    # carrying tomorrow's time after Isha exactly as the list does. `today`
+    # stays what it says: today's own six.
+    tile = {FIELDS[i]: row["time"] for i, row in enumerate(listing)}
+
     return {
         "clock": True,
         "time": now.strftime("%H:%M:%S"),
@@ -614,6 +619,7 @@ def status():
         "fetchedFor": fetched_for.isoformat() if fetched_for else None,
         "times": times,
         "today": {FIELDS[i]: fmt_hm(times[i]) for i in range(6)},
+        "tile": tile,
         "list": listing,
         "next": shown,
         "nextName": next_name,
