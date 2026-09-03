@@ -191,40 +191,6 @@ pages:
               {{ end }}{{ end }}
               </ul>
 
-          # Container state, read through dockerproxy rather than the socket.
-          # Names, links and icons are set here rather than as labels on every
-          # compose file, so this dashboard can be removed without a trace.
-          # Four icons are full URLs because the set has them only as PNG.
-          - type: docker-containers
-            sock-path: ${DOCKER_HOST_PROXY}
-            format-container-names: true
-            hide-by-default: true
-            containers:
-              jellyfin:         { name: Jellyfin,    icon: di:jellyfin,   url: http://aboriis-pi:8096, hide: false }
-              immich_server:    { name: Immich,      icon: di:immich,     url: http://aboriis-pi:2283, hide: false }
-              kavita:           { name: Kavita,      icon: di:kavita,     url: http://aboriis-pi:5000, hide: false }
-              seerr:            { name: Seerr,       icon: di:seerr,      url: http://aboriis-pi:5055, hide: false }
-              sonarr:           { name: Sonarr,      icon: di:sonarr,     url: http://aboriis-pi:8989, hide: false }
-              radarr:           { name: Radarr,      icon: di:radarr,     url: http://aboriis-pi:7878, hide: false }
-              bazarr:           { name: Bazarr,      icon: di:bazarr,     url: http://aboriis-pi:6767, hide: false }
-              prowlarr:         { name: Prowlarr,    icon: di:prowlarr,   url: http://aboriis-pi:9696, hide: false }
-              qbittorrent:      { name: qBittorrent, icon: di:qbittorrent, url: http://aboriis-pi:8200, hide: false }
-              gluetun:          { name: Gluetun,     icon: di:gluetun,    hide: false }
-              flaresolverr:     { name: FlareSolverr, icon: di:flaresolverr, hide: false }
-              portainer:        { name: Portainer,   icon: di:portainer,  url: http://aboriis-pi:9000, hide: false }
-              registry:         { name: Registry,    icon: di:docker,     url: http://aboriis-pi:5002, hide: false }
-              postgres17:       { name: PostgreSQL,  icon: di:postgres,   hide: false }
-              sftpgo:           { name: SFTPGo,      icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png, url: http://aboriis-pi:8080, hide: false }
-              speedtest-tracker: { name: Speedtest,  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png, url: http://aboriis-pi:3030, hide: false }
-              uptime-kuma:      { name: Uptime Kuma, icon: di:uptime-kuma, url: http://aboriis-pi:3001, hide: false }
-              scrutiny:         { name: Scrutiny,    icon: di:scrutiny,   url: http://aboriis-pi:8081, hide: false }
-              dozzle:           { name: Dozzle,      icon: di:dozzle,     url: http://aboriis-pi:8888, hide: false }
-              wud:              { name: What's Up Docker, icon: di:whats-up-docker, url: http://aboriis-pi:3002, hide: false }
-              tdarr:            { name: Tdarr,       icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tdarr.png, url: http://aboriis-pi:8265, hide: false }
-              prayer:           { name: Prayer times, icon: mdi:mosque,   url: http://aboriis-pi:3003/, hide: false }
-              homepage:         { name: Homepage,    icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/homepage.png, url: http://aboriis-pi/, hide: false }
-              glance:           { name: Glance,      icon: di:glance,     hide: false }
-
       # ── middle: the apps ──────────────────────────────────────────────────
       - size: full
         widgets:
@@ -549,7 +515,7 @@ pages:
                       <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
                     </div>
                   </div>
-                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}</p>
+                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured <span {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}></span>| parseTime "rfc3339" | toRelativeTime }}</p>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
 
@@ -580,7 +546,9 @@ pages:
                   </a>
               # Homepage's Backups tile. The Pi answers this, not the PC:
               # pointing at the receiver would go red every time the PC
-              # sleeps. The check is the same endpoint, timed.
+              # sleeps. The check is the same endpoint, timed. last_backup is
+              # local time with no zone, so the Pi's +04:00 is appended before
+              # it is parsed; last_sent already carries a zone.
               - type: custom-api
                 title: Backups
                 title-url: http://aboriis-pi:9101/ui
@@ -594,9 +562,12 @@ pages:
                     <div class="grow flex justify-between text-center">
                       <div><div class="color-highlight size-h4">{{ .JSON.String "state" }}</div><div class="size-h6">STATE</div></div>
                       <div><div class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
-                      <div><div class="color-highlight size-h4">{{ .JSON.String "last_backup" | parseTime "2006-01-02T15:04:05" | toRelativeTime }}</div><div class="size-h6">BUILT</div></div>
                     </div>
                   </div>
+                  <ul class="list margin-top-10 size-h6 color-paragraph">
+                    <li>built <span {{ printf "%s+04:00" (.JSON.String "last_backup") | parseTime "rfc3339" | toRelativeTime }}></span></li>
+                    <li>delivered <span {{ .JSON.String "last_sent" | parseTime "rfc3339" | toRelativeTime }}></span></li>
+                  </ul>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
 

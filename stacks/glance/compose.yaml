@@ -36,11 +36,6 @@ services:
       - /var/lib/homepage-diskstat:/hostroot:ro
     environment:
       - TZ=${TIMEZONE:?err}
-      # The docker-containers widget reads the daemon through dockerproxy
-      # (read-only: list and inspect, no exec, POST refused) rather than the
-      # raw socket, the same way Homepage does. glance.yml points sock-path at
-      # it; this is here only so the config can say ${DOCKER_HOST_PROXY}.
-      - DOCKER_HOST_PROXY=tcp://dockerproxy:2375
       # The API keys the tiles use - the same ones the Homepage config holds,
       # copied into the env file. Defaults to empty rather than :?err so the
       # dashboard still starts with a key missing; that tile then shows an
