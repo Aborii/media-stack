@@ -73,18 +73,15 @@ services:
       - mediastack
 
   tdarr:
-    # PARKED. The server holds a queue but nothing encodes, because a Tdarr
-    # server without a node does nothing - and the node has to run on the
-    # Windows machine, which has the GPU. That is not happening for now, so this
-    # is off rather than idling and reporting healthy.
+    # Server only. The Pi holds the library scan, the flows and the queue;
+    # every job runs on the Tdarr node on the Windows desktop (aborii-pc),
+    # which has the GPU. The node is a mapped node: it reaches the same files
+    # through the Samba share and translates /media and /temp to its own
+    # paths. Server and node versions must match exactly, so a bump of this
+    # image means re-downloading the node package on the desktop.
     #
-    # A profile rather than a deleted block or restart: "no". `docker compose
-    # up -d` skips a profiled service entirely, so it stays off across reboots
-    # and stack restarts without anything to remember. Config and queue are
-    # untouched in appdata.
-    #
-    # To bring it back:  docker compose --profile parked up -d tdarr
-    profiles: ["parked"]
+    # Was parked behind a compose profile from 2026-08-27 until the node
+    # existed (2026-09-03), since a server with no node does nothing.
     image: ghcr.io/haveagitgat/tdarr:latest
     container_name: tdarr
     restart: unless-stopped

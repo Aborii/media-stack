@@ -88,33 +88,84 @@ services:
     networks:
       - mediastack
 
-  diun:
-    image: crazymax/diun:latest
-    container_name: diun
+  # What's Up Docker. Watches every container's image for a newer tag or a
+  # rebuilt digest and says so. Replaced Diun on 2026-09-03 for one reason: it
+  # has a page. Diun could only talk; this lists every container with its
+  # running tag and the newest one at http://aboriis-pi:3002, and the Homepage
+  # tile counts what is pending.
+  #
+  # REPORTS ONLY. There is deliberately no docker trigger, so it never pulls or
+  # recreates anything - and dockerproxy refuses POST anyway, so it could not.
+  # Updating stays a hand job: read the notice, pull, restart, look.
+  wud:
+    image: getwud/wud:latest
+    container_name: wud
     restart: unless-stopped
-    command: serve
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/diun:/data
+      # Its state: what it has seen and already reported. Root-owned like
+      # diun's was; the backup runs as root for exactly this reason.
+      - ${FOLDER_FOR_DATA:?err}/wud:/store
+      # The Telegram poster, from the repo. Read the file for why a script and
+      # not the built-in Telegram trigger.
+      - ./wud/telegram-topic.sh:/wud/telegram-topic.sh:ro
     environment:
       - TZ=${TIMEZONE:?err}
-      - LOG_LEVEL=info
-      - DIUN_WATCH_SCHEDULE=0 6 * * *
-      - DIUN_WATCH_JITTER=30s
-      - DIUN_PROVIDERS_DOCKER=true
-      - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
-      # false = watch everything, no per-container labels needed
-      - DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true
-      # Telegram. Same bot as Radarr/Sonarr/Prowlarr already use, posting to
-      # its own forum topic so image updates do not mix with grab notices.
+      - WUD_LOG_LEVEL=info
+      # Node 24 gives each connection attempt 250 ms before moving to the
+      # next address (its "happy eyeballs" default), and Docker Hub answers
+      # this Pi in about 260 ms. So every Hub lookup died with an empty
+      # AggregateError and the first run watched nothing - while curl from
+      # the same container was fine, because only Node's default is that
+      # tight. 2 s is generous and changes nothing else.
+      - NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000
+      # A read-only view has nothing to delete.
+      - WUD_SERVER_FEATURE_DELETE=false
+      # WUD allows anonymous access by default - its own documentation says
+      # so - and /api/containers returns the whole inventory to anyone who
+      # asks. That is the same open wifi the glances gate exists for, so the
+      # page gets a password too. Enabling any strategy covers the UI and
+      # every API route together; there is no half-protected state.
+      - WUD_AUTH_BASIC_ADMIN_USER=${WUD_AUTH_BASIC_ADMIN_USER:?err}
+      - WUD_AUTH_BASIC_ADMIN_HASH=${WUD_AUTH_BASIC_ADMIN_HASH:?err}
+      # Through the socket proxy, like Dozzle - never the raw socket. The
+      # proxy allows exactly what a watcher needs: containers, images, events.
+      - WUD_WATCHER_LOCAL_HOST=dockerproxy
+      - WUD_WATCHER_LOCAL_PORT=2375
+      # true = watch everything, no per-container labels needed. The two
+      # coming-manager containers opt out with wud.watch=false because their
+      # images come from localhost:5001, which from in here is wud itself.
+      - WUD_WATCHER_LOCAL_WATCHBYDEFAULT=true
+      # Daily at 09:00, not the hourly default and not weekly. Weekly was
+      # tried with Diun and was wrong: up to seven days of not knowing that
+      # gluetun or Immich shipped a security fix. Hourly is the other trap -
+      # Docker Hub counts every digest check as a pull against the anonymous
+      # limit of 100 per six hours, and thirty containers an hour would trip
+      # it. Thirty a day does not. Jitter is in milliseconds here.
+      - WUD_WATCHER_LOCAL_CRON=0 9 * * *
+      - WUD_WATCHER_LOCAL_JITTER=30000
+      # Most of this stack runs :latest. That tag never changes, only what it
+      # points at does, and WUD does not check Docker Hub digests unless told
+      # to - without this line it warns once per container and reports
+      # NOTHING for any of them. ghcr.io images check digests by
+      # default already; only the Hub registry has this off. (lscr.io is not a
+      # registry wud knows without a GitHub login, which is why the linuxserver
+      # images are pulled from ghcr.io - the same images under the real name.)
+      - WUD_REGISTRY_HUB_PUBLIC_WATCHDIGEST=true
+      - WUD_REGISTRY_HUB_PUBLIC_SUPPRESSDIGESTWATCHWARNING=true
+      # Telegram, into the status forum topic - same bot and group as
+      # Radarr/Sonarr/Prowlarr, its own topic so image updates do not mix with
+      # grab notices. WUD's own Telegram trigger cannot address a topic, hence
+      # the command trigger and the script. One run per update, each reported
+      # once (the trigger default), so a quiet day is silent.
       # Secrets come from docker-compose.env, which is gitignored.
-      - DIUN_NOTIF_TELEGRAM_TOKEN=${TELEGRAM_BOT_TOKEN:?err}
-      - DIUN_NOTIF_TELEGRAM_CHATIDS=${TELEGRAM_CHAT_ID:?err}:${TELEGRAM_TOPIC_STATUS:?err}
-      # Daily at 09:00, not on every push and not weekly. Diun only speaks when
-      # something actually CHANGED, so a quiet day is silent - the volume is a
-      # few lines on the days an image moves, not a digest to learn to ignore.
-      # Weekly was the first choice and was wrong: it means up to seven days of
-      # not knowing that gluetun or Immich shipped a security fix.
-      - DIUN_WATCH_SCHEDULE=0 9 * * *
+      - WUD_TRIGGER_COMMAND_TELEGRAM_CMD=sh /wud/telegram-topic.sh
+      - WUD_TRIGGER_COMMAND_TELEGRAM_TIMEOUT=30000
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?err}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:?err}
+      - TELEGRAM_TOPIC_STATUS=${TELEGRAM_TOPIC_STATUS:?err}
+    ports:
+      - "${WEBUI_PORT_WUD:?err}:3000"
+    # The image ships its own healthcheck against /health on 3000.
     networks:
       - mediastack
 
@@ -209,14 +260,16 @@ services:
   # it would make them carry credentials. A proxy in front changes neither -
   # stop this container and the tiles are completely unaffected.
   #
-  # Published to 127.0.0.1 ONLY, never 0.0.0.0. The wifi here is an open network
-  # (see the glances notes above), and basic auth over plain http would put a
-  # barely-obscured password on it. Instead `tailscale serve` fronts this with
-  # real HTTPS on aboriis-pi.tail54d520.ts.net, so the only ways in are a
-  # tailnet device key AND the password.
+  # Published on ALL interfaces, so http://aboriis-pi:61210 works from the LAN
+  # and the Homepage tiles can link to it. This was a deliberate choice made
+  # knowing the trade-off: the wifi here is an open network (see the glances
+  # notes above), and the login form posts over plain http, so the password
+  # crosses the LAN unencrypted at sign-in. The gate itself still stands; it is
+  # only the transport that is open. `tailscale serve` still fronts the same
+  # container with real HTTPS on aboriis-pi.tail54d520.ts.net - prefer that
+  # URL when away.
   #
-  # If you ever DO want it on the LAN, change the binding below to
-  # "${WEBUI_PORT_GLANCESWEB}:80" - but read the paragraph above first.
+  # To pull it back off the LAN, prefix the binding below with 127.0.0.1: .
   glances-web:
     image: caddy:2-alpine
     container_name: glances-web
@@ -227,7 +280,39 @@ services:
       # without it Caddy warns about a non-persistent data directory on boot.
       - ${FOLDER_FOR_DATA:?err}/glances-web/data:/data
     ports:
-      - "127.0.0.1:${WEBUI_PORT_GLANCESWEB:?err}:80"
+      - "${WEBUI_PORT_GLANCESWEB:?err}:80"
+    networks:
+      - mediastack
+
+  # The login gate for glances-web. Read login.py for the full story; the
+  # short version: every ready-made gate (Tinyauth, Authelia...) scopes its
+  # session cookie to a DOMAIN and refuses a bare hostname outright - Tinyauth
+  # will not even start on http://aboriis-pi. This one sets a HOST-ONLY cookie,
+  # so ONE instance covers aboriis-pi, the raw IP and the tailscale name.
+  #
+  # Standard library only, mounted as a plain file - no image build, no pip,
+  # nothing to go stale. No published ports: only Caddy talks to it, by name.
+  #
+  # To change the password:  printf %s 'newpass' | docker exec -i glances-login
+  #   python /app/login.py hash     then put  aborii:<output>  in auth/users.
+  glances-login:
+    image: python:3.12-alpine
+    container_name: glances-login
+    restart: unless-stopped
+    command: ["python", "/app/login.py", "serve"]
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/glances-web/login.py:/app/login.py:ro
+      # users file + the signing secret (auto-created on first start). Losing
+      # this dir only logs everyone out and needs the users line recreated.
+      - ${FOLDER_FOR_DATA:?err}/glances-web/auth:/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - mediastack
 
