@@ -160,6 +160,10 @@ async function pcPress(btn, what) {
   }, 2000);
 }
 
-if (!window.glanceLive) {
-  window.glanceLive = { refresh, runBackup, pcPress, timer: setInterval(refresh, EVERY) };
-}
+// Replace whatever was here rather than standing aside for it. A page open
+// since before an edit holds the old module - Glance serves this with a
+// two-hour cache - and the tiles call these functions by name, so an old
+// object still in place means a button that silently does nothing. Clearing
+// the previous timer first is what stops two of them polling at once.
+if (window.glanceLive && window.glanceLive.timer) clearInterval(window.glanceLive.timer);
+window.glanceLive = { refresh, runBackup, pcPress, timer: setInterval(refresh, EVERY) };
