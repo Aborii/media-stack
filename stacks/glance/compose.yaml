@@ -43,13 +43,12 @@ services:
       - DOCKER_HOST_PROXY=tcp://dockerproxy:2375
     ports:
       - "${WEBUI_PORT_GLANCE:?err}:8080"
-    healthcheck:
-      # Glance ships no curl or wget; its own binary has a health check.
-      test: ["CMD", "/app/glance", "--config", "/app/config/glance.yml", "config:validate"]
-      interval: 5m
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+    # No healthcheck, deliberately. The image is one static binary with no
+    # shell, wget or curl, so nothing inside it can probe /api/healthz, and
+    # the only thing the binary itself can run is config:validate - which
+    # proves the YAML parses, not that anything is listening, so "healthy"
+    # would mean nothing. A dead process exits the container and the restart
+    # policy brings it back; an HTTP check, if wanted, belongs in Uptime Kuma.
     logging:
       driver: 'json-file'
       options:
