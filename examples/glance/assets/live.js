@@ -15,8 +15,17 @@
 // Served from the assets-path in glance.yml. The import is a no-op after
 // the first time, so the tile being replaced by itself is harmless.
 
-const CONTENT = '/api/pages/home/content/';
-const EVERY   = 5000;
+// Which page this is. Glance serves each tab's body separately, so the
+// script has to ask for its own rather than always Home - loading this on
+// the Markets tab and refreshing Home's content would silently do nothing.
+const SLUG    = (location.pathname.replace(/^\/+|\/+$/g, '') || 'home').toLowerCase();
+const CONTENT = `/api/pages/${SLUG}/content/`;
+
+// Home changes by the second - a countdown, throughput, a power state. Prices
+// do not, and every refresh there is a request to Yahoo per widget whose
+// cache has expired, so it runs at the minute the tab was asked for.
+const EVERY   = SLUG === 'markets' ? 60000 : 5000;
+
 const BACKUP  = 'http://aboriis-pi:9101/';   // the browser's route to it
 const PCSW    = 'http://aboriis-pi:9102/';   // the power switch proxy
 
@@ -27,8 +36,11 @@ let pcBusy = false;
 // Replaces every [data-live] element, and the server-stats widget, with the
 // freshly rendered copy. Skipped while the tab is hidden: a dashboard left
 // open in a background tab should not poll the Pi all night.
-async function refresh() {
-  if (document.hidden) return;
+async function refresh(force) {
+  // A hidden tab is skipped - a dashboard left open in the background should
+  // not poll the Pi all night - but a click on the button is explicit, so it
+  // passes force and goes ahead regardless.
+  if (document.hidden && !force) return;
   let doc;
   try {
     const r = await fetch(CONTENT, { cache: 'no-store' });
@@ -45,10 +57,50 @@ async function refresh() {
     const fresh = doc.querySelector(`[data-live="${el.dataset.live}"]`);
     if (fresh) el.replaceWith(fresh);
   }
-  // Glance's own widget, so there is no template to put a marker in.
-  const stats = document.querySelector('.widget-type-server-stats');
-  const freshStats = doc.querySelector('.widget-type-server-stats');
-  if (stats && freshStats) stats.replaceWith(freshStats);
+  // Glance's own widgets, which have no template to put a marker in, so they
+  // are matched by type and position instead.
+  for (const cls of ['.widget-type-server-stats', '.widget-type-markets']) {
+    const mine = document.querySelectorAll(cls);
+    const theirs = doc.querySelectorAll(cls);
+    // Position is only meaningful while the two agree; if a widget were
+    // added or removed the config changed, and a full reload is due anyway.
+    if (mine.length !== theirs.length) continue;
+    mine.forEach((el, i) => el.replaceWith(theirs[i]));
+  }
+  lastAt = Date.now();
+  paintAge();
+}
+
+/* --------------------------------------------------------- refreshed --- */
+
+// "updated 12s ago" next to the button, so a page left open says how old it
+// is instead of looking equally fresh for ever.
+let lastAt = Date.now();
+
+function paintAge() {
+  const el = document.querySelector('[data-live-age]');
+  if (!el) return;
+  const s = Math.round((Date.now() - lastAt) / 1000);
+  el.textContent = s < 5 ? 'just now'
+    : s < 60 ? `${s}s ago`
+    : `${Math.floor(s / 60)}m ago`;
+}
+setInterval(paintAge, 5000);
+
+// The button. Refreshes now rather than at the next tick.
+//
+// What it can and cannot do: this re-renders the page from Glance, which
+// re-fetches any widget whose own cache has expired. It cannot force a
+// fetch through a cache that has not - so the shortest a value can be here
+// is the cache set on its widget, which on this tab is a minute.
+async function refreshNow(btn) {
+  if (btn) { btn.disabled = true; btn.style.opacity = '.35'; }
+  const el = document.querySelector('[data-live-age]');
+  if (el) el.textContent = 'checking…';
+  await refresh(true);
+  // The swap above may have replaced the button itself, so find it again.
+  const back = document.querySelector('[data-live-refresh]');
+  if (back) { back.disabled = false; back.style.opacity = ''; }
 }
 
 // "19 hours ago", the same wording the templates use.
@@ -348,4 +400,4 @@ async function pcPress(btn, what, state) {
 // object still in place means a button that silently does nothing. Clearing
 // the previous timer first is what stops two of them polling at once.
 if (window.glanceLive && window.glanceLive.timer) clearInterval(window.glanceLive.timer);
-window.glanceLive = { refresh, runBackup, pcPress, pcRefresh, timer: setInterval(refresh, EVERY) };
+window.glanceLive = { refresh, refreshNow, runBackup, pcPress, pcRefresh, timer: setInterval(refresh, EVERY) };

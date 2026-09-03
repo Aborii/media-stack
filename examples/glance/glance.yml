@@ -221,7 +221,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=6')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=8')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
@@ -832,6 +832,26 @@ pages:
     columns:
       - size: small
         widgets:
+          # The refresh bar, and what loads the script on this tab.
+          #
+          # Glance renders a page once and then stops, so without this the
+          # prices would stay as old as the moment the tab was opened. The
+          # hidden image pulls in assets/live.js, which from here re-renders
+          # this page every minute and swaps the market widgets in place.
+          #
+          # The button only forces that re-render early; it cannot reach
+          # through a widget's own cache, which is why every widget on this
+          # tab is set to a minute rather than the longer values elsewhere.
+          - type: html
+            source: |
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=8')">
+              <div class="flex items-center justify-between">
+                <span class="size-h6 color-paragraph">updated <span data-live-age>just now</span> &middot; every minute</span>
+                <button data-live-refresh title="Refresh now" aria-label="Refresh now"
+                        style="font:inherit;line-height:1;padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer"
+                        onclick="glanceLive.refreshNow(this)">&#8635;</button>
+              </div>
+
           # Gold as it is bought here: by the gram, in dirhams.
           #
           # Yahoo quotes the COMEX front-month future in dollars per troy
@@ -845,7 +865,7 @@ pages:
           - type: custom-api
             title: Gold in dirhams
             title-url: https://www.tradingview.com/chart/?symbol=COMEX:GC1!
-            cache: 10m
+            cache: 1m
             url: https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?range=5d&interval=1d
             headers:
               User-Agent: Mozilla/5.0
@@ -855,6 +875,7 @@ pages:
               {{ $aedG := div (mul $usdOz 3.6725) 31.1035 }}
               {{ $prevG := div (mul $prevOz 3.6725) 31.1035 }}
               {{ $chg := 0.0 }}{{ if $prevG }}{{ $chg = mul (div (sub $aedG $prevG) $prevG) 100 }}{{ end }}
+              <div data-live="gold">
               <div class="flex justify-between text-center">
                 <div>
                   <div class="color-highlight size-h3">{{ printf "%.0f" $aedG }}</div>
@@ -870,10 +891,11 @@ pages:
                 </div>
               </div>
               <p class="size-h6 color-paragraph margin-top-10 text-center">{{ printf "$%.0f" $usdOz }} an ounce, COMEX future</p>
+              </div>
 
           - type: markets
             title: Metals
-            cache: 10m
+            cache: 1m
             markets:
               # Not XAUUSD=X - Yahoo has no such symbol, checked from the Pi.
               - { symbol: "GC=F", name: Gold }
@@ -881,7 +903,7 @@ pages:
 
           - type: markets
             title: Crypto
-            cache: 2m
+            cache: 1m
             sort-by: absolute-change
             chart-link-template: https://www.tradingview.com/chart/?symbol={SYMBOL}
             markets:
@@ -894,7 +916,7 @@ pages:
         widgets:
           - type: markets
             title: Big tech
-            cache: 10m
+            cache: 1m
             sort-by: absolute-change
             symbol-link-template: https://www.google.com/search?tbm=nws&q={SYMBOL}
             markets:
@@ -908,7 +930,7 @@ pages:
 
           - type: markets
             title: Indices
-            cache: 10m
+            cache: 1m
             markets:
               - { symbol: "^GSPC", name: S&P 500 }
               - { symbol: "^IXIC", name: Nasdaq }
@@ -920,7 +942,7 @@ pages:
           # American ones above move on Friday.
           - type: markets
             title: Local
-            cache: 10m
+            cache: 1m
             markets:
               - { symbol: EMAAR.AE, name: Emaar }
               - { symbol: EMIRATESNBD.AE, name: Emirates NBD }
