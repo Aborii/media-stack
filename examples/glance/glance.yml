@@ -32,7 +32,9 @@
 #     prefixes resolve to (Material icons are black line art, hence the
 #     filter)
 #   - the last line is the same check Homepage's siteMonitor made, done from
-#     the template with a timed request: OK or DOWN, and the milliseconds
+#     the template with a timed request: OK or DOWN, and the milliseconds.
+#     The route has to answer JSON - a text or HTML route reads as DOWN 0 -
+#     so a few checks use a status route rather than the health one
 #
 # So the Services list on the right holds only what has no tile of its own.
 #
@@ -283,7 +285,7 @@ pages:
                 headers:
                   X-Emby-Token: ${JELLYFIN_API_KEY}
                 template: |
-                  {{ $t0 := now }}{{ $h := newRequest "http://jellyfin:8096/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $t0 := now }}{{ $h := newRequest "http://jellyfin:8096/System/Info/Public" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   <a href="http://aboriis-pi:8096" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg" alt="" style="width:34px;height:34px;flex:none">
@@ -407,8 +409,8 @@ pages:
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
               # Homepage's Bazarr tile: what is missing subtitles. Bazarr has
-              # no unauthenticated health route, so the check is its front
-              # page.
+              # no unauthenticated health route, so the check is its status
+              # route, with the key.
               - type: custom-api
                 title: Bazarr
                 title-url: http://aboriis-pi:6767
@@ -422,7 +424,7 @@ pages:
                     headers:
                       X-API-KEY: ${BAZARR_API_KEY}
                 template: |
-                  {{ $t0 := now }}{{ $h := newRequest "http://bazarr:6767/" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $t0 := now }}{{ $h := newRequest "http://bazarr:6767/api/system/status" | withHeader "X-API-KEY" "${BAZARR_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   <a href="http://aboriis-pi:6767" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/bazarr.svg" alt="" style="width:34px;height:34px;flex:none">
@@ -564,7 +566,7 @@ pages:
                 cache: 30m
                 url: http://scrutiny:8080/api/summary
                 template: |
-                  {{ $t0 := now }}{{ $h := newRequest "http://scrutiny:8080/" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $t0 := now }}{{ $h := newRequest "http://scrutiny:8080/api/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   {{ $t := .JSON.Int "data.summary.0x50014ee216baa995.smart.temp" }}
                   <a href="http://aboriis-pi:8081" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
