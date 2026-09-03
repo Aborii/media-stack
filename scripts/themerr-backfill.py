@@ -105,6 +105,7 @@ DEAD_LINK_MARKERS = (
     "video unavailable",
     "video is not available",
     "video is private",
+    "private video",
     "video has been removed",
     "account associated with this video has been terminated",
     "this video is no longer available",
