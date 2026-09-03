@@ -818,6 +818,114 @@ pages:
                   - { title: Prowlarr,    url: http://aboriis-pi:9696 }
                   - { title: qBittorrent, url: http://aboriis-pi:8200 }
 
+  # Prices, on a tab of their own.
+  #
+  # Glance's markets widget reads Yahoo Finance, which needs no key and no
+  # account - so nothing here has a credential to leak or a free tier to run
+  # out of. Every symbol below was checked against Yahoo from the Pi before
+  # it went in; the one that looked obvious and does NOT work is XAUUSD=X,
+  # spot gold, which 404s. Gold is the futures contract instead.
+  #
+  # Each widget carries its own cache, which is what decides how often Yahoo
+  # is actually asked: crypto moves at the weekend, shares do not.
+  - name: Markets
+    columns:
+      - size: small
+        widgets:
+          # Gold as it is bought here: by the gram, in dirhams.
+          #
+          # Yahoo quotes the COMEX front-month future in dollars per troy
+          # ounce, so this converts - 31.1035 g to the ounce, and the dirham
+          # has been pegged at 3.6725 to the dollar since 1997, which is why
+          # a fixed rate is honest rather than lazy.
+          #
+          # It will not match a shop in the Gold Souk. That price is spot plus
+          # making, and a future is not spot. Read it as the metal, not a
+          # quote.
+          - type: custom-api
+            title: Gold in dirhams
+            title-url: https://www.tradingview.com/chart/?symbol=COMEX:GC1!
+            cache: 10m
+            url: https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?range=5d&interval=1d
+            headers:
+              User-Agent: Mozilla/5.0
+            template: |
+              {{ $usdOz := .JSON.Float "chart.result.0.meta.regularMarketPrice" }}
+              {{ $prevOz := .JSON.Float "chart.result.0.meta.chartPreviousClose" }}
+              {{ $aedG := div (mul $usdOz 3.6725) 31.1035 }}
+              {{ $prevG := div (mul $prevOz 3.6725) 31.1035 }}
+              {{ $chg := 0.0 }}{{ if $prevG }}{{ $chg = mul (div (sub $aedG $prevG) $prevG) 100 }}{{ end }}
+              <div class="flex justify-between text-center">
+                <div>
+                  <div class="color-highlight size-h3">{{ printf "%.0f" $aedG }}</div>
+                  <div class="size-h6">AED / G 24K</div>
+                </div>
+                <div>
+                  <div class="color-highlight size-h3">{{ printf "%.0f" (mul $aedG 0.9167) }}</div>
+                  <div class="size-h6">AED / G 22K</div>
+                </div>
+                <div>
+                  <div class="{{ if lt $chg 0.0 }}color-negative{{ else }}color-positive{{ end }} size-h3">{{ printf "%+.1f%%" $chg }}</div>
+                  <div class="size-h6">SINCE CLOSE</div>
+                </div>
+              </div>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">{{ printf "$%.0f" $usdOz }} an ounce, COMEX future</p>
+
+          - type: markets
+            title: Metals
+            cache: 10m
+            markets:
+              # Not XAUUSD=X - Yahoo has no such symbol, checked from the Pi.
+              - { symbol: "GC=F", name: Gold }
+              - { symbol: "SI=F", name: Silver }
+
+          - type: markets
+            title: Crypto
+            cache: 2m
+            sort-by: absolute-change
+            chart-link-template: https://www.tradingview.com/chart/?symbol={SYMBOL}
+            markets:
+              - { symbol: BTC-USD, name: Bitcoin }
+              - { symbol: ETH-USD, name: Ethereum }
+              - { symbol: SOL-USD, name: Solana }
+              - { symbol: XRP-USD, name: XRP }
+
+      - size: full
+        widgets:
+          - type: markets
+            title: Big tech
+            cache: 10m
+            sort-by: absolute-change
+            symbol-link-template: https://www.google.com/search?tbm=nws&q={SYMBOL}
+            markets:
+              - { symbol: AAPL,  name: Apple }
+              - { symbol: MSFT,  name: Microsoft }
+              - { symbol: NVDA,  name: NVIDIA }
+              - { symbol: GOOGL, name: Alphabet }
+              - { symbol: AMZN,  name: Amazon }
+              - { symbol: META,  name: Meta }
+              - { symbol: TSLA,  name: Tesla }
+
+          - type: markets
+            title: Indices
+            cache: 10m
+            markets:
+              - { symbol: "^GSPC", name: S&P 500 }
+              - { symbol: "^IXIC", name: Nasdaq }
+
+      - size: small
+        widgets:
+          # Closer to home, and on a different clock: these trade Sunday to
+          # Thursday, so they sit still through a Gulf weekend while the
+          # American ones above move on Friday.
+          - type: markets
+            title: Local
+            cache: 10m
+            markets:
+              - { symbol: EMAAR.AE, name: Emaar }
+              - { symbol: EMIRATESNBD.AE, name: Emirates NBD }
+              - { symbol: 2222.SR, name: Saudi Aramco }
+
 # Not ported, and why:
 #
 #   Kavita   its API key is exchanged for a JWT first, and that JWT then has
