@@ -1,0 +1,60 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# prayer — Dubai prayer times from IACAD, cached a year ahead, feeding the
+# Prayer times tile on Homepage.
+#
+# A port of the fetching and caching half of the ESP32 prayer clock
+# (esp32-st7789-display). The panel on the desk keeps doing its own fetching;
+# this exists so the dashboard does not depend on a device on the wifi being
+# awake. Read the top of prayer.py for what is kept from the firmware and why.
+#
+# No image build. Like glances-login in stacks/monitoring, this is the stock
+# python image with one standard-library file bind-mounted from the repo, so
+# editing prayer.py and `docker compose restart prayer` is the whole deploy.
+#
+# The store is a few KB of JSON per calendar year under appdata. Deleting it
+# costs one request per month of the window - about a minute of fetching - so
+# it is safe to wipe if it ever looks wrong.
+# ─────────────────────────────────────────────────────────────────────────────
+name: prayer
+
+services:
+  prayer:
+    image: python:3.12-alpine
+    container_name: prayer
+    restart: unless-stopped
+    # -u so the log lines arrive when they are printed rather than when the
+    # buffer fills, which with one line a month would be never.
+    command: ["python", "-u", "/app/prayer.py"]
+    volumes:
+      - ./prayer.py:/app/prayer.py:ro
+      - ${FOLDER_FOR_DATA:?err}/prayer:/data
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # 1 Dubai City, 2 Rural areas of Dubai, 3 Hatta, 4 Sharjah City. Those
+      # four are all IACAD publishes; a Dubai government body does not carry
+      # Abu Dhabi or Ajman.
+      - PRAYER_CITY=${PRAYER_CITY:-1}
+      # Hours east of UTC. Fixed rather than from TZ: the UAE has no daylight
+      # saving, and the alpine image ships no zoneinfo database to look one
+      # up in anyway.
+      - PRAYER_UTC_OFFSET=${PRAYER_UTC_OFFSET:-4}
+    ports:
+      - "${WEBUI_PORT_PRAYER:?err}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

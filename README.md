@@ -66,6 +66,7 @@ docker compose down
 | | dozzle | 8888 | live container logs |
 | | glances | - | host metrics, bound to the docker gateway |
 | | diun | - | image update watcher |
+| **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the Homepage tile |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network
