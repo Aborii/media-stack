@@ -14,7 +14,7 @@ Everything is watched and nothing reports.
 | Uptime Kuma notification providers | **0** |
 | Monitors with an alert attached | **0 of 15** |
 | Image update watcher (Diun, now wud) containers watched | 24 |
-| Image update notifier | Telegram, status topic — Diun since 2026-08-24, carried over to wud 2026-09-03 |
+| Image update notifier | Telegram, status topic — Diun since 2026-08-25, carried over to wud 2026-09-03 |
 
 Uptime Kuma checks every service every 60 seconds and wud watches every image
 for updates. Neither can tell anyone anything, so the only way to learn that
@@ -97,7 +97,7 @@ Recreate the container and force a check:
 
 ```bash
 docker compose up -d wud
-curl -s http://127.0.0.1:3002/api/containers | python3 -m json.tool | grep -c updateAvailable
+curl -s http://127.0.0.1:3002/api/containers | python3 -m json.tool | grep -c '"updateAvailable": true'
 ```
 
 ## Step 4 — decide what actually alerts

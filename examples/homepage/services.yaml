@@ -274,7 +274,7 @@
         container: dozzle
 
     - What's Up Docker:
-        icon: wud.png
+        icon: whats-up-docker.png
         # /health is what the image's own healthcheck curls, so a red tile
         # means the same thing docker ps says.
         siteMonitor: http://wud:3000/health

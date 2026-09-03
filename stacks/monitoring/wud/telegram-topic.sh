@@ -23,7 +23,7 @@ case "${update_kind_kind:-}" in
   *)      what="${image_tag_value} -> ${update_kind_remote_value:-?} (${update_kind_semver_diff:-tag})" ;;
 esac
 
-text="Image update: ${display_name:-$name}
+text="Image update: ${display_name:-${name:-container}}
 ${what}
 Nothing was pulled. Open http://aboriis-pi:3002 to review."
 
