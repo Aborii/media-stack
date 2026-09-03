@@ -65,7 +65,7 @@ docker compose down
 | | scrutiny | 8081 | drive SMART health |
 | | dozzle | 8888 | live container logs |
 | | glances | - | host metrics, bound to the docker gateway |
-| | diun | - | image update watcher |
+| | wud | 3002 | image update watcher, Telegram notices, never pulls |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network

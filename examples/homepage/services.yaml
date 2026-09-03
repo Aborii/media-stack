@@ -273,11 +273,22 @@
         server: my-docker
         container: dozzle
 
-    - Diun:
-        icon: diun.png
-        description: Image update notices - reports only, never pulls
+    - What's Up Docker:
+        icon: whats-up-docker.png
+        # /health is what the image's own healthcheck curls, so a red tile
+        # means the same thing docker ps says.
+        siteMonitor: http://wud:3000/health
+        href: http://aboriis-pi:3002
+        target: "_blank"
+        description: Image updates - reports only, never pulls
         server: my-docker
-        container: diun
+        container: wud
+        widget:
+          type: whatsupdocker
+          # Container name: Homepage fetches /api/containers server-side.
+          url: http://wud:3000
+          # No username/password: the UI has no login, same as Dozzle. To add
+          # one, set WUD_AUTH_BASIC_* on the container and both keys here.
 
 - Libraries:
     - Jellyfin:
