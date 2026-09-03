@@ -110,13 +110,27 @@ async function runBackup(btn) {
 // so pressing and then waiting for the tile's ordinary refresh would look
 // like nothing happened. This polls every 2 s for a minute and stops the
 // moment the state changes, which is the "detected refetch" a boot deserves.
-async function pcPress(btn, what) {
+// `state` is what the tile last read, so the question names what will
+// actually happen rather than "send a press". Every action asks, including
+// powering on: the point of a confirmation here is that these buttons sit on
+// a dashboard being scrolled past, where a stray tap is the likely way any of
+// them ever gets pressed.
+const PC_ASK = {
+  'off':     'Power on the desktop?',
+  'on':      'Ask the desktop to shut down?\n\nIt closes programs first, like tapping the case button - but anything unsaved will prompt, and it may sit waiting.',
+  'sleep':   'Wake the desktop from sleep?',
+  'unknown': 'Send a power press to the desktop?\n\nIts state is unknown, so this either boots it or asks it to shut down.',
+};
+
+async function pcPress(btn, what, state) {
   const tile = btn.closest('.widget') || document;
   const set = (k, v) => tile.querySelectorAll(`[data-pc="${k}"]`).forEach((e) => { e.textContent = v; });
   const buttons = [...tile.querySelectorAll('[data-pc="press"],[data-pc="force"]')];
 
-  if (what === 'force-off' &&
-      !confirm('Force off? This cuts power like holding the button in - unsaved work is lost.')) return;
+  const ask = what === 'force-off'
+    ? 'Force off the desktop?\n\nThis cuts power like holding the button in for six seconds. Unsaved work is lost and the disk is not unmounted cleanly.'
+    : (PC_ASK[state] || PC_ASK.unknown);
+  if (!confirm(ask)) return;
 
   buttons.forEach((b) => { b.disabled = true; });
   set('msg', what === 'force-off' ? 'holding 6s…' : 'pressing…');

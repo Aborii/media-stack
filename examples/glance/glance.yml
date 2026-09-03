@@ -221,7 +221,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=2')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=3')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
@@ -288,8 +288,8 @@ pages:
                   <div>
                     <div class="size-h4">
                       {{ if $ok }}
-                      <button data-pc="press" style="font:inherit;font-size:.8em;padding:3px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer" onclick="glanceLive.pcPress(this,'press')">{{ if eq $p "off" }}Power on{{ else if eq $p "on" }}Shut down{{ else if eq $p "sleep" }}Wake{{ else }}Press{{ end }}</button>
-                      <button data-pc="force" style="font:inherit;font-size:.8em;padding:3px 10px;margin-left:6px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.75" onclick="glanceLive.pcPress(this,'force-off')">Force off</button>
+                      <button data-pc="press" style="font:inherit;font-size:.8em;padding:3px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer" onclick="glanceLive.pcPress(this,'press','{{ $p }}')">{{ if eq $p "off" }}Power on{{ else if eq $p "on" }}Shut down{{ else if eq $p "sleep" }}Wake{{ else }}Press{{ end }}</button>
+                      <button data-pc="force" style="font:inherit;font-size:.8em;padding:3px 10px;margin-left:6px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.75" onclick="glanceLive.pcPress(this,'force-off','{{ $p }}')">Force off</button>
                       {{ else }}
                       <span class="color-paragraph size-h6">{{ .JSON.String "error" }}</span>
                       {{ end }}
