@@ -9,6 +9,10 @@ headerStyle: clean
 hideVersion: true
 
 layout:
+  # First, three columns: the three prayer tiles in one row across the top.
+  Prayer:
+    style: row
+    columns: 3
   System:
     style: row
     columns: 3

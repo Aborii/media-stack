@@ -21,79 +21,85 @@
 # widget.url below is a different thing entirely - HOMEPAGE fetches those
 # server-side from inside the docker network, so they stay as container names.
 
-- System:
-    # First in the first group, so it is the top-left tile. Three widgets,
-    # stacked the way Homepage stacks them: a row of four blocks about the
-    # next prayer, a second row of four with the rest of the day's data, and
-    # a list with one row per prayer. Four blocks per row is the most a
-    # normal-width tile fits without squeezing - a widget's blocks are one
-    # non-wrapping flex row.
-    - Prayer times:
-        icon: mdi-mosque
+# Three tiles in their own group, first in the layout and three columns wide
+# (see settings.yaml), so they sit side by side in one row across the top:
+# what is next, the rest of the day's data, and the day itself one row per
+# prayer. All three read the same /api/status reply from the prayer container.
+- Prayer:
+    - Next prayer:
+        icon: mdi-clock-outline
         # /health answers as soon as the process is serving, whether or not a
-        # month has arrived yet - so a red tile means the container is down,
-        # not that IACAD is. The status reply carries `stale` for that.
+        # month has arrived yet - so a red dot means the container is down,
+        # not that IACAD is. The Today tile's Fetched block covers that.
         siteMonitor: http://prayer:8000/health
         # The bare hostname, because YOUR BROWSER opens it. It is a JSON page:
-        # everything the tile shows, and /api/coverage lists the stored months.
+        # everything these tiles show, and /api/coverage lists the stored months.
         href: http://aboriis-pi:3003/
         target: "_blank"
-        description: Dubai (IACAD), cached a year ahead
+        description: Dubai (IACAD)
         server: my-docker
         container: prayer
-        widgets:
-          # Row 1: what is next.
-          - type: customapi
-            # Container name: Homepage fetches this server-side.
-            url: http://prayer:8000/api/status
-            # The countdown is a string the service formats, so it only moves
-            # when this fires. 15 s keeps "1h 56m" honest without polling a
-            # local container to death.
-            refreshInterval: 15000
-            mappings:
-              - field: nextName
-                label: Next
-              - field: nextTime
-                label: At
-              - field: nextIn
-                label: In
-              - field: hijriDate
-                label: Hijri
-          # Row 2: the rest of the day's data. Changes once a day at most,
-          # so it is polled once a minute.
-          - type: customapi
-            url: http://prayer:8000/api/status
-            refreshInterval: 60000
-            mappings:
-              - field: date
-                label: Date
-                format: date
-                dateStyle: medium
-              - field: cityName
-                label: City
-              - field: stored
-                label: Stored
-              # `stale` is a boolean: true means today could not be fetched
-              # and the tile is still showing the last day that could be.
-              - field: stale
-                label: Fetched
-                remap:
-                  - value: false
-                    to: Today
-                  - value: true
-                    to: Stale
-          # Row 3: the day, one row per prayer. The Fajr row carries
-          # TOMORROW's time once Isha has passed - the one still ahead of
-          # you - exactly as the panel does.
-          - type: customapi
-            url: http://prayer:8000/api/status
-            refreshInterval: 60000
-            display: dynamic-list
-            mappings:
-              items: list
-              name: name
-              label: time
+        widget:
+          type: customapi
+          # Container name: Homepage fetches this server-side.
+          url: http://prayer:8000/api/status
+          # The countdown is a string the service formats, so it only moves
+          # when this fires. 15 s keeps "1h 56m" honest without polling a
+          # local container to death.
+          refreshInterval: 15000
+          mappings:
+            - field: nextName
+              label: Next
+            - field: nextTime
+              label: At
+            - field: nextIn
+              label: In
+            - field: hijriDate
+              label: Hijri
 
+    - Today:
+        icon: mdi-calendar-today
+        description: Cached a year ahead
+        widget:
+          type: customapi
+          url: http://prayer:8000/api/status
+          # Changes once a day at most, so once a minute is plenty.
+          refreshInterval: 60000
+          mappings:
+            - field: date
+              label: Date
+              format: date
+              dateStyle: medium
+            - field: cityName
+              label: City
+            - field: stored
+              label: Stored
+            # `stale` is a boolean: true means today could not be fetched and
+            # the tiles are still showing the last day that could be.
+            - field: stale
+              label: Fetched
+              remap:
+                - value: false
+                  to: Today
+                - value: true
+                  to: Stale
+
+    - Prayer times:
+        icon: mdi-mosque
+        description: One row per prayer
+        widget:
+          type: customapi
+          url: http://prayer:8000/api/status
+          refreshInterval: 60000
+          display: dynamic-list
+          mappings:
+            # The Fajr row carries TOMORROW's time once Isha has passed - the
+            # one still ahead of you - exactly as the panel does.
+            items: list
+            name: name
+            label: time
+
+- System:
     # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
     # flags and silently ignores "metric" - only the service widget understands
     # it, which is why these live here and not in widgets.yaml.
