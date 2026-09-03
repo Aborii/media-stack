@@ -25,7 +25,9 @@ services:
     # If this ever fails to pull with "error from registry: unauthorized", that
     # is transient. It happened once here and sent me to the deprecated image by
     # mistake; retry rather than switching away.
-    image: lscr.io/linuxserver/speedtest-tracker:latest
+    # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
+    # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
+    image: ghcr.io/linuxserver/speedtest-tracker:latest
     restart: unless-stopped
     ports:
       - '${SPEEDTEST_PORT:-3030}:80'

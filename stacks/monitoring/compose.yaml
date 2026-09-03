@@ -139,8 +139,10 @@ services:
       # Most of this stack runs :latest. That tag never changes, only what it
       # points at does, and WUD does not check Docker Hub digests unless told
       # to - without this line it warns once per container and reports
-      # NOTHING for any of them. ghcr.io and lscr.io images check digests by
-      # default already; only the Hub registry has this off.
+      # NOTHING for any of them. ghcr.io images check digests by
+      # default already; only the Hub registry has this off. (lscr.io is not a
+      # registry wud knows without a GitHub login, which is why the linuxserver
+      # images are pulled from ghcr.io - the same images under the real name.)
       - WUD_REGISTRY_HUB_PUBLIC_WATCHDIGEST=true
       - WUD_REGISTRY_HUB_PUBLIC_SUPPRESSDIGESTWATCHWARNING=true
       # Telegram, into the status forum topic - same bot and group as

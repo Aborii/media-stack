@@ -199,7 +199,9 @@ services:
       - mediastack
 
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
+    # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
+    image: ghcr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     restart: unless-stopped
     volumes:
@@ -271,7 +273,9 @@ services:
         condition: service_healthy
 
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:develop
+    # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
+    # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
+    image: ghcr.io/linuxserver/prowlarr:develop
     container_name: prowlarr
     restart: unless-stopped
     volumes:
