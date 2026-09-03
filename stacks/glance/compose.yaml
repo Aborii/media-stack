@@ -111,6 +111,10 @@ services:
       - PCSWITCH_URL=${PCSWITCH_URL:-http://pcswitch.local}
       - PCSWITCH_TOKEN=${PCSWITCH_TOKEN:-}
       - PCSWITCH_PROXY_PORT=${WEBUI_PORT_PCSWITCH:?err}
+      # 1 while testing the dashboard: the buttons answer as usual but
+      # nothing reaches the switch, so a stray click cannot power the PC.
+      # The tile prints TEST MODE while this is on.
+      - PCSWITCH_DRY_RUN=${PCSWITCH_DRY_RUN:-0}
     healthcheck:
       test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['PCSWITCH_PROXY_PORT']+'/',timeout=5)"]
       interval: 5m

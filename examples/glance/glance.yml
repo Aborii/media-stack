@@ -221,7 +221,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=3')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=4')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
@@ -294,7 +294,7 @@ pages:
                       <span class="color-paragraph size-h6">{{ .JSON.String "error" }}</span>
                       {{ end }}
                     </div>
-                    <div class="size-h6"><span data-pc="msg">tap boots or asks it to stop</span></div>
+                    <div class="size-h6">{{ if .JSON.Bool "dry" }}<span class="color-negative">TEST MODE</span> &middot; {{ end }}<span data-pc="msg">{{ if .JSON.Bool "dry" }}nothing is sent to the switch{{ else }}tap boots or asks it to stop{{ end }}</span></div>
                   </div>
                   <div><div data-pc="rssi" class="color-highlight size-h4">{{ if $ok }}{{ .JSON.Int "rssi" }} dBm{{ else }}-{{ end }}</div><div class="size-h6">SWITCH WIFI</div></div>
                 </div>

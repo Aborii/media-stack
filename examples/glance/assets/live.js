@@ -144,6 +144,13 @@ async function pcPress(btn, what, state) {
     const r = await fetch(PCSW + what, { method: 'POST' });
     const j = await r.json();
     if (!j.ok) { set('msg', j.error || 'the switch refused'); buttons.forEach((b) => { b.disabled = false; }); return; }
+    if (j.dry) {
+      // Test mode: the proxy answered but sent nothing on, so there is no
+      // state change coming and watching for one would just time out.
+      set('msg', j.message || 'test mode: nothing sent');
+      buttons.forEach((b) => { b.disabled = false; });
+      return;
+    }
   } catch {
     set('msg', 'proxy unreachable');
     buttons.forEach((b) => { b.disabled = false; });

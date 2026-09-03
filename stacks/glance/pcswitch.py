@@ -46,6 +46,18 @@ TOKEN   = os.environ.get("PCSWITCH_TOKEN", "")
 PORT    = int(os.environ.get("PCSWITCH_PROXY_PORT", "9102"))
 TIMEOUT = float(os.environ.get("PCSWITCH_TIMEOUT", "6"))
 
+# Dry run: answer the buttons, send nothing to the switch.
+#
+# For testing the dashboard end of this on a PC that is doing something. The
+# whole path still runs - the click, the POST, the reply, the message on the
+# tile - and only the last hop is skipped, so what it proves is everything
+# except the press itself. Reading the state is untouched and stays live.
+#
+# It is deliberately loud rather than a quiet flag: the status reply carries
+# `dry`, and the tile prints TEST MODE beside the buttons, because a switch
+# that silently does nothing is worse than no switch at all.
+DRY = os.environ.get("PCSWITCH_DRY_RUN", "0").strip().lower() in ("1", "true", "yes", "on")
+
 # The address the name last resolved to, and when. mDNS is a broadcast asked
 # and answered live, so a single lost packet - or an access point that drops
 # multicast for a moment - can make a name that is perfectly fine look gone.
@@ -219,6 +231,7 @@ class Handler(BaseHTTPRequestHandler):
             code, body, how = call("/api/status")
             body["ok"] = code == 200
             body["via"] = how or ""
+            body["dry"] = DRY
             # 200 either way: the tile reads `ok`, and an error body it can
             # render beats a status code it cannot.
             return self.reply(200, body, head)
@@ -228,14 +241,21 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         if not TOKEN:
             return self.reply(500, {"ok": False, "error": "PCSWITCH_TOKEN is not set"})
+        if path not in ("/press", "/force-off"):
+            return self.reply(404, {"ok": False, "error": "not found"})
+
+        if DRY:
+            print(f"[dry] {path} requested - NOT sent to the switch", flush=True)
+            return self.reply(200, {"ok": True, "dry": True, "action": path.lstrip("/"),
+                                    "message": "test mode: nothing sent to the switch"})
+
         if path == "/press":
             code, body, how = call("/api/press", "POST")
-        elif path == "/force-off":
-            code, body, how = call("/api/force-off", "POST")
         else:
-            return self.reply(404, {"ok": False, "error": "not found"})
+            code, body, how = call("/api/force-off", "POST")
         body["ok"] = code == 200
         body["via"] = how or ""
+        body["dry"] = False
         # 409 is the switch saying a press is already running, which is a
         # normal answer to a double click rather than a failure.
         if code == 409:
@@ -249,5 +269,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"[boot] power switch proxy for {DEVICE} on :{PORT}, token "
-          f"{'set' if TOKEN else 'MISSING'}", flush=True)
+          f"{'set' if TOKEN else 'MISSING'}"
+          f"{'  *** DRY RUN: presses are NOT sent ***' if DRY else ''}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
