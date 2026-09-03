@@ -498,9 +498,15 @@ pages:
               # forwarded port. /v1/portforward directly, as Homepage's
               # version 2 does - the older path redirects. No page to open,
               # so the check is the control server itself.
+              #
+              # Live, on a short cache: the tunnel reconnects now and then,
+              # and while it does the control server answers with an empty
+              # address. A five-minute cache held that blank on the page long
+              # after the tunnel was back. Now it reads "reconnecting" for as
+              # long as it is true and no longer.
               - type: custom-api
                 title: Gluetun
-                cache: 5m
+                cache: 10s
                 url: http://gluetun:8320/v1/publicip/ip
                 headers:
                   X-API-Key: ${GLUETUN_API_KEY}
@@ -511,15 +517,22 @@ pages:
                       X-API-Key: ${GLUETUN_API_KEY}
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://gluetun:8320/v1/publicip/ip" | withHeader "X-API-Key" "${GLUETUN_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $ip := .JSON.String "public_ip" }}
+                  <div data-live="vpn">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gluetun.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
-                      <div><div class="color-highlight size-h4">{{ .JSON.String "public_ip" }}</div><div class="size-h6">PUBLIC IP</div></div>
+                      {{ if $ip }}
+                      <div><div class="color-highlight size-h4">{{ $ip }}</div><div class="size-h6">PUBLIC IP</div></div>
                       <div><div class="color-highlight size-h4">{{ .JSON.String "city" }}, {{ .JSON.String "country" }}</div><div class="size-h6">EXIT</div></div>
                       <div><div class="color-highlight size-h4">{{ (.Subrequest "port").JSON.Int "port" }}</div><div class="size-h6">PORT</div></div>
+                      {{ else }}
+                      <div class="grow"><div class="color-negative size-h4">reconnecting&hellip;</div><div class="size-h6">TUNNEL</div></div>
+                      {{ end }}
                     </div>
                   </div>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </div>
               # Homepage's Portainer tile: containers by state, from the
               # environment Homepage uses (3 here - this install has been
               # recreated, so not the 2 most guides assume).
