@@ -469,6 +469,10 @@ pages:
                 url: http://gluetun:8200/api/v2/auth/login
                 body-type: string
                 body: username=${QBIT_USER}&password=${QBIT_PASS}
+                # A string body goes out with no content type, and qBittorrent
+                # answers 400 to a login it cannot parse as a form.
+                headers:
+                  Content-Type: application/x-www-form-urlencoded
                 skip-json-validation: true
                 template: |
                   {{ $sid := .Response.Header.Get "Set-Cookie" }}
