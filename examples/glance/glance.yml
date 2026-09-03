@@ -65,34 +65,50 @@ pages:
 
           # Homepage's Network tile: what the wifi link is carrying right now,
           # from glances on the host, which is the only thing here that can
-          # see wlan0. Rates are bytes per second, shown as Mbit/s.
+          # see the wireless interfaces. Every wlan* interface is summed
+          # rather than one named: the Pi carries wlan0 AND wlan1 and the
+          # traffic moved to wlan1, which left Homepage's tile - hardcoded to
+          # wlan0 - reporting an idle link. Rates are bytes per second, shown
+          # as Mbit/s, as of the last page load.
           - type: custom-api
             title: Internet load
             title-url: http://aboriis-pi:61210
             cache: 15s
             url: http://172.28.10.1:61208/api/4/network
             template: |
-              {{ $down := .JSON.Float "#(interface_name==wlan0).bytes_recv_rate_per_sec" }}
-              {{ $up := .JSON.Float "#(interface_name==wlan0).bytes_sent_rate_per_sec" }}
+              {{ $down := 0.0 }}{{ $up := 0.0 }}{{ $names := "" }}
+              {{ range .JSON.Array `#(interface_name%"wlan*")#` }}
+                {{ $down = add $down (.Float "bytes_recv_rate_per_sec") }}
+                {{ $up = add $up (.Float "bytes_sent_rate_per_sec") }}
+                {{ $names = printf "%s %s" $names (.String "interface_name") }}
+              {{ end }}
               <div class="flex justify-between text-center">
                 <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $down 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
                 <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $up 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
               </div>
-              <p class="size-h6 color-paragraph margin-top-10 text-center">wlan0, as of the last page load</p>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">{{ $names }}, as of the last page load</p>
 
-          # Homepage's Disk I/O tile: the data disk, sda.
+          # Homepage's Disk I/O tile: the data disk. Matched as sd? rather
+          # than named, for the same reason: it was sda and is sdb now, and
+          # Homepage's tile still says sda. Partitions (sdb1) are excluded by
+          # the pattern so nothing is counted twice.
           - type: custom-api
             title: Disk I/O
             title-url: http://aboriis-pi:61210
             cache: 15s
             url: http://172.28.10.1:61208/api/4/diskio
             template: |
-              {{ $r := .JSON.Float "#(disk_name==sda).read_bytes_rate_per_sec" }}
-              {{ $w := .JSON.Float "#(disk_name==sda).write_bytes_rate_per_sec" }}
+              {{ $r := 0.0 }}{{ $w := 0.0 }}{{ $names := "" }}
+              {{ range .JSON.Array `#(disk_name%"sd?")#` }}
+                {{ $r = add $r (.Float "read_bytes_rate_per_sec") }}
+                {{ $w = add $w (.Float "write_bytes_rate_per_sec") }}
+                {{ $names = printf "%s %s" $names (.String "disk_name") }}
+              {{ end }}
               <div class="flex justify-between text-center">
                 <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $r 1048576) }}</div><div class="size-h6">MB/S READ</div></div>
                 <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $w 1048576) }}</div><div class="size-h6">MB/S WRITE</div></div>
               </div>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">{{ $names }}</p>
 
           # Homepage's two process tiles. Two glances instances, because the
           # sort order is a launch flag of the instance serving it - see
