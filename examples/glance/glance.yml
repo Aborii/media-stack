@@ -405,12 +405,12 @@ pages:
                   <a href="http://aboriis-pi:6767" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/bazarr.svg" alt="" style="width:34px;height:34px;flex:none">
-                    <div class="grow flex justify-between text-center">
+                    <span class="grow size-h5 color-paragraph">missing subtitles</span>
+                    <div class="flex gap-10 text-center" style="flex:none">
                       <div><div class="color-highlight size-h3">{{ .JSON.Int "total" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
                       <div><div class="color-highlight size-h3">{{ (.Subrequest "movies").JSON.Int "total" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
                     </div>
                   </div>
-                  <p class="size-h6 color-paragraph margin-top-10 text-center">missing subtitles</p>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
 
@@ -451,6 +451,45 @@ pages:
                   </div>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
+              # Homepage's qBittorrent tile: what is leeching and seeding, and
+              # the transfer rates. Reached as gluetun:8200 - it shares
+              # gluetun's network namespace.
+              #
+              # qBittorrent has no API key, only a login session, so the
+              # widget's own request IS the login: a form POST that answers
+              # "Ok." as plain text (hence skip-json-validation) and sets the
+              # SID cookie. The template hands that cookie to the three calls
+              # that follow. One login per cache period, which is fine - the
+              # client ban is for FAILED logins.
+              - type: custom-api
+                title: qBittorrent
+                title-url: http://aboriis-pi:8200
+                cache: 10s
+                method: POST
+                url: http://gluetun:8200/api/v2/auth/login
+                body-type: string
+                body: username=${QBIT_USER}&password=${QBIT_PASS}
+                skip-json-validation: true
+                template: |
+                  {{ $sid := .Response.Header.Get "Set-Cookie" }}
+                  {{ $t0 := now }}{{ $tr := newRequest "http://gluetun:8200/api/v2/transfer/info" | withHeader "Cookie" $sid | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $dl := newRequest "http://gluetun:8200/api/v2/torrents/info" | withParameter "filter" "downloading" | withHeader "Cookie" $sid | getResponse }}
+                  {{ $seed := newRequest "http://gluetun:8200/api/v2/torrents/info" | withParameter "filter" "seeding" | withHeader "Cookie" $sid | getResponse }}
+                  <a data-live="qbit" href="http://aboriis-pi:8200" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/qbittorrent.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ len ($dl.JSON.Array "") }}</div><div class="size-h6">LEECHING</div></div>
+                      <div><div class="color-highlight size-h3">{{ len ($seed.JSON.Array "") }}</div><div class="size-h6">SEEDING</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul ($tr.JSON.Float "dl_info_speed") 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul ($tr.JSON.Float "up_info_speed") 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $tr.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $tr.Response.StatusCode }}{{ if ne .Response.StatusCode 200 }} (login {{ .Response.StatusCode }}){{ end }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          - type: split-column
+            widgets:
               # Homepage's Gluetun tile: where the tunnel comes out, and the
               # forwarded port. /v1/portforward directly, as Homepage's
               # version 2 does - the older path redirects. No page to open,
@@ -477,10 +516,6 @@ pages:
                     </div>
                   </div>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
-
-          # ── System and Monitoring ──
-          - type: split-column
-            widgets:
               # Homepage's Portainer tile: containers by state, from the
               # environment Homepage uses (3 here - this install has been
               # recreated, so not the 2 most guides assume).
@@ -505,6 +540,10 @@ pages:
                   </div>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
+
+          # ── Monitoring ──
+          - type: split-column
+            widgets:
               # Homepage's Speedtest tile: the real line speed, measured every
               # six hours - NOT through the VPN. Bearer token, API v1.
               - type: custom-api
@@ -517,6 +556,7 @@ pages:
                   Accept: application/json
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://speedtest-tracker:80/api/healthcheck" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $m := ((now).Sub (parseTime "rfc3339" (.JSON.String "data.data.timestamp"))).Minutes | toInt }}
                   <a href="http://aboriis-pi:3030" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png" alt="" style="width:34px;height:34px;flex:none">
@@ -524,15 +564,11 @@ pages:
                       <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.download_bits") 1000000) }}</div><div class="size-h6">MBPS DOWN</div></div>
                       <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.upload_bits") 1000000) }}</div><div class="size-h6">MBPS UP</div></div>
                       <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
+                      <div><div class="color-highlight size-h4">{{ if lt $m 1 }}just now{{ else if lt $m 60 }}{{ $m }} min ago{{ else if lt $m 1440 }}{{ $x := div ($m | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($m | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</div><div class="size-h6">MEASURED</div></div>
                     </div>
                   </div>
-                  {{ $m := ((now).Sub (parseTime "rfc3339" (.JSON.String "data.data.timestamp"))).Minutes | toInt }}
-                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured {{ if lt $m 1 }}just now{{ else if lt $m 60 }}{{ $m }} minute{{ if ne $m 1 }}s{{ end }} ago{{ else if lt $m 1440 }}{{ $h := div ($m | toFloat) 60 | toInt }}{{ $h }} hour{{ if ne $h 1 }}s{{ end }} ago{{ else }}{{ $d := div ($m | toFloat) 1440 | toInt }}{{ $d }} day{{ if ne $d 1 }}s{{ end }} ago{{ end }}</p>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
-
-          - type: split-column
-            widgets:
               # Homepage's Scrutiny tile - and the temperature it could not
               # show: this disk hit 68C in its old enclosure and took the
               # array read-only, so the number is the thing worth watching.
@@ -556,48 +592,50 @@ pages:
                   </div>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
-              # Homepage's Backups tile. The Pi answers this, not the PC:
-              # pointing at the receiver would go red every time the PC
-              # sleeps. The check is the same endpoint, timed. last_backup is
-              # local time with no zone, so the Pi's +04:00 is appended before
-              # it is parsed; last_sent already carries a zone.
-              - type: custom-api
-                title: Backups
-                title-url: http://aboriis-pi:9101/ui
-                cache: 5m
-                url: http://172.28.10.1:9101/
-                template: |
-                  {{ $t0 := now }}{{ $h := newRequest "http://172.28.10.1:9101/" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-pi:9101/ui" class="block" style="color:inherit;text-decoration:none">
-                  <div class="flex items-center gap-10">
-                    <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
-                    <div class="grow flex justify-between text-center">
-                      <div><div data-backup="state" class="color-highlight size-h4">{{ .JSON.String "state" }}</div><div class="size-h6">STATE</div></div>
-                      <div><div data-backup="onpc" class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
+
+          # Homepage's Backups tile, full width. The Pi answers this, not the
+          # PC: pointing at the receiver would go red every time the PC
+          # sleeps. The check is the same endpoint, timed. last_backup is
+          # local time with no zone, so the Pi's +04:00 is appended before it
+          # is parsed; last_sent already carries a zone.
+          #
+          # The small Run button beside the state posts the same /run the
+          # status page posts. Its handler lives in assets/live.js: it writes
+          # the service's reply into the msg span, then follows the run by
+          # polling the status JSON into the data-backup fields until the
+          # backup has finished. Only the icon links out - a button inside a
+          # link is not a thing - and this tile is deliberately NOT data-live,
+          # since the 5 s swap would wipe that in-progress state.
+          - type: custom-api
+            title: Backups
+            title-url: http://aboriis-pi:9101/ui
+            cache: 5m
+            url: http://172.28.10.1:9101/
+            template: |
+              {{ $t0 := now }}{{ $h := newRequest "http://172.28.10.1:9101/" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+              {{ $bm := ((now).Sub (parseTime "rfc3339" (printf "%s+04:00" (.JSON.String "last_backup")))).Minutes | toInt }}
+              {{ $dm := ((now).Sub (parseTime "rfc3339" (.JSON.String "last_sent"))).Minutes | toInt }}
+              <div class="flex items-center gap-10">
+                <a href="http://aboriis-pi:9101/ui" style="flex:none;display:block"><img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:34px;height:34px;display:block;filter:invert(.8)"></a>
+                <div class="grow flex justify-between text-center">
+                  <div>
+                    <div class="color-highlight size-h4"><span data-backup="state">{{ .JSON.String "state" }}</span>
+                      {{ if .JSON.Bool "backing_up" }}
+                      <button disabled style="font:inherit;font-size:.7em;padding:2px 9px;margin-left:8px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;opacity:.5;vertical-align:middle">Run</button>
+                      <span data-backup="msg" class="size-h6 color-paragraph">running&hellip;</span>
+                      {{ else }}
+                      <button style="font:inherit;font-size:.7em;padding:2px 9px;margin-left:8px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;vertical-align:middle" onclick="glanceLive.runBackup(this)">Run</button>
+                      <span data-backup="msg" class="size-h6 color-paragraph"></span>
+                      {{ end }}
                     </div>
+                    <div class="size-h6">STATE</div>
                   </div>
-                  {{ $bm := ((now).Sub (parseTime "rfc3339" (printf "%s+04:00" (.JSON.String "last_backup")))).Minutes | toInt }}
-                  {{ $dm := ((now).Sub (parseTime "rfc3339" (.JSON.String "last_sent"))).Minutes | toInt }}
-                  <ul class="list margin-top-10 size-h6 color-paragraph">
-                    <li>built <span data-backup="built">{{ if lt $bm 1 }}just now{{ else if lt $bm 60 }}{{ $bm }} minute{{ if ne $bm 1 }}s{{ end }} ago{{ else if lt $bm 1440 }}{{ $x := div ($bm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($bm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</span></li>
-                    <li>delivered <span data-backup="delivered">{{ if lt $dm 1 }}just now{{ else if lt $dm 60 }}{{ $dm }} minute{{ if ne $dm 1 }}s{{ end }} ago{{ else if lt $dm 1440 }}{{ $x := div ($dm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($dm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</span></li>
-                  </ul>
-                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
-                  </a>
-                  <!-- The same button the backup page has, posting to the same
-                       /run. Outside the <a>, since a button inside a link is
-                       not a thing. The handler lives in assets/live.js: it
-                       shows the service's reply (started, already running,
-                       the cooldown) and then follows the run, polling the
-                       status JSON into the data-backup fields above until the
-                       backup has finished. This tile is deliberately NOT
-                       data-live - the 5 s swap would wipe that in-progress
-                       state, and its own cache is 5 min. -->
-                  {{ if .JSON.Bool "backing_up" }}
-                  <button disabled style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;opacity:.5">Backup running&hellip;</button>
-                  {{ else }}
-                  <button style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;cursor:pointer" onclick="glanceLive.runBackup(this)">Run backup now</button>
-                  {{ end }}
+                  <div><div data-backup="onpc" class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
+                  <div><div data-backup="built" class="color-highlight size-h4">{{ if lt $bm 1 }}just now{{ else if lt $bm 60 }}{{ $bm }} minute{{ if ne $bm 1 }}s{{ end }} ago{{ else if lt $bm 1440 }}{{ $x := div ($bm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($bm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</div><div class="size-h6">BUILT</div></div>
+                  <div><div data-backup="delivered" class="color-highlight size-h4">{{ if lt $dm 1 }}just now{{ else if lt $dm 60 }}{{ $dm }} minute{{ if ne $dm 1 }}s{{ end }} ago{{ else if lt $dm 1440 }}{{ $x := div ($dm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($dm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</div><div class="size-h6">DELIVERED</div></div>
+                </div>
+              </div>
+              <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
 
           # The Homepage groups, link for link.
           - type: bookmarks
@@ -646,7 +684,6 @@ pages:
             sites:
               - { title: Uptime Kuma, url: http://aboriis-pi:3001, check-url: http://uptime-kuma:3001/,               icon: di:uptime-kuma }
               - { title: Kavita,      url: http://aboriis-pi:5000, check-url: http://kavita:5000/api/health,          icon: di:kavita }
-              - { title: qBittorrent, url: http://aboriis-pi:8200, check-url: http://gluetun:8200/,                   icon: di:qbittorrent }
               - { title: SFTPGo,      url: http://aboriis-pi:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
               - { title: Dozzle,      url: http://aboriis-pi:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
               - { title: What's Up Docker, url: http://aboriis-pi:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
@@ -698,10 +735,6 @@ pages:
 
 # Not ported, and why:
 #
-#   qBittorrent   its API needs a login session (a cookie from /api/v2/auth/
-#                 login), which a single request cannot do. Turning on
-#                 "bypass authentication for clients in whitelisted IP
-#                 subnets" for 172.28.10.0/24 in its WebUI options would let
-#                 a plain request through - a choice to make in qBittorrent,
-#                 not here.
-#   Kavita        same shape: its API key is exchanged for a JWT first.
+#   Kavita   its API key is exchanged for a JWT first, and that JWT then has
+#            to be carried by the next call - the same shape qBittorrent has
+#            with its cookie, so the same trick would work; nobody has asked.

@@ -59,17 +59,19 @@ async function runBackup(btn) {
   const tile = btn.closest('.widget') || document;
   const set = (k, v) => tile.querySelectorAll(`[data-backup="${k}"]`).forEach((e) => { e.textContent = v; });
 
+  // The button is small and sits beside the state, so it only ever says
+  // Run; what the service answered goes in the msg span next to it.
   btn.disabled = true;
-  btn.textContent = 'Starting…';
+  set('msg', 'starting…');
   let reply;
   try {
     const r = await fetch(BACKUP + 'run', { method: 'POST' });
     reply = (await r.text()).trim();
   } catch {
     // No CORS header yet: the POST still landed, the reply is unreadable.
-    reply = 'Requested';
+    reply = 'requested';
   }
-  btn.textContent = reply;
+  set('msg', reply);
 
   const started = Date.now();
   let sawRunning = false;
@@ -86,7 +88,7 @@ async function runBackup(btn) {
     set('delivered', ago(d.last_sent));
     if (d.backing_up) {
       sawRunning = true;
-      btn.textContent = 'Backup running…';
+      set('msg', 'running…');
       return;
     }
     // Finished - or never started (refused, cooldown): give up after a
@@ -94,7 +96,7 @@ async function runBackup(btn) {
     if (sawRunning || Date.now() - started > 60000) {
       clearInterval(poll);
       btn.disabled = false;
-      btn.textContent = sawRunning ? 'Done - run again' : reply;
+      set('msg', sawRunning ? 'done' : reply);
     }
   }, 3000);
 }

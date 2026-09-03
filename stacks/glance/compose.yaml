@@ -52,6 +52,11 @@ services:
       - SPEEDTEST_API_KEY=${SPEEDTEST_API_KEY:-}
       - GLUETUN_API_KEY=${GLUETUN_API_KEY:-}
       - UPTIMEKUMA_SLUG=${UPTIMEKUMA_SLUG:-home-services}
+      # qBittorrent has no API key: the tile logs in with these, the same
+      # pair the Homepage widget used, and keeps the session cookie for the
+      # calls that follow. Never reaches the browser.
+      - QBIT_USER=${QBIT_USER:-}
+      - QBIT_PASS=${QBIT_PASS:-}
       # Sign-in, once the two values exist - glance.yml says how to make
       # them. Empty until then, and the auth block there stays commented out.
       - GLANCE_SECRET_KEY=${GLANCE_SECRET_KEY:-}
