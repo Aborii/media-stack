@@ -22,12 +22,12 @@
 # server-side from inside the docker network, so they stay as container names.
 
 - System:
-    # First in the first group, so it is the top-left tile. One customapi
-    # widget, nine blocks, in the order custom.css lays them out: the three
-    # about what is next go down the LEFT, the six times fill a 2x3 grid on
-    # the RIGHT. Homepage itself would put all nine in one squeezed row - a
-    # service-container is a non-wrapping flex row - so the grid is custom.css,
-    # and it keys off this tile's name. Rename the tile and the layout goes.
+    # First in the first group, so it is the top-left tile. Three widgets,
+    # stacked the way Homepage stacks them: a row of four blocks about the
+    # next prayer, a second row of four with the rest of the day's data, and
+    # a list with one row per prayer. Four blocks per row is the most a
+    # normal-width tile fits without squeezing - a widget's blocks are one
+    # non-wrapping flex row.
     - Prayer times:
         icon: mdi-mosque
         # /health answers as soon as the process is serving, whether or not a
@@ -41,37 +41,58 @@
         description: Dubai (IACAD), cached a year ahead
         server: my-docker
         container: prayer
-        widget:
-          type: customapi
-          # Container name: Homepage fetches this server-side.
-          url: http://prayer:8000/api/status
-          # The countdown is a string the service formats, so it only moves
-          # when this fires. 15 s keeps "1h 56m" honest without polling a
-          # local container to death.
-          refreshInterval: 15000
-          mappings:
-            # Left column, top to bottom.
-            - field: nextLabel
-              label: Next
-            - field: nextIn
-              label: In
-            - field: hijriDate
-              label: Hijri
-            # Right grid, row by row. `tile`, not `today`: its Fajr carries
-            # TOMORROW's time once Isha has passed - the one still ahead of
-            # you - exactly as the panel does. `today` stays today's own six.
-            - field: tile.fajr
-              label: Fajr
-            - field: tile.sunrise
-              label: Sunrise
-            - field: tile.dhuhr
-              label: Dhuhr
-            - field: tile.asr
-              label: Asr
-            - field: tile.maghrib
-              label: Maghrib
-            - field: tile.isha
-              label: Isha
+        widgets:
+          # Row 1: what is next.
+          - type: customapi
+            # Container name: Homepage fetches this server-side.
+            url: http://prayer:8000/api/status
+            # The countdown is a string the service formats, so it only moves
+            # when this fires. 15 s keeps "1h 56m" honest without polling a
+            # local container to death.
+            refreshInterval: 15000
+            mappings:
+              - field: nextName
+                label: Next
+              - field: nextTime
+                label: At
+              - field: nextIn
+                label: In
+              - field: hijriDate
+                label: Hijri
+          # Row 2: the rest of the day's data. Changes once a day at most,
+          # so it is polled once a minute.
+          - type: customapi
+            url: http://prayer:8000/api/status
+            refreshInterval: 60000
+            mappings:
+              - field: date
+                label: Date
+                format: date
+                dateStyle: medium
+              - field: cityName
+                label: City
+              - field: stored
+                label: Stored
+              # `stale` is a boolean: true means today could not be fetched
+              # and the tile is still showing the last day that could be.
+              - field: stale
+                label: Fetched
+                remap:
+                  - value: false
+                    to: Today
+                  - value: true
+                    to: Stale
+          # Row 3: the day, one row per prayer. The Fajr row carries
+          # TOMORROW's time once Isha has passed - the one still ahead of
+          # you - exactly as the panel does.
+          - type: customapi
+            url: http://prayer:8000/api/status
+            refreshInterval: 60000
+            display: dynamic-list
+            mappings:
+              items: list
+              name: name
+              label: time
 
     # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
     # flags and silently ignores "metric" - only the service widget understands
