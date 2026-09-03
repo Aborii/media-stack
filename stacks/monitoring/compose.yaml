@@ -120,6 +120,13 @@ services:
       - NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000
       # A read-only view has nothing to delete.
       - WUD_SERVER_FEATURE_DELETE=false
+      # WUD allows anonymous access by default - its own documentation says
+      # so - and /api/containers returns the whole inventory to anyone who
+      # asks. That is the same open wifi the glances gate exists for, so the
+      # page gets a password too. Enabling any strategy covers the UI and
+      # every API route together; there is no half-protected state.
+      - WUD_AUTH_BASIC_ADMIN_USER=${WUD_AUTH_BASIC_ADMIN_USER:?err}
+      - WUD_AUTH_BASIC_ADMIN_HASH=${WUD_AUTH_BASIC_ADMIN_HASH:?err}
       # Through the socket proxy, like Dozzle - never the raw socket. The
       # proxy allows exactly what a watcher needs: containers, images, events.
       - WUD_WATCHER_LOCAL_HOST=dockerproxy
