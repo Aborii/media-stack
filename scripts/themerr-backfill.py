@@ -35,7 +35,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-MOVIES = Path("/srv/storage/data/media/library/movies")
+LIBRARY = Path("/srv/storage/data/media/library")
+MOVIES = LIBRARY / "movies"
 YTDLP = Path("/srv/appdata/bin/yt-dlp")
 STATE = Path("/srv/appdata/themerr-backfill-state.json")
 LOG = Path("/srv/appdata/themerr-backfill.log")
@@ -45,7 +46,15 @@ CONTAINER_PREFIX = "/data/media"
 
 # Built once on first use - one API call, not one per movie.
 _ITEM_INDEX = None
-THEMERRDB = "https://app.lizardbyte.dev/ThemerrDB/movies/themoviedb/{}.json"
+# ThemerrDB splits movies and series into separate paths, so the media type
+# travels with every work item rather than being assumed.
+THEMERRDB = "https://app.lizardbyte.dev/ThemerrDB/{}/themoviedb/{}.json"
+SONARR = "http://127.0.0.1:8989/api/v3/series?apikey=ab0dcaf7edbb4787a3cec0dfbb257699"
+
+# Sonarr mounts the whole media directory at /data, while Jellyfin mounts
+# only the library subdirectory at /data/media. Same files, different
+# container paths, so Sonarr's paths need their own translation.
+SONARR_PREFIX = "/data/library"
 
 # Jellyfin picks up a theme song when it scans the folder, not when the file
 # appears, so each download has to be announced or it stays silent.
@@ -60,9 +69,64 @@ def log(msg):
         fh.write(line + "\n")
 
 
+def state_key(tmdb_id, db_type):
+    """TMDb numbers movies and television separately, so the bare id is not
+    unique across them - 1639 is both a film and the series Heroes. Two ids
+    in this library are already claimed by both."""
+    return f"{db_type}:{tmdb_id}"
+
+
+def migrate_state(state):
+    """Bring a pre-namespacing state file forward.
+
+    Entries used to be keyed on the bare id. Each records the folder it
+    came from, so the media type is recoverable by looking at which library
+    that folder sits in - which beats discarding the file and re-querying
+    ThemerrDB for hundreds of entries, including re-attempting known-dead
+    YouTube links.
+    """
+    known = {}
+    for lib, db_type in (("movies", "movies"), ("tv", "tv_shows"), ("anime", "tv_shows")):
+        base = LIBRARY / lib
+        if base.is_dir():
+            for p in base.iterdir():
+                if p.is_dir():
+                    known[p.name] = db_type
+
+    moved = stranded = 0
+    for bucket in ("done", "no_theme", "failed"):
+        out = {}
+        for key, value in state.get(bucket, {}).items():
+            if ":" in key:
+                out[key] = value
+                continue
+            folder = value.get("folder") if isinstance(value, dict) else str(value)
+            folder = (folder or "").split(" (dead link:")[0].strip()
+            db_type = known.get(folder)
+            if db_type:
+                out[state_key(key, db_type)] = value
+                moved += 1
+            else:
+                # Folder is gone, so the type cannot be established. Assume
+                # movies: that is where every pre-existing entry came from,
+                # since series support did not exist when they were written.
+                out[state_key(key, "movies")] = value
+                stranded += 1
+        state[bucket] = out
+
+    if moved or stranded:
+        log(f"migrated {moved} state entries to typed keys "
+            f"({stranded} assumed movies - folder no longer on disk)")
+        # Write it out now. A --dry-run returns before the normal save, so
+        # without this the file on disk never converges and every future
+        # run repeats the migration.
+        save_state(state)
+    return state
+
+
 def load_state():
     if STATE.exists():
-        return json.loads(STATE.read_text())
+        return migrate_state(json.loads(STATE.read_text()))
     return {"done": {}, "no_theme": {}, "failed": {}}
 
 
@@ -81,14 +145,14 @@ def tmdb_id_of(folder):
     return m.group(1) if m else None
 
 
-def themerrdb_url(tmdb_id):
+def themerrdb_url(tmdb_id, db_type="movies"):
     """The YouTube URL ThemerrDB has for this movie, or None.
 
     Returns the string "MISSING" when ThemerrDB has no entry at all, so the
     caller can record that permanently instead of asking again every run.
     """
     try:
-        with urllib.request.urlopen(THEMERRDB.format(tmdb_id), timeout=30) as r:
+        with urllib.request.urlopen(THEMERRDB.format(db_type, tmdb_id), timeout=30) as r:
             data = json.load(r)
     except urllib.error.HTTPError as e:
         return "MISSING" if e.code == 404 else None
@@ -151,17 +215,51 @@ def jellyfin_item_id(folder):
     global _ITEM_INDEX
     if _ITEM_INDEX is None:
         _ITEM_INDEX = {}
-        url = (f"{JELLYFIN}/Items?IncludeItemTypes=Movie&Recursive=true&Limit=5000"
+        url = (f"{JELLYFIN}/Items?IncludeItemTypes=Movie,Series&Recursive=true&Limit=5000"
                f"&fields=Path&api_key={JELLYFIN_API_KEY}")
         try:
             with urllib.request.urlopen(url, timeout=120) as r:
                 for it in json.load(r)["Items"]:
-                    if it.get("Path"):
-                        _ITEM_INDEX[posixpath.dirname(it["Path"])] = it["Id"]
+                    path = it.get("Path")
+                    if not path:
+                        continue
+                    # A Movie's Path is its video file, so the folder is the
+                    # parent. A Series' Path is already the folder.
+                    key = path if it.get("Type") == "Series" else posixpath.dirname(path)
+                    _ITEM_INDEX[key] = it["Id"]
         except Exception:
             log("  could not read the Jellyfin item list; themes will need a manual rescan")
     container = str(folder).replace(HOST_PREFIX, CONTAINER_PREFIX, 1)
     return _ITEM_INDEX.get(container)
+
+
+def series_worklist():
+    """Series folders that still need a theme, as (folder, tmdb id).
+
+    Sonarr rather than the NFOs: 19 TV folders have no .nfo at all, and
+    reading files would skip them without saying so. Sonarr also covers
+    both root folders, so anime needs no special case.
+    """
+    try:
+        with urllib.request.urlopen(SONARR, timeout=60) as r:
+            series = json.load(r)
+    except Exception as e:
+        log(f"could not reach Sonarr ({e}); skipping series")
+        return []
+
+    out, no_id, no_dir = [], 0, 0
+    for s in series:
+        if not s.get("tmdbId"):
+            no_id += 1
+            continue
+        folder = Path(str(s.get("path", "")).replace(SONARR_PREFIX, HOST_PREFIX, 1))
+        if not folder.is_dir():
+            no_dir += 1
+            continue
+        out.append((folder, str(s["tmdbId"])))
+    if no_id or no_dir:
+        log(f"series skipped: {no_id} without a tmdbId, {no_dir} with no folder on disk")
+    return out
 
 
 def download(url, dest, args):
@@ -200,6 +298,8 @@ def main():
     ap.add_argument("--cookies", default="", help="optional cookies.txt (not normally needed)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--retry-failed", action="store_true", help="reattempt previous failures")
+    ap.add_argument("--media", choices=("movies", "series", "all"), default="all",
+                    help="which libraries to work through (default: all)")
     args = ap.parse_args()
 
     if not YTDLP.exists():
@@ -210,55 +310,62 @@ def main():
         log(f"clearing {len(state['failed'])} previous failures for retry")
         state["failed"] = {}
 
-    folders = sorted(p for p in MOVIES.iterdir() if p.is_dir())
+    candidates = []
+    if args.media in ("movies", "all"):
+        for folder in sorted(p for p in MOVIES.iterdir() if p.is_dir()):
+            candidates.append((folder, tmdb_id_of(folder), "movies"))
+    if args.media in ("series", "all"):
+        for folder, tmdb in series_worklist():
+            candidates.append((folder, tmdb, "tv_shows"))
+
     todo = []
     skipped_have = skipped_known = no_tmdb = 0
 
-    for folder in folders:
+    for folder, tmdb, db_type in candidates:
         if (folder / "theme.mp3").exists():
             skipped_have += 1
             continue
-        tmdb = tmdb_id_of(folder)
         if not tmdb:
             no_tmdb += 1
             continue
-        if tmdb in state["no_theme"]:
+        key = state_key(tmdb, db_type)
+        if key in state["no_theme"]:
             skipped_known += 1
             continue
         # A failure here is usually throttling or a dropped socket, so it is
         # worth retrying on a later run. Only give up after it has failed
         # repeatedly, which is what a genuinely dead video looks like.
-        if state["failed"].get(tmdb, {}).get("attempts", 1) >= 3:
+        if state["failed"].get(key, {}).get("attempts", 1) >= 3:
             skipped_known += 1
             continue
-        todo.append((folder, tmdb))
+        todo.append((folder, tmdb, db_type))
 
     log("=" * 62)
-    log(f"folders={len(folders)} have_theme={skipped_have} no_tmdbid={no_tmdb} "
-        f"known_skip={skipped_known} todo={len(todo)}")
+    log(f"media={args.media} candidates={len(candidates)} have_theme={skipped_have} "
+        f"no_tmdbid={no_tmdb} known_skip={skipped_known} todo={len(todo)}")
     est = len(todo) * (args.min_sleep + args.max_sleep) / 2 / 3600
     log(f"pace {args.min_sleep}-{args.max_sleep}s -> roughly {est:.1f} hours")
     if args.dry_run:
-        for folder, tmdb in todo[:20]:
-            log(f"  would fetch {folder.name}  (tmdb {tmdb})")
+        for folder, tmdb, db_type in todo[:20]:
+            log(f"  would fetch [{db_type}] {folder.name}  (tmdb {tmdb})")
         log(f"dry run, nothing downloaded ({len(todo)} candidates)")
         return
 
     done = failed = nodb = 0
     consecutive_failures = 0
 
-    for i, (folder, tmdb) in enumerate(todo, 1):
+    for i, (folder, tmdb, db_type) in enumerate(todo, 1):
         if args.limit and done >= args.limit:
             log(f"reached --limit {args.limit}")
             break
 
-        url = themerrdb_url(tmdb)
+        url = themerrdb_url(tmdb, db_type)
         if url is None:
             log(f"[{i}/{len(todo)}] {folder.name[:44]}: ThemerrDB unreachable, leaving for next run")
             time.sleep(5)
             continue
         if url == "MISSING":
-            state["no_theme"][tmdb] = folder.name
+            state["no_theme"][state_key(tmdb, db_type)] = folder.name
             nodb += 1
             save_state(state)
             continue
@@ -267,7 +374,7 @@ def main():
         ok, msg = download(url, dest, args)
 
         if ok:
-            state["done"][tmdb] = {
+            state["done"][state_key(tmdb, db_type)] = {
                 "folder": folder.name,
                 "url": url,
                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -281,14 +388,14 @@ def main():
             # ThemerrDB points at a video that no longer exists. Permanent,
             # so record it beside the movies ThemerrDB never had and do not
             # let it trigger the throttling cool-off.
-            state["no_theme"][tmdb] = f"{folder.name} (dead link: {url})"
-            state["failed"].pop(tmdb, None)
+            state["no_theme"][state_key(tmdb, db_type)] = f"{folder.name} (dead link: {url})"
+            state["failed"].pop(state_key(tmdb, db_type), None)
             nodb += 1
             consecutive_failures = 0
             log(f"[{i}/{len(todo)}] DEAD {folder.name[:44]}: {msg}")
         else:
-            prev = state["failed"].get(tmdb, {}).get("attempts", 0)
-            state["failed"][tmdb] = {
+            prev = state["failed"].get(state_key(tmdb, db_type), {}).get("attempts", 0)
+            state["failed"][state_key(tmdb, db_type)] = {
                 "folder": folder.name, "url": url, "error": msg, "attempts": prev + 1,
             }
             failed += 1
