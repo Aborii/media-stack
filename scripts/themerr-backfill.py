@@ -35,7 +35,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-MOVIES = Path("/srv/storage/data/media/library/movies")
+LIBRARY = Path("/srv/storage/data/media/library")
+MOVIES = LIBRARY / "movies"
 YTDLP = Path("/srv/appdata/bin/yt-dlp")
 STATE = Path("/srv/appdata/themerr-backfill-state.json")
 LOG = Path("/srv/appdata/themerr-backfill.log")
@@ -68,9 +69,64 @@ def log(msg):
         fh.write(line + "\n")
 
 
+def state_key(tmdb_id, db_type):
+    """TMDb numbers movies and television separately, so the bare id is not
+    unique across them - 1639 is both a film and the series Heroes. Two ids
+    in this library are already claimed by both."""
+    return f"{db_type}:{tmdb_id}"
+
+
+def migrate_state(state):
+    """Bring a pre-namespacing state file forward.
+
+    Entries used to be keyed on the bare id. Each records the folder it
+    came from, so the media type is recoverable by looking at which library
+    that folder sits in - which beats discarding the file and re-querying
+    ThemerrDB for hundreds of entries, including re-attempting known-dead
+    YouTube links.
+    """
+    known = {}
+    for lib, db_type in (("movies", "movies"), ("tv", "tv_shows"), ("anime", "tv_shows")):
+        base = LIBRARY / lib
+        if base.is_dir():
+            for p in base.iterdir():
+                if p.is_dir():
+                    known[p.name] = db_type
+
+    moved = stranded = 0
+    for bucket in ("done", "no_theme", "failed"):
+        out = {}
+        for key, value in state.get(bucket, {}).items():
+            if ":" in key:
+                out[key] = value
+                continue
+            folder = value.get("folder") if isinstance(value, dict) else str(value)
+            folder = (folder or "").split(" (dead link:")[0].strip()
+            db_type = known.get(folder)
+            if db_type:
+                out[state_key(key, db_type)] = value
+                moved += 1
+            else:
+                # Folder is gone, so the type cannot be established. Assume
+                # movies: that is where every pre-existing entry came from,
+                # since series support did not exist when they were written.
+                out[state_key(key, "movies")] = value
+                stranded += 1
+        state[bucket] = out
+
+    if moved or stranded:
+        log(f"migrated {moved} state entries to typed keys "
+            f"({stranded} assumed movies - folder no longer on disk)")
+        # Write it out now. A --dry-run returns before the normal save, so
+        # without this the file on disk never converges and every future
+        # run repeats the migration.
+        save_state(state)
+    return state
+
+
 def load_state():
     if STATE.exists():
-        return json.loads(STATE.read_text())
+        return migrate_state(json.loads(STATE.read_text()))
     return {"done": {}, "no_theme": {}, "failed": {}}
 
 
@@ -272,13 +328,14 @@ def main():
         if not tmdb:
             no_tmdb += 1
             continue
-        if tmdb in state["no_theme"]:
+        key = state_key(tmdb, db_type)
+        if key in state["no_theme"]:
             skipped_known += 1
             continue
         # A failure here is usually throttling or a dropped socket, so it is
         # worth retrying on a later run. Only give up after it has failed
         # repeatedly, which is what a genuinely dead video looks like.
-        if state["failed"].get(tmdb, {}).get("attempts", 1) >= 3:
+        if state["failed"].get(key, {}).get("attempts", 1) >= 3:
             skipped_known += 1
             continue
         todo.append((folder, tmdb, db_type))
@@ -308,7 +365,7 @@ def main():
             time.sleep(5)
             continue
         if url == "MISSING":
-            state["no_theme"][tmdb] = folder.name
+            state["no_theme"][state_key(tmdb, db_type)] = folder.name
             nodb += 1
             save_state(state)
             continue
@@ -317,7 +374,7 @@ def main():
         ok, msg = download(url, dest, args)
 
         if ok:
-            state["done"][tmdb] = {
+            state["done"][state_key(tmdb, db_type)] = {
                 "folder": folder.name,
                 "url": url,
                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -331,14 +388,14 @@ def main():
             # ThemerrDB points at a video that no longer exists. Permanent,
             # so record it beside the movies ThemerrDB never had and do not
             # let it trigger the throttling cool-off.
-            state["no_theme"][tmdb] = f"{folder.name} (dead link: {url})"
-            state["failed"].pop(tmdb, None)
+            state["no_theme"][state_key(tmdb, db_type)] = f"{folder.name} (dead link: {url})"
+            state["failed"].pop(state_key(tmdb, db_type), None)
             nodb += 1
             consecutive_failures = 0
             log(f"[{i}/{len(todo)}] DEAD {folder.name[:44]}: {msg}")
         else:
-            prev = state["failed"].get(tmdb, {}).get("attempts", 0)
-            state["failed"][tmdb] = {
+            prev = state["failed"].get(state_key(tmdb, db_type), {}).get("attempts", 0)
+            state["failed"][state_key(tmdb, db_type)] = {
                 "folder": folder.name, "url": url, "error": msg, "attempts": prev + 1,
             }
             failed += 1
