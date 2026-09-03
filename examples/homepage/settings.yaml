@@ -9,13 +9,6 @@ headerStyle: clean
 hideVersion: true
 
 layout:
-  # First, and one column wide, so the single prayer tile in it spans the
-  # whole width as a strip above everything else. No header: the tile's own
-  # title says what it is, and a group heading over one tile is just a gap.
-  Prayer:
-    style: row
-    columns: 1
-    header: false
   System:
     style: row
     columns: 3

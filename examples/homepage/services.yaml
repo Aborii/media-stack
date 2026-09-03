@@ -21,12 +21,13 @@
 # widget.url below is a different thing entirely - HOMEPAGE fetches those
 # server-side from inside the docker network, so they stay as container names.
 
-# The prayer tile sits alone in its own group, first in the layout and one
-# column wide (see settings.yaml), so it runs the full width of the dashboard
-# as a strip rather than standing as a tall tile in a three-column row. For
-# the same reason everything on it is a block, not a list: nine blocks across
-# rather than nine rows down.
-- Prayer:
+- System:
+    # First in the first group, so it is the top-left tile. One customapi
+    # widget, nine blocks, in the order custom.css lays them out: the three
+    # about what is next go down the LEFT, the six times fill a 2x3 grid on
+    # the RIGHT. Homepage itself would put all nine in one squeezed row - a
+    # service-container is a non-wrapping flex row - so the grid is custom.css,
+    # and it keys off this tile's name. Rename the tile and the layout goes.
     - Prayer times:
         icon: mdi-mosque
         # /health answers as soon as the process is serving, whether or not a
@@ -49,13 +50,16 @@
           # local container to death.
           refreshInterval: 15000
           mappings:
+            # Left column, top to bottom.
             - field: nextLabel
               label: Next
             - field: nextIn
               label: In
-            # `tile`, not `today`: its Fajr carries TOMORROW's time once Isha
-            # has passed - the one still ahead of you - exactly as the panel
-            # does. `today` stays today's own six.
+            - field: hijriDate
+              label: Hijri
+            # Right grid, row by row. `tile`, not `today`: its Fajr carries
+            # TOMORROW's time once Isha has passed - the one still ahead of
+            # you - exactly as the panel does. `today` stays today's own six.
             - field: tile.fajr
               label: Fajr
             - field: tile.sunrise
@@ -68,10 +72,7 @@
               label: Maghrib
             - field: tile.isha
               label: Isha
-            - field: hijriDate
-              label: Hijri
 
-- System:
     # glances SERVICE widgets. The info-bar glances widget takes cpu/mem/disk
     # flags and silently ignores "metric" - only the service widget understands
     # it, which is why these live here and not in widgets.yaml.
