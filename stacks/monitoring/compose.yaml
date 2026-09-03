@@ -111,6 +111,13 @@ services:
     environment:
       - TZ=${TIMEZONE:?err}
       - WUD_LOG_LEVEL=info
+      # Node 24 gives each connection attempt 250 ms before moving to the
+      # next address (its "happy eyeballs" default), and Docker Hub answers
+      # this Pi in about 260 ms. So every Hub lookup died with an empty
+      # AggregateError and the first run watched nothing - while curl from
+      # the same container was fine, because only Node's default is that
+      # tight. 2 s is generous and changes nothing else.
+      - NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000
       # A read-only view has nothing to delete.
       - WUD_SERVER_FEATURE_DELETE=false
       # Through the socket proxy, like Dozzle - never the raw socket. The
