@@ -713,40 +713,6 @@ pages:
               </div>
               <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
 
-          # The Homepage groups, link for link.
-          - type: bookmarks
-            groups:
-              - title: System
-                links:
-                  - { title: Portainer,   url: http://aboriis-pi:9000 }
-                  - { title: Registry,    url: http://aboriis-pi:5002 }
-                  - { title: SFTPGo,      url: http://aboriis-pi:8080 }
-                  - { title: Glances,     url: http://aboriis-pi:61210 }
-                  - { title: Homepage,    url: http://aboriis-pi/ }
-              - title: Monitoring
-                links:
-                  - { title: Speedtest,   url: http://aboriis-pi:3030 }
-                  - { title: Uptime Kuma, url: http://aboriis-pi:3001 }
-                  - { title: Backups,     url: http://aboriis-pi:9101/ui }
-                  - { title: Scrutiny,    url: http://aboriis-pi:8081 }
-                  - { title: Dozzle,      url: http://aboriis-pi:8888 }
-                  - { title: What's Up Docker, url: http://aboriis-pi:3002 }
-              - title: Libraries
-                links:
-                  - { title: Jellyfin,    url: http://aboriis-pi:8096 }
-                  - { title: Immich,      url: http://aboriis-pi:2283 }
-                  - { title: Kavita,      url: http://aboriis-pi:5000 }
-              - title: Automation
-                links:
-                  - { title: Seerr,       url: http://aboriis-pi:5055 }
-                  - { title: Sonarr,      url: http://aboriis-pi:8989 }
-                  - { title: Radarr,      url: http://aboriis-pi:7878 }
-                  - { title: Bazarr,      url: http://aboriis-pi:6767 }
-                  - { title: Tdarr,       url: http://aboriis-pi:8265 }
-              - title: Acquisition
-                links:
-                  - { title: Prowlarr,    url: http://aboriis-pi:9696 }
-                  - { title: qBittorrent, url: http://aboriis-pi:8200 }
 
       # ── right: the background services ────────────────────────────────────
       - size: small
@@ -763,7 +729,6 @@ pages:
               - { title: SFTPGo,      url: http://aboriis-pi:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
               - { title: Dozzle,      url: http://aboriis-pi:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
               - { title: What's Up Docker, url: http://aboriis-pi:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
-              - { title: Registry,    url: http://aboriis-pi:5002, check-url: http://registry:5000/v2/,               icon: di:docker }
 
           # Homepage's Registry tile: how many repositories the private
           # registry holds. It publishes to 127.0.0.1 only, so the count is
@@ -808,6 +773,50 @@ pages:
 
           - type: calendar
             first-day-of-week: monday
+
+  # Every link the Homepage dashboard carried, on a tab of its own.
+  #
+  # They left the Home page because they duplicated it: each app there
+  # already has a tile whose whole body is a link, and the same names again
+  # underneath were a second copy of the dashboard rather than a use of it.
+  # Here they are the fast index - one page, five groups, nothing to read.
+  - name: Links
+    columns:
+      - size: full
+        widgets:
+          - type: bookmarks
+            groups:
+              - title: System
+                links:
+                  - { title: Portainer,   url: http://aboriis-pi:9000 }
+                  - { title: Registry,    url: http://aboriis-pi:5002 }
+                  - { title: SFTPGo,      url: http://aboriis-pi:8080 }
+                  - { title: Glances,     url: http://aboriis-pi:61210 }
+                  - { title: Homepage,    url: http://aboriis-pi/ }
+              - title: Monitoring
+                links:
+                  - { title: Speedtest,   url: http://aboriis-pi:3030 }
+                  - { title: Uptime Kuma, url: http://aboriis-pi:3001 }
+                  - { title: Backups,     url: http://aboriis-pi:9101/ui }
+                  - { title: Scrutiny,    url: http://aboriis-pi:8081 }
+                  - { title: Dozzle,      url: http://aboriis-pi:8888 }
+                  - { title: What's Up Docker, url: http://aboriis-pi:3002 }
+              - title: Libraries
+                links:
+                  - { title: Jellyfin,    url: http://aboriis-pi:8096 }
+                  - { title: Immich,      url: http://aboriis-pi:2283 }
+                  - { title: Kavita,      url: http://aboriis-pi:5000 }
+              - title: Automation
+                links:
+                  - { title: Seerr,       url: http://aboriis-pi:5055 }
+                  - { title: Sonarr,      url: http://aboriis-pi:8989 }
+                  - { title: Radarr,      url: http://aboriis-pi:7878 }
+                  - { title: Bazarr,      url: http://aboriis-pi:6767 }
+                  - { title: Tdarr,       url: http://aboriis-pi:8265 }
+              - title: Acquisition
+                links:
+                  - { title: Prowlarr,    url: http://aboriis-pi:9696 }
+                  - { title: qBittorrent, url: http://aboriis-pi:8200 }
 
 # Not ported, and why:
 #
