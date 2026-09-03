@@ -88,33 +88,68 @@ services:
     networks:
       - mediastack
 
-  diun:
-    image: crazymax/diun:latest
-    container_name: diun
+  # What's Up Docker. Watches every container's image for a newer tag or a
+  # rebuilt digest and says so. Replaced Diun on 2026-09-03 for one reason: it
+  # has a page. Diun could only talk; this lists every container with its
+  # running tag and the newest one at http://aboriis-pi:3002, and the Homepage
+  # tile counts what is pending.
+  #
+  # REPORTS ONLY. There is deliberately no docker trigger, so it never pulls or
+  # recreates anything - and dockerproxy refuses POST anyway, so it could not.
+  # Updating stays a hand job: read the notice, pull, restart, look.
+  wud:
+    image: getwud/wud:latest
+    container_name: wud
     restart: unless-stopped
-    command: serve
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/diun:/data
+      # Its state: what it has seen and already reported. Root-owned like
+      # diun's was; the backup runs as root for exactly this reason.
+      - ${FOLDER_FOR_DATA:?err}/wud:/store
+      # The Telegram poster, from the repo. Read the file for why a script and
+      # not the built-in Telegram trigger.
+      - ./wud/telegram-topic.sh:/wud/telegram-topic.sh:ro
     environment:
       - TZ=${TIMEZONE:?err}
-      - LOG_LEVEL=info
-      - DIUN_WATCH_SCHEDULE=0 6 * * *
-      - DIUN_WATCH_JITTER=30s
-      - DIUN_PROVIDERS_DOCKER=true
-      - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
-      # false = watch everything, no per-container labels needed
-      - DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true
-      # Telegram. Same bot as Radarr/Sonarr/Prowlarr already use, posting to
-      # its own forum topic so image updates do not mix with grab notices.
+      - WUD_LOG_LEVEL=info
+      # A read-only view has nothing to delete.
+      - WUD_SERVER_FEATURE_DELETE=false
+      # Through the socket proxy, like Dozzle - never the raw socket. The
+      # proxy allows exactly what a watcher needs: containers, images, events.
+      - WUD_WATCHER_LOCAL_HOST=dockerproxy
+      - WUD_WATCHER_LOCAL_PORT=2375
+      # true = watch everything, no per-container labels needed. The two
+      # coming-manager containers opt out with wud.watch=false because their
+      # images come from localhost:5001, which from in here is wud itself.
+      - WUD_WATCHER_LOCAL_WATCHBYDEFAULT=true
+      # Daily at 09:00, not the hourly default and not weekly. Weekly was
+      # tried with Diun and was wrong: up to seven days of not knowing that
+      # gluetun or Immich shipped a security fix. Hourly is the other trap -
+      # Docker Hub counts every digest check as a pull against the anonymous
+      # limit of 100 per six hours, and thirty containers an hour would trip
+      # it. Thirty a day does not. Jitter is in milliseconds here.
+      - WUD_WATCHER_LOCAL_CRON=0 9 * * *
+      - WUD_WATCHER_LOCAL_JITTER=30000
+      # Most of this stack runs :latest. That tag never changes, only what it
+      # points at does, and WUD does not check Docker Hub digests unless told
+      # to - without this line it warns once per container and reports
+      # NOTHING for any of them. ghcr.io and lscr.io images check digests by
+      # default already; only the Hub registry has this off.
+      - WUD_REGISTRY_HUB_PUBLIC_WATCHDIGEST=true
+      - WUD_REGISTRY_HUB_PUBLIC_SUPPRESSDIGESTWATCHWARNING=true
+      # Telegram, into the status forum topic - same bot and group as
+      # Radarr/Sonarr/Prowlarr, its own topic so image updates do not mix with
+      # grab notices. WUD's own Telegram trigger cannot address a topic, hence
+      # the command trigger and the script. One run per update, each reported
+      # once (the trigger default), so a quiet day is silent.
       # Secrets come from docker-compose.env, which is gitignored.
-      - DIUN_NOTIF_TELEGRAM_TOKEN=${TELEGRAM_BOT_TOKEN:?err}
-      - DIUN_NOTIF_TELEGRAM_CHATIDS=${TELEGRAM_CHAT_ID:?err}:${TELEGRAM_TOPIC_STATUS:?err}
-      # Daily at 09:00, not on every push and not weekly. Diun only speaks when
-      # something actually CHANGED, so a quiet day is silent - the volume is a
-      # few lines on the days an image moves, not a digest to learn to ignore.
-      # Weekly was the first choice and was wrong: it means up to seven days of
-      # not knowing that gluetun or Immich shipped a security fix.
-      - DIUN_WATCH_SCHEDULE=0 9 * * *
+      - WUD_TRIGGER_COMMAND_TELEGRAM_CMD=sh /wud/telegram-topic.sh
+      - WUD_TRIGGER_COMMAND_TELEGRAM_TIMEOUT=30000
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?err}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:?err}
+      - TELEGRAM_TOPIC_STATUS=${TELEGRAM_TOPIC_STATUS:?err}
+    ports:
+      - "${WEBUI_PORT_WUD:?err}:3000"
+    # The image ships its own healthcheck against /health on 3000.
     networks:
       - mediastack
 

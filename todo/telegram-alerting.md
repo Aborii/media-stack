@@ -13,10 +13,10 @@ Everything is watched and nothing reports.
 | Uptime Kuma monitors | 15, all green |
 | Uptime Kuma notification providers | **0** |
 | Monitors with an alert attached | **0 of 15** |
-| Diun containers watched | 24 |
-| Diun notifier | **none** |
+| Image update watcher (Diun, now wud) containers watched | 24 |
+| Image update notifier | Telegram, status topic — Diun since 2026-08-24, carried over to wud 2026-09-03 |
 
-Uptime Kuma checks every service every 60 seconds and Diun watches every image
+Uptime Kuma checks every service every 60 seconds and wud watches every image
 for updates. Neither can tell anyone anything, so the only way to learn that
 Jellyfin died is to open the dashboard and notice. That is not monitoring, it is
 a status page.
@@ -79,13 +79,14 @@ Adding monitors needed three patches for that mismatch — see
 `add_notification` throws about a missing column or an unexpected keyword, reuse
 the patch pattern from that script rather than downgrading Uptime Kuma.
 
-## Step 3 — Diun
+## Step 3 — image updates (was Diun, now What's Up Docker)
 
 Environment variables on the container, in `stacks/monitoring/compose.yaml`:
 
 ```yaml
-      - DIUN_NOTIF_TELEGRAM_TOKEN=<TOKEN>
-      - DIUN_NOTIF_TELEGRAM_CHATIDS=<CHAT_ID>
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?err}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:?err}
+      - TELEGRAM_TOPIC_STATUS=${TELEGRAM_TOPIC_STATUS:?err}
 ```
 
 Put the real values in `docker-compose.env` (gitignored, it already holds the
@@ -95,8 +96,8 @@ is committed.
 Recreate the container and force a check:
 
 ```bash
-docker compose up -d diun
-docker exec diun diun image list
+docker compose up -d wud
+curl -s http://127.0.0.1:3002/api/containers | python3 -m json.tool | grep -c updateAvailable
 ```
 
 ## Step 4 — decide what actually alerts
@@ -108,7 +109,7 @@ Suggested:
 
 - **Alert:** any of the 15 services down for 2 consecutive checks. The monitors
   are already set to `retries: 2`, so this is the default behaviour.
-- **Alert:** Diun image updates — but consider weekly rather than on every
+- **Alert:** image updates — but consider weekly rather than on every
   push. 24 containers on `:latest` will generate a lot of chatter otherwise.
 - **Do not alert on gluetun.** Containers inside its namespace keep answering
   locally when the tunnel drops, so it would be both noisy and misleading.

@@ -574,7 +574,7 @@ Full notes in `receiver/README.md`. The shape matters more than the code:
   backup has already succeeded by then and the archive waits for the next run.
 
 The archive **must** be built on the Pi as root for the same reason the backup
-is: the snapshot contains root-owned files — scrutiny's influxdb, diun's
+is: the snapshot contains root-owned files — scrutiny's influxdb, wud's
 database, both PostgreSQL directories — and anything assembling it as an
 ordinary user would silently produce a backup missing them.
 
