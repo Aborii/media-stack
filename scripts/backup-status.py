@@ -245,8 +245,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
+        # The Glance dashboard carries the same Run button as /ui, but on
+        # another origin, so the browser will only hand it this reply with
+        # this header. Wide open on purpose: there is nothing to protect in a
+        # status line, and the POST itself needs no permission - a browser
+        # sends a plain cross-origin POST whether asked or not.
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(raw)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def do_GET(self):
         path = self.path.rstrip("/") or "/"

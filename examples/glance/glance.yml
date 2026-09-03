@@ -515,7 +515,8 @@ pages:
                       <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
                     </div>
                   </div>
-                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured <span {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}></span></p>
+                  {{ $m := ((now).Sub (parseTime "rfc3339" (.JSON.String "data.data.timestamp"))).Minutes | toInt }}
+                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured {{ if lt $m 1 }}just now{{ else if lt $m 60 }}{{ $m }} minute{{ if ne $m 1 }}s{{ end }} ago{{ else if lt $m 1440 }}{{ $h := div ($m | toFloat) 60 | toInt }}{{ $h }} hour{{ if ne $h 1 }}s{{ end }} ago{{ else }}{{ $d := div ($m | toFloat) 1440 | toInt }}{{ $d }} day{{ if ne $d 1 }}s{{ end }} ago{{ end }}</p>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
 
@@ -564,12 +565,27 @@ pages:
                       <div><div class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
                     </div>
                   </div>
+                  {{ $bm := ((now).Sub (parseTime "rfc3339" (printf "%s+04:00" (.JSON.String "last_backup")))).Minutes | toInt }}
+                  {{ $dm := ((now).Sub (parseTime "rfc3339" (.JSON.String "last_sent"))).Minutes | toInt }}
                   <ul class="list margin-top-10 size-h6 color-paragraph">
-                    <li>built <span {{ printf "%s+04:00" (.JSON.String "last_backup") | parseTime "rfc3339" | toRelativeTime }}></span></li>
-                    <li>delivered <span {{ .JSON.String "last_sent" | parseTime "rfc3339" | toRelativeTime }}></span></li>
+                    <li>built {{ if lt $bm 1 }}just now{{ else if lt $bm 60 }}{{ $bm }} minute{{ if ne $bm 1 }}s{{ end }} ago{{ else if lt $bm 1440 }}{{ $x := div ($bm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($bm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</li>
+                    <li>delivered {{ if lt $dm 1 }}just now{{ else if lt $dm 60 }}{{ $dm }} minute{{ if ne $dm 1 }}s{{ end }} ago{{ else if lt $dm 1440 }}{{ $x := div ($dm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($dm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</li>
                   </ul>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
+                  <!-- The same button the backup page has, posting to the same
+                       /run. Outside the <a>, since a button inside a link is
+                       not a thing. An inline handler rather than a <script>:
+                       Glance inserts widget HTML with innerHTML, which never
+                       runs script tags but does keep on* attributes. The
+                       service answers in words (started, already running, the
+                       cooldown), shown here once it sends a CORS header; until
+                       then the POST still lands and the button says so. -->
+                  {{ if .JSON.Bool "backing_up" }}
+                  <button disabled style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;opacity:.5">Backup running&hellip;</button>
+                  {{ else }}
+                  <button style="margin-top:10px;width:100%;font:inherit;padding:.5rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:inherit;cursor:pointer" onclick="this.disabled=true;this.textContent='Starting…';fetch('http://aboriis-pi:9101/run',{method:'POST'}).then(r=>r.text()).then(t=>{this.textContent=t.trim()}).catch(()=>{this.textContent='Requested - open Backups to confirm'})">Run backup now</button>
+                  {{ end }}
 
           # The Homepage groups, link for link.
           - type: bookmarks
