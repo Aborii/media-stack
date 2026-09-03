@@ -226,18 +226,27 @@ pages:
               </div>
 
           # Homepage's What's Up Docker tile: containers with an update
-          # waiting. wud has no login, so this needs no key.
-          - type: custom-api
-            title: Image updates
-            title-url: http://aboriis-pi:3002
-            cache: 15m
-            url: http://wud:3000/api/containers
-            template: |
-              {{ $n := len (.JSON.Array "#(updateAvailable==true)#") }}
-              <div class="text-center">
-                <div class="{{ if gt $n 0 }}color-highlight{{ else }}color-positive{{ end }} size-h3">{{ $n }}</div>
-                <div class="size-h6">UPDATES WAITING</div>
-              </div>
+          # waiting. Off until it has a credential: wud sits behind basic auth
+          # (WUD_AUTH_BASIC_ADMIN_* in the env file), and only the bcrypt hash
+          # is stored, so there is nothing here to send. To turn it on, put
+          #   WUD_BASIC=<base64 of user:password>
+          # in the env file, pass it through in compose.yaml, uncomment, and
+          # drop the backslash below - it is there because Glance substitutes
+          # variables even inside comments and fails on one it cannot find.
+          #
+          # - type: custom-api
+          #   title: Image updates
+          #   title-url: http://aboriis-pi:3002
+          #   cache: 15m
+          #   url: http://wud:3000/api/containers
+          #   headers:
+          #     Authorization: Basic \${WUD_BASIC}
+          #   template: |
+          #     {{ $n := len (.JSON.Array "#(updateAvailable==true)#") }}
+          #     <div class="text-center">
+          #       <div class="{{ if gt $n 0 }}color-highlight{{ else }}color-positive{{ end }} size-h3">{{ $n }}</div>
+          #       <div class="size-h6">UPDATES WAITING</div>
+          #     </div>
 
           - type: calendar
             first-day-of-week: monday
