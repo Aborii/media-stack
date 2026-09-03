@@ -515,7 +515,7 @@ pages:
                       <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
                     </div>
                   </div>
-                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured <span {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}></span>| parseTime "rfc3339" | toRelativeTime }}</p>
+                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured <span {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}></span></p>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
 
