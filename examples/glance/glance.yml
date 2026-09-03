@@ -6,20 +6,29 @@
 # parsing and refuses to start on one it cannot find.
 #
 # Mirrors the Homepage dashboard: the same groups, the same links, the same
-# status checks, the same prayer tile - so the two can be compared on equal
-# terms. Glance reloads this file on save, so a change shows on the next reload
-# of the page.
+# status checks, the same tiles - so the two can be compared on equal terms.
+# Glance reloads this file on save, so a change shows on the next reload of
+# the page.
 #
 # Two kinds of URL, as on Homepage, and the distinction matters:
 #
-#   url        opened by YOUR BROWSER, so it is the bare hostname aboriis-pi,
-#              which resolves at home, on the LAN and over tailscale alike.
-#   check-url  fetched by GLANCE from inside the mediastack network, so it is
-#              the container name. qBittorrent and Prowlarr live in gluetun's
-#              network namespace and are reached as gluetun:<port>.
+#   url / title-url   opened by YOUR BROWSER, so it is the bare hostname
+#                     aboriis-pi, which resolves at home, on the LAN and over
+#                     tailscale alike.
+#   check-url, and    fetched by GLANCE from inside the mediastack network, so
+#   every widget url  it is the container name. qBittorrent and Prowlarr live
+#                     in gluetun's network namespace and are gluetun:<port>.
+#
+# API keys come from the env file, passed through by compose.yaml. They are
+# the same keys the Homepage config carries.
 #
 # Layout: a page is columns, each `small` or `full`, with widgets stacked in
-# each. Not rows of equal tiles - a widget is as tall as it needs to be.
+# each; split-column puts two side by side. A widget is as tall as it needs
+# to be - there are no rows of equal tiles.
+#
+# Values are fetched when the page is loaded, and again once a widget's cache
+# has expired and the page is loaded again. Glance does not poll on its own,
+# so the live figures - throughput, countdown - are as of the last reload.
 
 server:
   port: 8080
@@ -35,7 +44,7 @@ theme:
 pages:
   - name: Home
     columns:
-      # ── left ──────────────────────────────────────────────────────────────
+      # ── left: the host ────────────────────────────────────────────────────
       - size: small
         widgets:
           - type: clock
@@ -53,6 +62,62 @@ pages:
                     name: storage
                   "/hostroot":
                     name: SD card
+
+          # Homepage's Network tile: what the wifi link is carrying right now,
+          # from glances on the host, which is the only thing here that can
+          # see wlan0. Rates are bytes per second, shown as Mbit/s.
+          - type: custom-api
+            title: Internet load
+            title-url: http://aboriis-pi:61210
+            cache: 15s
+            url: http://172.28.10.1:61208/api/4/network
+            template: |
+              {{ $down := .JSON.Float "#(interface_name==wlan0).bytes_recv_rate_per_sec" }}
+              {{ $up := .JSON.Float "#(interface_name==wlan0).bytes_sent_rate_per_sec" }}
+              <div class="flex justify-between text-center">
+                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $down 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
+                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $up 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
+              </div>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">wlan0, as of the last page load</p>
+
+          # Homepage's Disk I/O tile: the data disk, sda.
+          - type: custom-api
+            title: Disk I/O
+            title-url: http://aboriis-pi:61210
+            cache: 15s
+            url: http://172.28.10.1:61208/api/4/diskio
+            template: |
+              {{ $r := .JSON.Float "#(disk_name==sda).read_bytes_rate_per_sec" }}
+              {{ $w := .JSON.Float "#(disk_name==sda).write_bytes_rate_per_sec" }}
+              <div class="flex justify-between text-center">
+                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $r 1048576) }}</div><div class="size-h6">MB/S READ</div></div>
+                <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $w 1048576) }}</div><div class="size-h6">MB/S WRITE</div></div>
+              </div>
+
+          # Homepage's two process tiles. Two glances instances, because the
+          # sort order is a launch flag of the instance serving it - see
+          # stacks/monitoring/compose.yaml. Read the memory figure knowing
+          # qBittorrent's RSS is mostly page cache, as that file explains.
+          - type: custom-api
+            title: Processes by memory
+            cache: 30s
+            url: http://172.28.10.1:61208/api/4/processlist?limit=5
+            template: |
+              <ul class="list list-gap-4">
+              {{ range .JSON.Array "" }}
+                <li class="flex justify-between"><span class="text-truncate">{{ .String "name" }}</span><span class="color-highlight">{{ printf "%.1f" (.Float "memory_percent") }}%</span></li>
+              {{ end }}
+              </ul>
+          - type: custom-api
+            title: Processes by CPU
+            cache: 30s
+            url: http://172.28.10.1:61209/api/4/processlist?limit=5
+            template: |
+              <ul class="list list-gap-4">
+              {{ range .JSON.Array "" }}
+                <li class="flex justify-between"><span class="text-truncate">{{ .String "name" }}</span><span class="color-highlight">{{ printf "%.1f" (.Float "cpu_percent") }}%</span></li>
+              {{ end }}
+              </ul>
 
           # Container state, read through dockerproxy rather than the socket.
           # Names, links and icons are set here rather than as labels on every
@@ -87,7 +152,7 @@ pages:
               homepage:         { name: Homepage,    icon: di:homepage,   url: http://aboriis-pi/, hide: false }
               glance:           { name: Glance,      icon: di:glance,     hide: false }
 
-      # ── middle ────────────────────────────────────────────────────────────
+      # ── middle: the apps ──────────────────────────────────────────────────
       - size: full
         widgets:
           # The prayer tile, drawn the way the ESP32 strip is drawn: the next
@@ -95,9 +160,6 @@ pages:
           # six times along the bottom with the next one picked out - right to
           # left, Fajr on the right, as Arabic reads. All of it from one JSON
           # reply; nothing is recomputed here.
-          #
-          # The countdown is a string the service formats, so it advances when
-          # this widget refetches - every 30 s - and is shown on page load.
           - type: custom-api
             title: Prayer times
             title-url: http://aboriis-pi:3003/
@@ -130,8 +192,250 @@ pages:
               </div>
               {{ end }}
 
-          # The Homepage groups, link for link. Bookmarks are the plain links;
-          # the monitor widget below carries the status checks.
+          # ── Libraries ──
+          - type: split-column
+            widgets:
+              # Homepage's Jellyfin tile: the library counts.
+              - type: custom-api
+                title: Jellyfin
+                title-url: http://aboriis-pi:8096
+                cache: 10m
+                url: http://jellyfin:8096/Items/Counts
+                headers:
+                  X-Emby-Token: ${JELLYFIN_API_KEY}
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "MovieCount" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "SeriesCount" | formatNumber }}</div><div class="size-h6">SERIES</div></div>
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "EpisodeCount" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                  </div>
+              # Homepage's Immich tile. The key needs only server.statistics.
+              - type: custom-api
+                title: Immich
+                title-url: http://aboriis-pi:2283
+                cache: 1h
+                url: http://immich_server:2283/api/server/statistics
+                headers:
+                  x-api-key: ${IMMICH_API_KEY}
+                  Accept: application/json
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "photos" | formatNumber }}</div><div class="size-h6">PHOTOS</div></div>
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "videos" | formatNumber }}</div><div class="size-h6">VIDEOS</div></div>
+                    <div><div class="color-highlight size-h3">{{ div (.JSON.Int "usage" | toFloat) 1073741824 | toInt }} GB</div><div class="size-h6">USAGE</div></div>
+                  </div>
+
+          # ── Automation ──
+          - type: split-column
+            widgets:
+              # Homepage's Sonarr tile: wanted, queued, series. Three requests,
+              # as Homepage makes; the series list is fetched only for its
+              # length, so it is cached longest.
+              - type: custom-api
+                title: Sonarr
+                title-url: http://aboriis-pi:8989
+                cache: 5m
+                url: http://sonarr:8989/api/v3/wanted/missing?pageSize=1
+                headers:
+                  X-Api-Key: ${SONARR_API_KEY}
+                subrequests:
+                  queue:
+                    url: http://sonarr:8989/api/v3/queue/status
+                    headers:
+                      X-Api-Key: ${SONARR_API_KEY}
+                  series:
+                    url: http://sonarr:8989/api/v3/series
+                    headers:
+                      X-Api-Key: ${SONARR_API_KEY}
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
+                    <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
+                    <div><div class="color-highlight size-h3">{{ len ((.Subrequest "series").JSON.Array "") }}</div><div class="size-h6">SERIES</div></div>
+                  </div>
+              - type: custom-api
+                title: Radarr
+                title-url: http://aboriis-pi:7878
+                cache: 5m
+                url: http://radarr:7878/api/v3/wanted/missing?pageSize=1
+                headers:
+                  X-Api-Key: ${RADARR_API_KEY}
+                subrequests:
+                  queue:
+                    url: http://radarr:7878/api/v3/queue/status
+                    headers:
+                      X-Api-Key: ${RADARR_API_KEY}
+                  movies:
+                    url: http://radarr:7878/api/v3/movie
+                    headers:
+                      X-Api-Key: ${RADARR_API_KEY}
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
+                    <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
+                    <div><div class="color-highlight size-h3">{{ len ((.Subrequest "movies").JSON.Array "") | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                  </div>
+
+          - type: split-column
+            widgets:
+              # Homepage's Seerr tile: the request counts.
+              - type: custom-api
+                title: Seerr
+                title-url: http://aboriis-pi:5055
+                cache: 5m
+                url: http://seerr:5055/api/v1/request/count
+                headers:
+                  X-Api-Key: ${SEERR_API_KEY}
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "pending" }}</div><div class="size-h6">PENDING</div></div>
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "approved" }}</div><div class="size-h6">APPROVED</div></div>
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "available" }}</div><div class="size-h6">AVAILABLE</div></div>
+                  </div>
+              # Homepage's Bazarr tile: what is missing subtitles.
+              - type: custom-api
+                title: Bazarr
+                title-url: http://aboriis-pi:6767
+                cache: 15m
+                url: http://bazarr:6767/api/episodes/wanted?length=1
+                headers:
+                  X-API-KEY: ${BAZARR_API_KEY}
+                subrequests:
+                  movies:
+                    url: http://bazarr:6767/api/movies/wanted?length=1
+                    headers:
+                      X-API-KEY: ${BAZARR_API_KEY}
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ .JSON.Int "total" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                    <div><div class="color-highlight size-h3">{{ (.Subrequest "movies").JSON.Int "total" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                  </div>
+                  <p class="size-h6 color-paragraph margin-top-10 text-center">missing subtitles</p>
+
+          # ── Acquisition ──
+          - type: split-column
+            widgets:
+              # Homepage's Prowlarr tile: enabled indexers and their totals.
+              # Reached as gluetun:9696 - Prowlarr has no hostname of its own.
+              - type: custom-api
+                title: Prowlarr
+                title-url: http://aboriis-pi:9696
+                cache: 15m
+                url: http://gluetun:9696/api/v1/indexerstats
+                headers:
+                  X-Api-Key: ${PROWLARR_API_KEY}
+                subrequests:
+                  indexers:
+                    url: http://gluetun:9696/api/v1/indexer
+                    headers:
+                      X-Api-Key: ${PROWLARR_API_KEY}
+                template: |
+                  {{ $grabs := 0 }}{{ $queries := 0 }}{{ $fails := 0 }}
+                  {{ range .JSON.Array "indexers" }}
+                    {{ $grabs = add $grabs (.Int "numberOfGrabs") }}
+                    {{ $queries = add $queries (.Int "numberOfQueries") }}
+                    {{ $fails = add $fails (.Int "numberOfFailedQueries") }}
+                  {{ end }}
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ len ((.Subrequest "indexers").JSON.Array "#(enable==true)#") }}</div><div class="size-h6">INDEXERS</div></div>
+                    <div><div class="color-highlight size-h3">{{ $grabs | formatNumber }}</div><div class="size-h6">GRABS</div></div>
+                    <div><div class="color-highlight size-h3">{{ $queries | formatNumber }}</div><div class="size-h6">QUERIES</div></div>
+                    <div><div class="{{ if gt $fails 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ $fails | formatNumber }}</div><div class="size-h6">FAILED</div></div>
+                  </div>
+              # Homepage's Gluetun tile: where the tunnel comes out, and the
+              # forwarded port. /v1/portforward directly, as Homepage's
+              # version 2 does - the older path redirects.
+              - type: custom-api
+                title: Gluetun
+                cache: 5m
+                url: http://gluetun:8320/v1/publicip/ip
+                headers:
+                  X-API-Key: ${GLUETUN_API_KEY}
+                subrequests:
+                  port:
+                    url: http://gluetun:8320/v1/portforward
+                    headers:
+                      X-API-Key: ${GLUETUN_API_KEY}
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h4">{{ .JSON.String "public_ip" }}</div><div class="size-h6">PUBLIC IP</div></div>
+                    <div><div class="color-highlight size-h4">{{ .JSON.String "city" }}, {{ .JSON.String "country" }}</div><div class="size-h6">EXIT</div></div>
+                    <div><div class="color-highlight size-h4">{{ (.Subrequest "port").JSON.Int "port" }}</div><div class="size-h6">PORT</div></div>
+                  </div>
+
+          # ── System and Monitoring ──
+          - type: split-column
+            widgets:
+              # Homepage's Portainer tile: containers by state, from the
+              # environment Homepage uses (3 here - this install has been
+              # recreated, so not the 2 most guides assume).
+              - type: custom-api
+                title: Portainer
+                title-url: http://aboriis-pi:9000
+                cache: 1m
+                url: http://portainer:9000/api/endpoints/${PORTAINER_ENV}/docker/containers/json?all=1
+                headers:
+                  X-API-Key: ${PORTAINER_TOKEN}
+                template: |
+                  {{ $all := len (.JSON.Array "") }}{{ $running := len (.JSON.Array "#(State==running)#") }}
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ $running }}</div><div class="size-h6">RUNNING</div></div>
+                    <div><div class="{{ if gt (sub $all $running) 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ sub $all $running }}</div><div class="size-h6">STOPPED</div></div>
+                    <div><div class="color-highlight size-h3">{{ $all }}</div><div class="size-h6">TOTAL</div></div>
+                  </div>
+              # Homepage's Speedtest tile: the real line speed, measured every
+              # six hours - NOT through the VPN. Bearer token, API v1.
+              - type: custom-api
+                title: Internet speed
+                title-url: http://aboriis-pi:3030
+                cache: 15m
+                url: http://speedtest-tracker:80/api/v1/results/latest
+                headers:
+                  Authorization: Bearer ${SPEEDTEST_API_KEY}
+                  Accept: application/json
+                template: |
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.download_bits") 1000000) }}</div><div class="size-h6">MBPS DOWN</div></div>
+                    <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.upload_bits") 1000000) }}</div><div class="size-h6">MBPS UP</div></div>
+                    <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
+                  </div>
+                  <p class="size-h6 color-paragraph margin-top-10 text-center">measured {{ .JSON.String "data.data.timestamp" | parseTime "rfc3339" | toRelativeTime }}</p>
+
+          - type: split-column
+            widgets:
+              # Homepage's Uptime Kuma tile, read from the PUBLISHED status
+              # page like Homepage does: the monitors on it and open incidents.
+              - type: custom-api
+                title: Uptime Kuma
+                title-url: http://aboriis-pi:3001
+                cache: 1m
+                url: http://uptime-kuma:3001/api/status-page/${UPTIMEKUMA_SLUG}
+                template: |
+                  {{ $n := 0 }}{{ range .JSON.Array "publicGroupList" }}{{ $n = add $n (len (.Array "monitorList")) }}{{ end }}
+                  {{ $inc := len (.JSON.Array "incidents") }}
+                  <div class="flex justify-between text-center">
+                    <div><div class="color-highlight size-h3">{{ $n }}</div><div class="size-h6">MONITORS</div></div>
+                    <div><div class="{{ if gt $inc 0 }}color-negative{{ else }}color-positive{{ end }} size-h3">{{ $inc }}</div><div class="size-h6">INCIDENTS</div></div>
+                  </div>
+              # Homepage's Scrutiny tile - and the temperature it could not
+              # show: this disk hit 68C in its old enclosure and took the
+              # array read-only, so the number is the thing worth watching.
+              # The key is the drive's WWN; replace the disk and this shows a
+              # dash rather than an error.
+              - type: custom-api
+                title: Drive health
+                title-url: http://aboriis-pi:8081
+                cache: 30m
+                url: http://scrutiny:8080/api/summary
+                template: |
+                  {{ $t := .JSON.Int "data.summary.0x50014ee216baa995.smart.temp" }}
+                  <div class="flex justify-between text-center">
+                    <div><div class="{{ if ge $t 55 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ if $t }}{{ $t }}°C{{ else }}-{{ end }}</div><div class="size-h6">SDA TEMP</div></div>
+                    <div><div class="color-highlight size-h4">{{ .JSON.String "data.summary.0x50014ee216baa995.device.model_name" }}</div><div class="size-h6">{{ div (.JSON.Int "data.summary.0x50014ee216baa995.device.capacity" | toFloat) 1000000000000 | toInt }} TB</div></div>
+                  </div>
+
+          # The Homepage groups, link for link. The monitor widget on the
+          # right carries the status checks.
           - type: bookmarks
             groups:
               - title: System
@@ -166,7 +470,7 @@ pages:
                   - { title: Prowlarr,    url: http://aboriis-pi:9696 }
                   - { title: qBittorrent, url: http://aboriis-pi:8200 }
 
-      # ── right ─────────────────────────────────────────────────────────────
+      # ── right: is everything up ───────────────────────────────────────────
       - size: small
         widgets:
           # Homepage's siteMonitor checks, one widget. The check goes to the
@@ -250,3 +554,13 @@ pages:
 
           - type: calendar
             first-day-of-week: monday
+
+# Not ported, and why:
+#
+#   qBittorrent   its API needs a login session (a cookie from /api/v2/auth/
+#                 login), which a single request cannot do. Turning on
+#                 "bypass authentication for clients in whitelisted IP
+#                 subnets" for 172.28.10.0/24 in its WebUI options would let
+#                 a plain request through - a choice to make in qBittorrent,
+#                 not here.
+#   Kavita        same shape: its API key is exchanged for a JWT first.
