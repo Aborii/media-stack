@@ -1,0 +1,956 @@
+# Glance dashboard - the reference copy of glance/glance.yml under appdata
+# (FOLDER_FOR_DATA in the env file).
+#
+# Do not write a dollar-brace variable anywhere in this file that is not
+# meant to be one, comments included: Glance substitutes them all before
+# parsing and refuses to start on one it cannot find. A backslash in front
+# of the dollar keeps one literal, which is how the commented blocks below
+# survive.
+#
+# Mirrors the Homepage dashboard: the same groups, the same links, the same
+# status checks, the same tiles - so the two can be compared on equal terms.
+# Glance reloads this file on save, so a change shows on the next reload of
+# the page.
+#
+# Two kinds of URL, as on Homepage, and the distinction matters:
+#
+#   href / title-url  opened by YOUR BROWSER, so it is the bare hostname
+#                     aboriis-pi, which resolves at home, on the LAN and over
+#                     tailscale alike.
+#   check-url, and    fetched by GLANCE from inside the mediastack network, so
+#   every widget url  it is the container name. qBittorrent and Prowlarr live
+#                     in gluetun's network namespace and are gluetun:<port>.
+#
+# API keys come from the env file, passed through by compose.yaml. They are
+# the same keys the Homepage config carries.
+#
+# Every app tile follows one shape, because a custom-api widget has no icon,
+# link or status of its own:
+#
+#   - the whole body is an <a> to the app, so the tile is clickable anywhere
+#   - the app's icon sits on the left, from the set Glance's di: and mdi:
+#     prefixes resolve to (Material icons are black line art, hence the
+#     filter)
+#   - the last line is the same check Homepage's siteMonitor made, done from
+#     the template with a timed request: OK or DOWN, and the milliseconds.
+#     The route has to answer JSON - a text or HTML route reads as DOWN 0 -
+#     so a few checks use a status route rather than the health one
+#
+# So the Services list on the right holds only what has no tile of its own.
+#
+# Layout: a page is columns, each `small` or `full`, with widgets stacked in
+# each; split-column puts two side by side. A widget is as tall as it needs
+# to be - there are no rows of equal tiles.
+#
+# Values are fetched when the page is loaded, and again once a widget's cache
+# has expired and the page is loaded again. Glance does not poll on its own,
+# so the live figures - throughput, countdown, the check - are as of the last
+# reload.
+
+server:
+  port: 8080
+  # assets/live.js, beside this file: the script that keeps the marked tiles
+  # updating - see the "Live updates" note below.
+  assets-path: /app/config/assets
+# Sign-in. Both values live in the env file and compose passes them
+# through; Glance refuses to start if either is empty, which is the right
+# way round - a dashboard that can power a PC off should fail loudly
+# rather than come up unprotected.
+#
+# To set them, on the Pi:
+#
+#   docker run --rm glanceapp/glance secret:make        -> GLANCE_SECRET_KEY
+#   docker run --rm glanceapp/glance password:hash PASS -> GLANCE_PASSWORD_HASH
+#
+# The hash is full of dollar signs. It survives the env file either way -
+# checked - but single-quote it so nothing downstream has to be careful.
+#
+# What this does NOT cover: the two helper ports. The backup runner on
+# 9101 and the power switch proxy on 9102 are separate servers with no
+# auth of their own, so signing in here does not stop anyone on the wifi
+# reaching those directly.
+auth:
+  secret-key: ${GLANCE_SECRET_KEY}
+  users:
+    aborii:
+      password-hash: ${GLANCE_PASSWORD_HASH}
+
+theme:
+  # Dark slate, near Homepage's, with the prayer clock's green as the accent.
+  background-color: 215 15 10
+  primary-color: 155 60 55
+  positive-color: 155 60 55
+  negative-color: 0 70 60
+  contrast-multiplier: 1.1
+
+pages:
+  - name: Home
+    columns:
+      # ── left: the host ────────────────────────────────────────────────────
+      - size: small
+        widgets:
+          - type: clock
+            hour-format: 12h
+
+          # Homepage's header resources widget: cpu, memory, temperature, the
+          # data disk and the SD card. The two mountpoints are bind-mounted
+          # read-only in compose.yaml for exactly this.
+          - type: server-stats
+            servers:
+              - type: local
+                name: aboriis-pi
+                mountpoints:
+                  "/srv/storage":
+                    name: storage
+                  "/hostroot":
+                    name: SD card
+
+          # Homepage's Network tile: what the wifi link is carrying right now,
+          # from glances on the host, which is the only thing here that can
+          # see the wireless interfaces. Every wlan* interface is summed
+          # rather than one named: the Pi carries wlan0 AND wlan1 and the
+          # traffic moved to wlan1, which left Homepage's tile - hardcoded to
+          # wlan0 - reporting an idle link. Rates are bytes per second, shown
+          # as Mbit/s, as of the last page load.
+          - type: custom-api
+            title: Internet load
+            title-url: http://aboriis-pi:61210
+            cache: 5s
+            url: http://172.28.10.1:61208/api/4/network
+            template: |
+              {{ $down := 0.0 }}{{ $up := 0.0 }}{{ $names := "" }}
+              {{ range .JSON.Array `#(interface_name%"wlan*")#` }}
+                {{ $down = add $down (.Float "bytes_recv_rate_per_sec") }}
+                {{ $up = add $up (.Float "bytes_sent_rate_per_sec") }}
+                {{ $names = printf "%s %s" $names (.String "interface_name") }}
+              {{ end }}
+              <a data-live="net" href="http://aboriis-pi:61210" class="block" style="color:inherit;text-decoration:none">
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/wifi.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between text-center">
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $down 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul $up 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
+                </div>
+              </div>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">{{ $names }}, as of the last page load</p>
+              </a>
+
+          # Homepage's Disk I/O tile: the data disk. Matched as sd? rather
+          # than named, for the same reason: it was sda and is sdb now, and
+          # Homepage's tile still says sda. Partitions (sdb1) are excluded by
+          # the pattern so nothing is counted twice.
+          - type: custom-api
+            title: Disk I/O
+            title-url: http://aboriis-pi:61210
+            cache: 5s
+            url: http://172.28.10.1:61208/api/4/diskio
+            template: |
+              {{ $r := 0.0 }}{{ $w := 0.0 }}{{ $names := "" }}
+              {{ range .JSON.Array `#(disk_name%"sd?")#` }}
+                {{ $r = add $r (.Float "read_bytes_rate_per_sec") }}
+                {{ $w = add $w (.Float "write_bytes_rate_per_sec") }}
+                {{ $names = printf "%s %s" $names (.String "disk_name") }}
+              {{ end }}
+              <a data-live="disk" href="http://aboriis-pi:61210" class="block" style="color:inherit;text-decoration:none">
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/harddisk.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between text-center">
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $r 1048576) }}</div><div class="size-h6">MB/S READ</div></div>
+                  <div><div class="color-highlight size-h3">{{ printf "%.1f" (div $w 1048576) }}</div><div class="size-h6">MB/S WRITE</div></div>
+                </div>
+              </div>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">{{ $names }}</p>
+              </a>
+
+          # Homepage's two process tiles, ten rows each. Glances ignores a
+          # limit in the query string and hands over every process, so the
+          # cut is made here. Two instances, because the sort order is a
+          # launch flag of the instance serving it - see stacks/monitoring/
+          # compose.yaml. Read the memory figure knowing qBittorrent's RSS is
+          # mostly page cache, as that file explains.
+          - type: custom-api
+            title: Top 10 by CPU
+            cache: 10s
+            url: http://172.28.10.1:61209/api/4/processlist
+            template: |
+              <ul data-live="cpu" class="list list-gap-4">
+              {{ range $i, $p := .JSON.Array "" }}{{ if lt $i 10 }}
+                <li class="flex justify-between items-center">
+                  <span class="text-truncate">{{ $p.String "name" }}</span>
+                  <span class="flex gap-10" style="flex:none"><span><span class="color-highlight">{{ printf "%.1f" ($p.Float "cpu_percent") }}%</span> <span class="size-h6 color-paragraph">CPU</span></span><span><span class="color-paragraph">{{ printf "%.1f" ($p.Float "memory_percent") }}%</span> <span class="size-h6 color-paragraph">MEM</span></span></span>
+                </li>
+              {{ end }}{{ end }}
+              </ul>
+          - type: custom-api
+            title: Top 10 by memory
+            cache: 10s
+            url: http://172.28.10.1:61208/api/4/processlist
+            template: |
+              <ul data-live="mem" class="list list-gap-4">
+              {{ range $i, $p := .JSON.Array "" }}{{ if lt $i 10 }}
+                <li class="flex justify-between items-center">
+                  <span class="text-truncate">{{ $p.String "name" }}</span>
+                  <span class="flex gap-10" style="flex:none"><span><span class="color-highlight">{{ printf "%.1f" ($p.Float "memory_percent") }}%</span> <span class="size-h6 color-paragraph">MEM</span></span><span><span class="color-paragraph">{{ printf "%.1f" ($p.Float "cpu_percent") }}%</span> <span class="size-h6 color-paragraph">CPU</span></span></span>
+                </li>
+              {{ end }}{{ end }}
+              </ul>
+
+      # ── middle: the apps ──────────────────────────────────────────────────
+      - size: full
+        widgets:
+          # The prayer tile, drawn the way the ESP32 strip is drawn: the next
+          # prayer and its countdown on top, the date line under it, and the
+          # six times along the bottom with the next one picked out - right to
+          # left, Fajr on the right, as Arabic reads. All of it from one JSON
+          # reply; nothing is recomputed here. Its check is the service's own
+          # /health.
+          #
+          # Live updates. Glance renders on page load and then stops; the
+          # hidden image below loads assets/live.js (a dynamic import from an
+          # onload attribute, the one kind of script that survives innerHTML),
+          # which every 5 s re-fetches the rendered page and swaps in every
+          # element marked data-live. The cache here is what governs how often
+          # the server re-reads the prayer service: 5 s, it is local and cheap.
+          - type: custom-api
+            title: Prayer times
+            title-url: http://aboriis-pi:3003/
+            cache: 5s
+            url: http://prayer:8000/api/status
+            template: |
+              {{ $t0 := now }}{{ $h := newRequest "http://prayer:8000/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+              <!-- Bump the version whenever assets/live.js changes. Glance
+                   serves it with a two-hour cache, so without a new URL a
+                   browser that already has the page open keeps the old
+                   module - and its buttons quietly stop working. -->
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=8')">
+              <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
+              {{ if not (.JSON.Bool "haveTimes") }}
+                <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
+              {{ else }}
+              <div dir="rtl">
+                <div class="flex justify-between items-center">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/mosque.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
+                    <div class="size-h1 color-primary">{{ .JSON.String "nextArabic" }}</div>
+                  </div>
+                  <div dir="ltr" class="flex items-center gap-10">
+                    <span class="size-h2">{{ .JSON.String "nextTime" }}</span>
+                    <span class="size-h4 color-primary">({{ .JSON.String "nextIn" }})</span>
+                  </div>
+                </div>
+                <div dir="ltr" class="flex justify-between margin-top-10 size-h5 color-paragraph">
+                  <span>{{ .JSON.String "date" }}</span>
+                  <span>{{ .JSON.String "hijriDate" }}{{ if .JSON.Bool "stale" }} &middot; <span class="color-negative">stale</span>{{ end }}</span>
+                </div>
+                <div class="flex justify-between margin-top-10 text-center">
+                  {{ range .JSON.Array "list" }}
+                  <div>
+                    <div class="size-h5 {{ if .Bool "next" }}color-primary{{ else }}color-paragraph{{ end }}">{{ .String "arabic" }}</div>
+                    <div dir="ltr" class="size-h4 {{ if .Bool "next" }}color-primary{{ end }}">{{ .String "time" }}</div>
+                  </div>
+                  {{ end }}
+                </div>
+              </div>
+              {{ end }}
+              <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+              </a>
+
+          # The desktop's power switch: an ESP32 on its front-panel header,
+          # reporting the PC's real state off the PWR_LED wire and able to
+          # press the button.
+          #
+          # Everything here goes through the pcswitch proxy on the Pi rather
+          # than the device: the device wants a token on every call, and a
+          # token in this page would be readable by anyone who opens the
+          # dashboard. The proxy holds it. See stacks/glance/pcswitch.py.
+          #
+          # Read server-side on a 10 s cache and marked data-live, so the
+          # state on screen is at most fifteen seconds old without touching
+          # anything. The buttons ask live.js to press and then poll the
+          # state until it settles, so a boot shows up in a few seconds
+          # rather than at the next cache expiry.
+          - type: custom-api
+            title: Desktop
+            title-url: http://aboriis-pi:9102/
+            cache: 10s
+            url: http://172.28.10.1:9102/
+            template: |
+              {{ $ok := .JSON.Bool "ok" }}{{ $p := .JSON.String "power" }}
+              <div data-live="pc">
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/desktop-tower.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
+                <div class="grow flex justify-between items-center text-center">
+                  <div>
+                    <div class="flex items-center gap-10">
+                      <div data-pc="power" class="size-h3 {{ if eq $p "on" }}color-positive{{ else if eq $p "sleep" }}color-highlight{{ else if eq $p "off" }}color-negative{{ else }}color-paragraph{{ end }}">
+                        {{ if $ok }}{{ if $p }}{{ $p }}{{ else }}unknown{{ end }}{{ else }}no switch{{ end }}
+                      </div>
+                      <!-- Ask the switch right now rather than waiting for the
+                           next refresh. Read-only, so it does not confirm. -->
+                      <button data-pc="refresh" title="Check the switch now" aria-label="Check the switch now"
+                              style="font:inherit;line-height:1;padding:2px 7px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.7"
+                              onclick="glanceLive.pcRefresh(this)">&#8635;</button>
+                    </div>
+                    <div class="size-h6">POWER</div>
+                  </div>
+                  <div>
+                    <div class="size-h4">
+                      {{ if $ok }}
+                      <button data-pc="press" style="font:inherit;font-size:.8em;padding:3px 12px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer" onclick="glanceLive.pcPress(this,'press','{{ $p }}')">{{ if eq $p "off" }}Power on{{ else if eq $p "on" }}Shut down{{ else if eq $p "sleep" }}Wake{{ else }}Press{{ end }}</button>
+                      <button data-pc="force" style="font:inherit;font-size:.8em;padding:3px 10px;margin-left:6px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.75" onclick="glanceLive.pcPress(this,'force-off','{{ $p }}')">Force off</button>
+                      {{ else }}
+                      <span class="color-paragraph size-h6">{{ .JSON.String "error" }}</span>
+                      {{ end }}
+                    </div>
+                    <div class="size-h6">{{ if .JSON.Bool "dry" }}<span class="color-negative">TEST MODE</span> &middot; {{ end }}<span data-pc="msg">{{ if .JSON.Bool "dry" }}nothing is sent to the switch{{ else }}tap boots or asks it to stop{{ end }}</span></div>
+                  </div>
+                  <div><div data-pc="rssi" class="color-highlight size-h4">{{ if $ok }}{{ .JSON.Int "rssi" }} dBm{{ else }}-{{ end }}</div><div class="size-h6">SWITCH WIFI</div></div>
+                </div>
+              </div>
+              <p class="size-h6 margin-top-10">{{ if $ok }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">UNREACHABLE</span>{{ end }} <span class="color-paragraph">&middot; via {{ .JSON.String "via" }}</span></p>
+              </div>
+
+          # ── Libraries ──
+          - type: split-column
+            widgets:
+              # Homepage's Jellyfin tile: the library counts.
+              - type: custom-api
+                title: Jellyfin
+                title-url: http://aboriis-pi:8096
+                cache: 10m
+                url: http://jellyfin:8096/Items/Counts
+                headers:
+                  X-Emby-Token: ${JELLYFIN_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://jellyfin:8096/System/Info/Public" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  <a href="http://aboriis-pi:8096" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "MovieCount" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "SeriesCount" | formatNumber }}</div><div class="size-h6">SERIES</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "EpisodeCount" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+              # Homepage's Immich tile. The key needs only server.statistics.
+              - type: custom-api
+                title: Immich
+                title-url: http://aboriis-pi:2283
+                cache: 1h
+                url: http://immich_server:2283/api/server/statistics
+                headers:
+                  x-api-key: ${IMMICH_API_KEY}
+                  Accept: application/json
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://immich_server:2283/api/server/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  <a href="http://aboriis-pi:2283" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/immich.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "photos" | formatNumber }}</div><div class="size-h6">PHOTOS</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "videos" | formatNumber }}</div><div class="size-h6">VIDEOS</div></div>
+                      <div><div class="color-highlight size-h3">{{ div (.JSON.Int "usage" | toFloat) 1073741824 | toInt }} GB</div><div class="size-h6">USAGE</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          # ── Automation ──
+          - type: split-column
+            widgets:
+              # Homepage's Sonarr tile: wanted, queued, series. Three requests,
+              # as Homepage makes; the series list is fetched only for its
+              # length.
+              - type: custom-api
+                title: Sonarr
+                title-url: http://aboriis-pi:8989
+                cache: 5m
+                url: http://sonarr:8989/api/v3/wanted/missing?pageSize=1
+                headers:
+                  X-Api-Key: ${SONARR_API_KEY}
+                subrequests:
+                  queue:
+                    url: http://sonarr:8989/api/v3/queue/status
+                    headers:
+                      X-Api-Key: ${SONARR_API_KEY}
+                  series:
+                    url: http://sonarr:8989/api/v3/series
+                    headers:
+                      X-Api-Key: ${SONARR_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://sonarr:8989/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  <a href="http://aboriis-pi:8989" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/sonarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
+                      <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
+                      <div><div class="color-highlight size-h3">{{ len ((.Subrequest "series").JSON.Array "") }}</div><div class="size-h6">SERIES</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+              - type: custom-api
+                title: Radarr
+                title-url: http://aboriis-pi:7878
+                cache: 5m
+                url: http://radarr:7878/api/v3/wanted/missing?pageSize=1
+                headers:
+                  X-Api-Key: ${RADARR_API_KEY}
+                subrequests:
+                  queue:
+                    url: http://radarr:7878/api/v3/queue/status
+                    headers:
+                      X-Api-Key: ${RADARR_API_KEY}
+                  movies:
+                    url: http://radarr:7878/api/v3/movie
+                    headers:
+                      X-Api-Key: ${RADARR_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://radarr:7878/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  <a href="http://aboriis-pi:7878" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/radarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "totalRecords" | formatNumber }}</div><div class="size-h6">WANTED</div></div>
+                      <div><div class="color-highlight size-h3">{{ (.Subrequest "queue").JSON.Int "totalCount" }}</div><div class="size-h6">QUEUED</div></div>
+                      <div><div class="color-highlight size-h3">{{ len ((.Subrequest "movies").JSON.Array "") | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          - type: split-column
+            widgets:
+              # Homepage's Seerr tile: the request counts.
+              - type: custom-api
+                title: Seerr
+                title-url: http://aboriis-pi:5055
+                cache: 5m
+                url: http://seerr:5055/api/v1/request/count
+                headers:
+                  X-Api-Key: ${SEERR_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://seerr:5055/api/v1/status" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  <a href="http://aboriis-pi:5055" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/seerr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "pending" }}</div><div class="size-h6">PENDING</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "approved" }}</div><div class="size-h6">APPROVED</div></div>
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "available" }}</div><div class="size-h6">AVAILABLE</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+              # Homepage's Bazarr tile: what is missing subtitles. Bazarr has
+              # no unauthenticated health route, so the check is its status
+              # route, with the key.
+              - type: custom-api
+                title: Bazarr
+                title-url: http://aboriis-pi:6767
+                cache: 15m
+                url: http://bazarr:6767/api/episodes/wanted?length=1
+                headers:
+                  X-API-KEY: ${BAZARR_API_KEY}
+                subrequests:
+                  movies:
+                    url: http://bazarr:6767/api/movies/wanted?length=1
+                    headers:
+                      X-API-KEY: ${BAZARR_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://bazarr:6767/api/system/status" | withHeader "X-API-KEY" "${BAZARR_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  <a href="http://aboriis-pi:6767" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/bazarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <span class="grow size-h5 color-paragraph">missing subtitles</span>
+                    <div class="flex gap-10 text-center" style="flex:none">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "total" | formatNumber }}</div><div class="size-h6">EPISODES</div></div>
+                      <div><div class="color-highlight size-h3">{{ (.Subrequest "movies").JSON.Int "total" | formatNumber }}</div><div class="size-h6">MOVIES</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          # ── Acquisition ──
+          - type: split-column
+            widgets:
+              # Homepage's Prowlarr tile: enabled indexers and their totals.
+              # Reached as gluetun:9696 - Prowlarr has no hostname of its own.
+              - type: custom-api
+                title: Prowlarr
+                title-url: http://aboriis-pi:9696
+                cache: 15m
+                url: http://gluetun:9696/api/v1/indexerstats
+                headers:
+                  X-Api-Key: ${PROWLARR_API_KEY}
+                subrequests:
+                  indexers:
+                    url: http://gluetun:9696/api/v1/indexer
+                    headers:
+                      X-Api-Key: ${PROWLARR_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://gluetun:9696/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $grabs := 0 }}{{ $queries := 0 }}{{ $fails := 0 }}
+                  {{ range .JSON.Array "indexers" }}
+                    {{ $grabs = add $grabs (.Int "numberOfGrabs") }}
+                    {{ $queries = add $queries (.Int "numberOfQueries") }}
+                    {{ $fails = add $fails (.Int "numberOfFailedQueries") }}
+                  {{ end }}
+                  <a href="http://aboriis-pi:9696" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/prowlarr.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ len ((.Subrequest "indexers").JSON.Array "#(enable==true)#") }}</div><div class="size-h6">INDEXERS</div></div>
+                      <div><div class="color-highlight size-h3">{{ $grabs | formatNumber }}</div><div class="size-h6">GRABS</div></div>
+                      <div><div class="color-highlight size-h3">{{ $queries | formatNumber }}</div><div class="size-h6">QUERIES</div></div>
+                      <div><div class="{{ if gt $fails 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ $fails | formatNumber }}</div><div class="size-h6">FAILED</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+              # Homepage's qBittorrent tile: what is leeching and seeding, and
+              # the transfer rates. Reached as gluetun:8200 - it shares
+              # gluetun's network namespace.
+              #
+              # qBittorrent has no API key, only a login session, so the
+              # widget's own request IS the login: a form POST that answers
+              # "Ok." as plain text (hence skip-json-validation) and sets the
+              # SID cookie. The template hands that cookie to the three calls
+              # that follow. One login per cache period, which is fine - the
+              # client ban is for FAILED logins.
+              - type: custom-api
+                title: qBittorrent
+                title-url: http://aboriis-pi:8200
+                cache: 10s
+                method: POST
+                url: http://gluetun:8200/api/v2/auth/login
+                body-type: string
+                body: username=${QBIT_USER}&password=${QBIT_PASS}
+                # A string body goes out with no content type, and qBittorrent
+                # answers 400 to a login it cannot parse as a form.
+                headers:
+                  Content-Type: application/x-www-form-urlencoded
+                skip-json-validation: true
+                template: |
+                  {{ $sid := .Response.Header.Get "Set-Cookie" }}
+                  {{ $t0 := now }}{{ $tr := newRequest "http://gluetun:8200/api/v2/transfer/info" | withHeader "Cookie" $sid | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $dl := newRequest "http://gluetun:8200/api/v2/torrents/info" | withParameter "filter" "downloading" | withHeader "Cookie" $sid | getResponse }}
+                  {{ $seed := newRequest "http://gluetun:8200/api/v2/torrents/info" | withParameter "filter" "seeding" | withHeader "Cookie" $sid | getResponse }}
+                  <a data-live="qbit" href="http://aboriis-pi:8200" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/qbittorrent.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ len ($dl.JSON.Array "") }}</div><div class="size-h6">LEECHING</div></div>
+                      <div><div class="color-highlight size-h3">{{ len ($seed.JSON.Array "") }}</div><div class="size-h6">SEEDING</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul ($tr.JSON.Float "dl_info_speed") 8) 1000000) }}</div><div class="size-h6">MBIT/S DOWN</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (mul ($tr.JSON.Float "up_info_speed") 8) 1000000) }}</div><div class="size-h6">MBIT/S UP</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $tr.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $tr.Response.StatusCode }}{{ if ne .Response.StatusCode 200 }} (login {{ .Response.StatusCode }}){{ end }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          - type: split-column
+            widgets:
+              # Homepage's Gluetun tile: where the tunnel comes out, and the
+              # forwarded port. /v1/portforward directly, as Homepage's
+              # version 2 does - the older path redirects. No page to open,
+              # so the check is the control server itself.
+              #
+              # Live, on a short cache: the tunnel reconnects now and then,
+              # and while it does the control server answers with an empty
+              # address. A five-minute cache held that blank on the page long
+              # after the tunnel was back. Now it reads "reconnecting" for as
+              # long as it is true and no longer.
+              - type: custom-api
+                title: Gluetun
+                cache: 10s
+                url: http://gluetun:8320/v1/publicip/ip
+                headers:
+                  X-API-Key: ${GLUETUN_API_KEY}
+                subrequests:
+                  port:
+                    url: http://gluetun:8320/v1/portforward
+                    headers:
+                      X-API-Key: ${GLUETUN_API_KEY}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://gluetun:8320/v1/publicip/ip" | withHeader "X-API-Key" "${GLUETUN_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $ip := .JSON.String "public_ip" }}
+                  <div data-live="vpn">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gluetun.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      {{ if $ip }}
+                      <div><div class="color-highlight size-h4">{{ $ip }}</div><div class="size-h6">PUBLIC IP</div></div>
+                      <div><div class="color-highlight size-h4">{{ .JSON.String "city" }}, {{ .JSON.String "country" }}</div><div class="size-h6">EXIT</div></div>
+                      <div><div class="color-highlight size-h4">{{ (.Subrequest "port").JSON.Int "port" }}</div><div class="size-h6">PORT</div></div>
+                      {{ else }}
+                      <div class="grow"><div class="color-negative size-h4">reconnecting&hellip;</div><div class="size-h6">TUNNEL</div></div>
+                      {{ end }}
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </div>
+              # Homepage's Portainer tile: containers by state, from the
+              # environment Homepage uses (3 here - this install has been
+              # recreated, so not the 2 most guides assume).
+              - type: custom-api
+                title: Portainer
+                title-url: http://aboriis-pi:9000
+                cache: 1m
+                url: http://portainer:9000/api/endpoints/${PORTAINER_ENV}/docker/containers/json?all=1
+                headers:
+                  X-API-Key: ${PORTAINER_TOKEN}
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://portainer:9000/api/system/status" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $all := len (.JSON.Array "") }}{{ $running := len (.JSON.Array "#(State==running)#") }}
+                  <a href="http://aboriis-pi:9000" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/portainer.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ $running }}</div><div class="size-h6">RUNNING</div></div>
+                      <div><div class="{{ if gt (sub $all $running) 0 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ sub $all $running }}</div><div class="size-h6">STOPPED</div></div>
+                      <div><div class="color-highlight size-h3">{{ $all }}</div><div class="size-h6">TOTAL</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          # ── Monitoring ──
+          - type: split-column
+            widgets:
+              # Homepage's Speedtest tile: the real line speed, measured every
+              # six hours - NOT through the VPN. Bearer token, API v1.
+              - type: custom-api
+                title: Internet speed
+                title-url: http://aboriis-pi:3030
+                cache: 15m
+                url: http://speedtest-tracker:80/api/v1/results/latest
+                headers:
+                  Authorization: Bearer ${SPEEDTEST_API_KEY}
+                  Accept: application/json
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://speedtest-tracker:80/api/healthcheck" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $m := ((now).Sub (parseTime "rfc3339" (.JSON.String "data.data.timestamp"))).Minutes | toInt }}
+                  <a href="http://aboriis-pi:3030" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.download_bits") 1000000) }}</div><div class="size-h6">MBPS DOWN</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.1f" (div (.JSON.Float "data.upload_bits") 1000000) }}</div><div class="size-h6">MBPS UP</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "data.ping") }}</div><div class="size-h6">MS PING</div></div>
+                      <div><div class="color-highlight size-h4">{{ if lt $m 1 }}just now{{ else if lt $m 60 }}{{ $m }} min ago{{ else if lt $m 1440 }}{{ $x := div ($m | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($m | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</div><div class="size-h6">MEASURED</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+              # Homepage's Scrutiny tile - and the temperature it could not
+              # show: this disk hit 68C in its old enclosure and took the
+              # array read-only, so the number is the thing worth watching.
+              # The key is the drive's WWN; replace the disk and this shows a
+              # dash rather than an error.
+              - type: custom-api
+                title: Drive health
+                title-url: http://aboriis-pi:8081
+                cache: 30m
+                url: http://scrutiny:8080/api/summary
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://scrutiny:8080/api/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $t := .JSON.Int "data.summary.0x50014ee216baa995.smart.temp" }}
+                  <a href="http://aboriis-pi:8081" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/scrutiny.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="{{ if ge $t 55 }}color-negative{{ else }}color-highlight{{ end }} size-h3">{{ if $t }}{{ $t }}°C{{ else }}-{{ end }}</div><div class="size-h6">DISK TEMP</div></div>
+                      <div><div class="color-highlight size-h4">{{ .JSON.String "data.summary.0x50014ee216baa995.device.model_name" }}</div><div class="size-h6">{{ div (.JSON.Int "data.summary.0x50014ee216baa995.device.capacity" | toFloat) 1000000000000 | toInt }} TB</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
+
+          # Homepage's Backups tile, full width. The Pi answers this, not the
+          # PC: pointing at the receiver would go red every time the PC
+          # sleeps. The check is the same endpoint, timed. last_backup is
+          # local time with no zone, so the Pi's +04:00 is appended before it
+          # is parsed; last_sent already carries a zone.
+          #
+          # The small Run button beside the state posts the same /run the
+          # status page posts. Its handler lives in assets/live.js: it writes
+          # the service's reply into the msg span, then follows the run by
+          # polling the status JSON into the data-backup fields until the
+          # backup has finished. Only the icon links out - a button inside a
+          # link is not a thing - and this tile is deliberately NOT data-live,
+          # since the 5 s swap would wipe that in-progress state.
+          - type: custom-api
+            title: Backups
+            title-url: http://aboriis-pi:9101/ui
+            cache: 5m
+            url: http://172.28.10.1:9101/
+            template: |
+              {{ $t0 := now }}{{ $h := newRequest "http://172.28.10.1:9101/" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+              {{ $bm := ((now).Sub (parseTime "rfc3339" (printf "%s+04:00" (.JSON.String "last_backup")))).Minutes | toInt }}
+              {{ $dm := ((now).Sub (parseTime "rfc3339" (.JSON.String "last_sent"))).Minutes | toInt }}
+              <div class="flex items-center gap-10">
+                <a href="http://aboriis-pi:9101/ui" style="flex:none;display:block"><img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:34px;height:34px;display:block;filter:invert(.8)"></a>
+                <div class="grow flex justify-between text-center">
+                  <div>
+                    <div class="color-highlight size-h4"><span data-backup="state">{{ .JSON.String "state" }}</span>
+                      {{ if .JSON.Bool "backing_up" }}
+                      <button disabled style="font:inherit;font-size:.7em;padding:2px 9px;margin-left:8px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;opacity:.5;vertical-align:middle">Run</button>
+                      <span data-backup="msg" class="size-h6 color-paragraph">running&hellip;</span>
+                      {{ else }}
+                      <button style="font:inherit;font-size:.7em;padding:2px 9px;margin-left:8px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;vertical-align:middle" onclick="glanceLive.runBackup(this)">Run</button>
+                      <span data-backup="msg" class="size-h6 color-paragraph"></span>
+                      {{ end }}
+                    </div>
+                    <div class="size-h6">STATE</div>
+                  </div>
+                  <div><div data-backup="onpc" class="color-highlight size-h4">{{ .JSON.Int "pc_archives" }}</div><div class="size-h6">ON PC</div></div>
+                  <div><div data-backup="built" class="color-highlight size-h4">{{ if lt $bm 1 }}just now{{ else if lt $bm 60 }}{{ $bm }} minute{{ if ne $bm 1 }}s{{ end }} ago{{ else if lt $bm 1440 }}{{ $x := div ($bm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($bm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</div><div class="size-h6">BUILT</div></div>
+                  <div><div data-backup="delivered" class="color-highlight size-h4">{{ if lt $dm 1 }}just now{{ else if lt $dm 60 }}{{ $dm }} minute{{ if ne $dm 1 }}s{{ end }} ago{{ else if lt $dm 1440 }}{{ $x := div ($dm | toFloat) 60 | toInt }}{{ $x }} hour{{ if ne $x 1 }}s{{ end }} ago{{ else }}{{ $x := div ($dm | toFloat) 1440 | toInt }}{{ $x }} day{{ if ne $x 1 }}s{{ end }} ago{{ end }}</div><div class="size-h6">DELIVERED</div></div>
+                </div>
+              </div>
+              <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+
+
+      # ── right: the background services ────────────────────────────────────
+      - size: small
+        widgets:
+          # Only what has no tile of its own: every app with a tile carries
+          # its own check on its last line. The check goes to the container
+          # over the docker network; the link opens the browser URL.
+          - type: monitor
+            title: Services
+            cache: 1m
+            sites:
+              - { title: Uptime Kuma, url: http://aboriis-pi:3001, check-url: http://uptime-kuma:3001/,               icon: di:uptime-kuma }
+              - { title: Kavita,      url: http://aboriis-pi:5000, check-url: http://kavita:5000/api/health,          icon: di:kavita }
+              - { title: SFTPGo,      url: http://aboriis-pi:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
+              - { title: Dozzle,      url: http://aboriis-pi:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
+              - { title: What's Up Docker, url: http://aboriis-pi:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
+
+          # Homepage's Registry tile: how many repositories the private
+          # registry holds. It publishes to 127.0.0.1 only, so the count is
+          # read over the docker network and the link goes to registry-ui.
+          - type: custom-api
+            title: Registry
+            title-url: http://aboriis-pi:5002
+            cache: 10m
+            url: http://registry:5000/v2/_catalog
+            template: |
+              <a href="http://aboriis-pi:5002" class="block" style="color:inherit;text-decoration:none">
+              <div class="flex items-center gap-10">
+                <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg" alt="" style="width:30px;height:30px;flex:none">
+                <div class="grow text-center">
+                  <div class="color-highlight size-h3">{{ .JSON.Array "repositories" | len }}</div>
+                  <div class="size-h6">REPOSITORIES</div>
+                </div>
+              </div>
+              </a>
+
+          # Homepage's What's Up Docker tile: containers with an update
+          # waiting. Off until it has a credential: wud sits behind basic auth
+          # (WUD_AUTH_BASIC_ADMIN_* in the env file), and only the bcrypt hash
+          # is stored, so there is nothing here to send. To turn it on, put
+          #   WUD_BASIC=<base64 of user:password>
+          # in the env file, pass it through in compose.yaml, uncomment, and
+          # drop the backslash below.
+          #
+          # - type: custom-api
+          #   title: Image updates
+          #   title-url: http://aboriis-pi:3002
+          #   cache: 15m
+          #   url: http://wud:3000/api/containers
+          #   headers:
+          #     Authorization: Basic \${WUD_BASIC}
+          #   template: |
+          #     {{ $n := len (.JSON.Array "#(updateAvailable==true)#") }}
+          #     <div class="text-center">
+          #       <div class="{{ if gt $n 0 }}color-highlight{{ else }}color-positive{{ end }} size-h3">{{ $n }}</div>
+          #       <div class="size-h6">UPDATES WAITING</div>
+          #     </div>
+
+          - type: calendar
+            first-day-of-week: monday
+
+  # Every link the Homepage dashboard carried, on a tab of its own.
+  #
+  # They left the Home page because they duplicated it: each app there
+  # already has a tile whose whole body is a link, and the same names again
+  # underneath were a second copy of the dashboard rather than a use of it.
+  # Here they are the fast index - one page, five groups, nothing to read.
+  - name: Links
+    columns:
+      - size: full
+        widgets:
+          - type: bookmarks
+            groups:
+              - title: System
+                links:
+                  - { title: Portainer,   url: http://aboriis-pi:9000 }
+                  - { title: Registry,    url: http://aboriis-pi:5002 }
+                  - { title: SFTPGo,      url: http://aboriis-pi:8080 }
+                  - { title: Glances,     url: http://aboriis-pi:61210 }
+                  - { title: Homepage,    url: http://aboriis-pi/ }
+              - title: Monitoring
+                links:
+                  - { title: Speedtest,   url: http://aboriis-pi:3030 }
+                  - { title: Uptime Kuma, url: http://aboriis-pi:3001 }
+                  - { title: Backups,     url: http://aboriis-pi:9101/ui }
+                  - { title: Scrutiny,    url: http://aboriis-pi:8081 }
+                  - { title: Dozzle,      url: http://aboriis-pi:8888 }
+                  - { title: What's Up Docker, url: http://aboriis-pi:3002 }
+              - title: Libraries
+                links:
+                  - { title: Jellyfin,    url: http://aboriis-pi:8096 }
+                  - { title: Immich,      url: http://aboriis-pi:2283 }
+                  - { title: Kavita,      url: http://aboriis-pi:5000 }
+              - title: Automation
+                links:
+                  - { title: Seerr,       url: http://aboriis-pi:5055 }
+                  - { title: Sonarr,      url: http://aboriis-pi:8989 }
+                  - { title: Radarr,      url: http://aboriis-pi:7878 }
+                  - { title: Bazarr,      url: http://aboriis-pi:6767 }
+                  - { title: Tdarr,       url: http://aboriis-pi:8265 }
+              - title: Acquisition
+                links:
+                  - { title: Prowlarr,    url: http://aboriis-pi:9696 }
+                  - { title: qBittorrent, url: http://aboriis-pi:8200 }
+
+  # Prices, on a tab of their own.
+  #
+  # Glance's markets widget reads Yahoo Finance, which needs no key and no
+  # account - so nothing here has a credential to leak or a free tier to run
+  # out of. Every symbol below was checked against Yahoo from the Pi before
+  # it went in; the one that looked obvious and does NOT work is XAUUSD=X,
+  # spot gold, which 404s. Gold is the futures contract instead.
+  #
+  # Each widget carries its own cache, which is what decides how often Yahoo
+  # is actually asked: crypto moves at the weekend, shares do not.
+  - name: Markets
+    columns:
+      - size: small
+        widgets:
+          # The refresh bar, and what loads the script on this tab.
+          #
+          # Glance renders a page once and then stops, so without this the
+          # prices would stay as old as the moment the tab was opened. The
+          # hidden image pulls in assets/live.js, which from here re-renders
+          # this page every minute and swaps the market widgets in place.
+          #
+          # The button only forces that re-render early; it cannot reach
+          # through a widget's own cache, which is why every widget on this
+          # tab is set to a minute rather than the longer values elsewhere.
+          - type: html
+            source: |
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=8')">
+              <div class="flex items-center justify-between">
+                <span class="size-h6 color-paragraph">updated <span data-live-age>just now</span> &middot; every minute</span>
+                <button data-live-refresh title="Refresh now" aria-label="Refresh now"
+                        style="font:inherit;line-height:1;padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer"
+                        onclick="glanceLive.refreshNow(this)">&#8635;</button>
+              </div>
+
+          # Gold as it is bought here: by the gram, in dirhams.
+          #
+          # Yahoo quotes the COMEX front-month future in dollars per troy
+          # ounce, so this converts - 31.1035 g to the ounce, and the dirham
+          # has been pegged at 3.6725 to the dollar since 1997, which is why
+          # a fixed rate is honest rather than lazy.
+          #
+          # It will not match a shop in the Gold Souk. That price is spot plus
+          # making, and a future is not spot. Read it as the metal, not a
+          # quote.
+          - type: custom-api
+            title: Gold in dirhams
+            title-url: https://www.tradingview.com/chart/?symbol=COMEX:GC1!
+            cache: 1m
+            url: https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?range=5d&interval=1d
+            headers:
+              User-Agent: Mozilla/5.0
+            template: |
+              {{ $usdOz := .JSON.Float "chart.result.0.meta.regularMarketPrice" }}
+              {{ $prevOz := .JSON.Float "chart.result.0.meta.chartPreviousClose" }}
+              {{ $aedG := div (mul $usdOz 3.6725) 31.1035 }}
+              {{ $prevG := div (mul $prevOz 3.6725) 31.1035 }}
+              {{ $chg := 0.0 }}{{ if $prevG }}{{ $chg = mul (div (sub $aedG $prevG) $prevG) 100 }}{{ end }}
+              <div data-live="gold">
+              <div class="flex justify-between text-center">
+                <div>
+                  <div class="color-highlight size-h3">{{ printf "%.0f" $aedG }}</div>
+                  <div class="size-h6">AED / G 24K</div>
+                </div>
+                <div>
+                  <div class="color-highlight size-h3">{{ printf "%.0f" (mul $aedG 0.9167) }}</div>
+                  <div class="size-h6">AED / G 22K</div>
+                </div>
+                <div>
+                  <div class="{{ if lt $chg 0.0 }}color-negative{{ else }}color-positive{{ end }} size-h3">{{ printf "%+.1f%%" $chg }}</div>
+                  <div class="size-h6">SINCE CLOSE</div>
+                </div>
+              </div>
+              <p class="size-h6 color-paragraph margin-top-10 text-center">{{ printf "$%.0f" $usdOz }} an ounce, COMEX future</p>
+              </div>
+
+          - type: markets
+            title: Metals
+            cache: 1m
+            markets:
+              # Not XAUUSD=X - Yahoo has no such symbol, checked from the Pi.
+              - { symbol: "GC=F", name: Gold }
+              - { symbol: "SI=F", name: Silver }
+
+          - type: markets
+            title: Crypto
+            cache: 1m
+            sort-by: absolute-change
+            chart-link-template: https://www.tradingview.com/chart/?symbol={SYMBOL}
+            markets:
+              - { symbol: BTC-USD, name: Bitcoin }
+              - { symbol: ETH-USD, name: Ethereum }
+              - { symbol: SOL-USD, name: Solana }
+              - { symbol: XRP-USD, name: XRP }
+
+      - size: full
+        widgets:
+          - type: markets
+            title: Big tech
+            cache: 1m
+            sort-by: absolute-change
+            symbol-link-template: https://www.google.com/search?tbm=nws&q={SYMBOL}
+            markets:
+              - { symbol: AAPL,  name: Apple }
+              - { symbol: MSFT,  name: Microsoft }
+              - { symbol: NVDA,  name: NVIDIA }
+              - { symbol: GOOGL, name: Alphabet }
+              - { symbol: AMZN,  name: Amazon }
+              - { symbol: META,  name: Meta }
+              - { symbol: TSLA,  name: Tesla }
+
+          - type: markets
+            title: Indices
+            cache: 1m
+            markets:
+              - { symbol: "^GSPC", name: S&P 500 }
+              - { symbol: "^IXIC", name: Nasdaq }
+
+      - size: small
+        widgets:
+          # Closer to home, and on a different clock: these trade Sunday to
+          # Thursday, so they sit still through a Gulf weekend while the
+          # American ones above move on Friday.
+          - type: markets
+            title: Local
+            cache: 1m
+            markets:
+              - { symbol: EMAAR.AE, name: Emaar }
+              - { symbol: EMIRATESNBD.AE, name: Emirates NBD }
+              - { symbol: 2222.SR, name: Saudi Aramco }
+
+# Not ported, and why:
+#
+#   Kavita   its API key is exchanged for a JWT first, and that JWT then has
+#            to be carried by the next call - the same shape qBittorrent has
+#            with its cookie, so the same trick would work; nobody has asked.

@@ -1,0 +1,133 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# glance — a second dashboard, running beside Homepage on its own port, so the
+# two can be compared live before either replaces the other.
+#
+# Why try it: Homepage is groups of equal tiles in rows, and the only way past
+# that is custom.css. Glance is a single Go binary with a YAML config whose
+# custom-api widget renders a template you write, server-side, as real HTML -
+# so a tile can look exactly the way you want with no iframe and no CSS hacks.
+# It idles in a few tens of MB.
+#
+# The config is ONE file, glance.yml, at ${FOLDER_FOR_DATA}/glance. The
+# reference copy lives in examples/glance/ in this repo and mirrors the
+# Homepage dashboard: the same groups, links, status checks and the prayer
+# tile. Glance reloads the file on change, so editing it is the whole deploy.
+# ─────────────────────────────────────────────────────────────────────────────
+name: glance
+
+services:
+  glance:
+    # Docker Hub, not ghcr.io: ghcr.io/glanceapp/glance answers "denied" to an
+    # anonymous pull (tried from the PC and the Pi on 2026-09-03), so this is
+    # the one published image. wud watches Docker Hub anonymously too, within
+    # its rate limit.
+    image: glanceapp/glance:latest
+    container_name: glance
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/glance:/app/config
+      # Read-only, purely so the server-stats widget reports the data disk
+      # and the SD card rather than the container's own filesystem - the same
+      # two mounts Homepage's resources widget uses, for the same reason.
+      # /var/lib/homepage-diskstat is an EMPTY directory on the root partition:
+      # statfs reports the filesystem containing a path, so this surfaces the
+      # SD card without exposing anything on it.
+      - /srv/storage:/srv/storage:ro
+      - /var/lib/homepage-diskstat:/hostroot:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # The API keys the tiles use - the same ones the Homepage config holds,
+      # copied into the env file. Defaults to empty rather than :?err so the
+      # dashboard still starts with a key missing; that tile then shows an
+      # error instead of the whole page failing.
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
+      - IMMICH_API_KEY=${IMMICH_API_KEY:-}
+      - SEERR_API_KEY=${SEERR_API_KEY:-}
+      - SONARR_API_KEY=${SONARR_API_KEY:-}
+      - RADARR_API_KEY=${RADARR_API_KEY:-}
+      - BAZARR_API_KEY=${BAZARR_API_KEY:-}
+      - PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
+      - PORTAINER_TOKEN=${PORTAINER_TOKEN:-}
+      - PORTAINER_ENV=${PORTAINER_ENV:-3}
+      - SPEEDTEST_API_KEY=${SPEEDTEST_API_KEY:-}
+      - GLUETUN_API_KEY=${GLUETUN_API_KEY:-}
+      - UPTIMEKUMA_SLUG=${UPTIMEKUMA_SLUG:-home-services}
+      # qBittorrent has no API key: the tile logs in with these, the same
+      # pair the Homepage widget used, and keeps the session cookie for the
+      # calls that follow. Never reaches the browser.
+      - QBIT_USER=${QBIT_USER:-}
+      - QBIT_PASS=${QBIT_PASS:-}
+      # Sign-in, once the two values exist - glance.yml says how to make
+      # them. Empty until then, and the auth block there stays commented out.
+      - GLANCE_SECRET_KEY=${GLANCE_SECRET_KEY:-}
+      - GLANCE_PASSWORD_HASH=${GLANCE_PASSWORD_HASH:-}
+    ports:
+      - "${WEBUI_PORT_GLANCE:?err}:8080"
+    # No healthcheck, deliberately. The image is one static binary with no
+    # shell, wget or curl, so nothing inside it can probe /api/healthz, and
+    # the only thing the binary itself can run is config:validate - which
+    # proves the YAML parses, not that anything is listening, so "healthy"
+    # would mean nothing. A dead process exits the container and the restart
+    # policy brings it back; an HTTP check, if wanted, belongs in Uptime Kuma.
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  # The dashboard's press button for the ESP32 power switch on the desktop.
+  #
+  # It exists to hold the switch's token: a button in the browser would have
+  # to carry that token in the page, where anyone opening the dashboard could
+  # read it, and the token is the only thing between the LAN and a PC that can
+  # be powered off. It also adds the CORS headers the ESP32 does not send.
+  #
+  # HOST NETWORKING, and no ports block, for one reason: the switch is
+  # addressed by NAME so a new DHCP lease cannot strand it, and only the Pi's
+  # own resolver can answer that name. `pcswitch.local` is mDNS, which
+  # Docker's embedded resolver does not do, and the router's DNS does not
+  # answer for the bare name either - both were tried from a container on the
+  # bridge and neither resolved. On the host's stack it resolves.
+  #
+  # That also means PCSWITCH_PROXY_PORT IS the published port, on every
+  # interface. It is reachable by anyone on the wifi, which is the same
+  # bargain the Backups tile's Run button already makes - do not port-forward
+  # it. Glance reaches it at the docker gateway, 172.28.10.1, the way the
+  # glances and backup tiles do.
+  pcswitch:
+    image: python:3.12-alpine
+    container_name: pcswitch
+    restart: unless-stopped
+    network_mode: host
+    command: ["python", "-u", "/app/pcswitch.py"]
+    volumes:
+      - ./pcswitch.py:/app/pcswitch.py:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      # By name, not by address. Its shared token is copied out of the
+      # switch's gitignored config.h into the env file.
+      - PCSWITCH_URL=${PCSWITCH_URL:-http://pcswitch.local}
+      - PCSWITCH_TOKEN=${PCSWITCH_TOKEN:-}
+      - PCSWITCH_PROXY_PORT=${WEBUI_PORT_PCSWITCH:?err}
+      # 1 while testing the dashboard: the buttons answer as usual but
+      # nothing reaches the switch, so a stray click cannot power the PC.
+      # The tile prints TEST MODE while this is on.
+      - PCSWITCH_DRY_RUN=${PCSWITCH_DRY_RUN:-0}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['PCSWITCH_PROXY_PORT']+'/',timeout=5)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

@@ -67,6 +67,7 @@ docker compose down
 | | glances | - | host metrics, bound to the docker gateway |
 | | wud | 3002 | image update watcher, Telegram notices, never pulls |
 | **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the Homepage tile |
+| | glance | 3004 | second dashboard, on trial beside Homepage; same links and checks, freer layout |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network

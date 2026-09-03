@@ -11,6 +11,7 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, glances, wud |
 | `prayer` | Dubai prayer times from IACAD, cached a year ahead, for the Homepage tile |
+| `glance` | a second dashboard on trial beside Homepage, configured in `examples/glance/glance.yml` |
 | `dockge` | the UI itself |
 
 ## Three things that are load-bearing
