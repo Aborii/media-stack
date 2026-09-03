@@ -158,6 +158,49 @@
         # one would need an SFTPGo API key, which only exists once an admin
         # account has been created in the web UI.
 
+    - Prayer times:
+        icon: mdi-mosque
+        # /health answers as soon as the process is serving, whether or not a
+        # month has arrived yet - so a red tile means the container is down,
+        # not that IACAD is. The status reply carries `stale` for that.
+        siteMonitor: http://prayer:8000/health
+        # The bare hostname, because YOUR BROWSER opens it. It is a JSON page:
+        # everything the tile shows, and /api/coverage lists the stored months.
+        href: http://aboriis-pi:3003/
+        target: "_blank"
+        description: Dubai (IACAD), cached a year ahead
+        server: my-docker
+        container: prayer
+        # Two widgets on one tile, as Scrutiny does below: the block says what
+        # is next, the list carries the whole day.
+        widgets:
+          - type: customapi
+            # Container name: Homepage fetches this server-side.
+            url: http://prayer:8000/api/status
+            # The countdown is a string the service formats, so it only moves
+            # when this fires. 15 s keeps "1h 56m" honest without polling a
+            # local container to death.
+            refreshInterval: 15000
+            mappings:
+              - field: nextName
+                label: Next
+              - field: nextTime
+                label: At
+              - field: nextIn
+                label: In
+              - field: hijriDate
+                label: Hijri
+          - type: customapi
+            url: http://prayer:8000/api/status
+            refreshInterval: 60000
+            display: dynamic-list
+            mappings:
+              # Fajr shows TOMORROW's time once Isha has passed - the one
+              # still ahead of you - exactly as the panel does.
+              items: list
+              name: name
+              label: time
+
 - Monitoring:
     - Speedtest:
         icon: speedtest-tracker.png
