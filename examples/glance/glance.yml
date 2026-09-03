@@ -52,27 +52,28 @@ server:
   # assets/live.js, beside this file: the script that keeps the marked tiles
   # updating - see the "Live updates" note below.
   assets-path: /app/config/assets
-
-# Sign-in. Glance has it built in; it is off here only because the two
-# values it needs do not exist yet. To turn it on, run on the Pi:
+# Sign-in. Both values live in the env file and compose passes them
+# through; Glance refuses to start if either is empty, which is the right
+# way round - a dashboard that can power a PC off should fail loudly
+# rather than come up unprotected.
 #
-#   docker run --rm glanceapp/glance secret:make
-#   docker run --rm glanceapp/glance password:hash 'the password'
+# To set them, on the Pi:
 #
-# put the results in the env file - the hash in SINGLE quotes, it is full
-# of dollar signs -
+#   docker run --rm glanceapp/glance secret:make        -> GLANCE_SECRET_KEY
+#   docker run --rm glanceapp/glance password:hash PASS -> GLANCE_PASSWORD_HASH
 #
-#   GLANCE_SECRET_KEY=...
-#   GLANCE_PASSWORD_HASH='$2a$10$...'
+# The hash is full of dollar signs. It survives the env file either way -
+# checked - but single-quote it so nothing downstream has to be careful.
 #
-# then uncomment this block and drop the two backslashes. compose.yaml
-# already passes both variables through.
-#
-# auth:
-#   secret-key: \${GLANCE_SECRET_KEY}
-#   users:
-#     aborii:
-#       password-hash: \${GLANCE_PASSWORD_HASH}
+# What this does NOT cover: the two helper ports. The backup runner on
+# 9101 and the power switch proxy on 9102 are separate servers with no
+# auth of their own, so signing in here does not stop anyone on the wifi
+# reaching those directly.
+auth:
+  secret-key: ${GLANCE_SECRET_KEY}
+  users:
+    aborii:
+      password-hash: ${GLANCE_PASSWORD_HASH}
 
 theme:
   # Dark slate, near Homepage's, with the prayer clock's green as the accent.
