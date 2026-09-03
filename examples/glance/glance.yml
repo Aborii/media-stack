@@ -221,7 +221,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=5')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=6')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
@@ -280,8 +280,15 @@ pages:
                 <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/desktop-tower.svg" alt="" style="width:34px;height:34px;flex:none;filter:invert(.8)">
                 <div class="grow flex justify-between items-center text-center">
                   <div>
-                    <div data-pc="power" class="size-h3 {{ if eq $p "on" }}color-positive{{ else if eq $p "sleep" }}color-highlight{{ else if eq $p "off" }}color-negative{{ else }}color-paragraph{{ end }}">
-                      {{ if $ok }}{{ if $p }}{{ $p }}{{ else }}unknown{{ end }}{{ else }}no switch{{ end }}
+                    <div class="flex items-center gap-10">
+                      <div data-pc="power" class="size-h3 {{ if eq $p "on" }}color-positive{{ else if eq $p "sleep" }}color-highlight{{ else if eq $p "off" }}color-negative{{ else }}color-paragraph{{ end }}">
+                        {{ if $ok }}{{ if $p }}{{ $p }}{{ else }}unknown{{ end }}{{ else }}no switch{{ end }}
+                      </div>
+                      <!-- Ask the switch right now rather than waiting for the
+                           next refresh. Read-only, so it does not confirm. -->
+                      <button data-pc="refresh" title="Check the switch now" aria-label="Check the switch now"
+                              style="font:inherit;line-height:1;padding:2px 7px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.7"
+                              onclick="glanceLive.pcRefresh(this)">&#8635;</button>
                     </div>
                     <div class="size-h6">POWER</div>
                   </div>

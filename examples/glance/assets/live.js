@@ -110,14 +110,6 @@ async function runBackup(btn) {
   }, 3000);
 }
 
-// The Desktop tile's buttons. Presses through the proxy - the token lives
-// there, not here - then watches the state until it settles.
-//
-// The watch is the point. The PC's own power LED takes about six seconds to
-// be classified (the switch counts edges to tell a sleep blink from a boot),
-// so pressing and then waiting for the tile's ordinary refresh would look
-// like nothing happened. This polls every 2 s for a minute and stops the
-// moment the state changes, which is the "detected refetch" a boot deserves.
 /* ----------------------------------------------------------- confirm --- */
 
 // A confirmation dialog in the page, rather than the browser's own.
@@ -231,6 +223,52 @@ const PC_ASK_FORCE = {
   danger: true,
 };
 
+// Ask the switch now, rather than waiting for the tile's own refresh.
+//
+// This goes straight to the proxy, which always queries the device live, so
+// it bypasses the ten-second cache Glance renders the tile from. Useful
+// after standing up from the machine, or when the state looks stale.
+async function pcRefresh(btn) {
+  const tile = btn.closest('.widget') || document;
+  const set = (k, v) => tile.querySelectorAll(`[data-pc="${k}"]`).forEach((e) => { e.textContent = v; });
+
+  pcBusy = true;                       // hold the tile still while we write into it
+  btn.disabled = true;
+  btn.style.opacity = '.35';
+  const wasMsg = tile.querySelector('[data-pc="msg"]')?.textContent;
+  set('msg', 'checking…');
+
+  try {
+    const d = await (await fetch(PCSW, { cache: 'no-store' })).json();
+    if (d.ok) {
+      set('power', d.power || 'unknown');
+      set('rssi', d.rssi + ' dBm');
+      set('msg', 'checked just now');
+    } else {
+      set('msg', d.error || 'switch unreachable');
+    }
+  } catch {
+    set('msg', 'proxy unreachable');
+  }
+
+  btn.disabled = false;
+  btn.style.opacity = '.7';
+  // Let the answer be read, then hand the tile back to the refresh loop,
+  // which redraws it from the server - colours and all - a few seconds later.
+  setTimeout(() => {
+    if (wasMsg !== undefined) set('msg', wasMsg);
+    pcBusy = false;
+  }, 4000);
+}
+
+// The Desktop tile's press buttons. They go through the proxy - the switch's
+// token lives there, not here - and then watch the state until it settles.
+//
+// The watch is the point. The PC's own power LED takes about six seconds to
+// be classified (the switch counts edges to tell a sleep blink from a boot),
+// so pressing and then waiting for the tile's ordinary refresh would look
+// like nothing had happened. This polls every 2 s for a minute and stops the
+// moment the state changes.
 async function pcPress(btn, what, state) {
   const tile = btn.closest('.widget') || document;
   const set = (k, v) => tile.querySelectorAll(`[data-pc="${k}"]`).forEach((e) => { e.textContent = v; });
@@ -310,4 +348,4 @@ async function pcPress(btn, what, state) {
 // object still in place means a button that silently does nothing. Clearing
 // the previous timer first is what stops two of them polling at once.
 if (window.glanceLive && window.glanceLive.timer) clearInterval(window.glanceLive.timer);
-window.glanceLive = { refresh, runBackup, pcPress, timer: setInterval(refresh, EVERY) };
+window.glanceLive = { refresh, runBackup, pcPress, pcRefresh, timer: setInterval(refresh, EVERY) };
