@@ -81,6 +81,32 @@ services:
     networks:
       - mediastack
 
+  audiobookshelf:
+    # Audio is the one thing Kavita structurally cannot serve. Its library
+    # types stop at manga, comic, book, image and light novel, and its file
+    # groups at archive, epub and pdf - there is no audio anywhere in either.
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    # This image runs as root unless told otherwise and it writes into the
+    # media tree, so pin it to the same uid every other service here uses.
+    user: "${PUID:?err}:${PGID:?err}"
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/config:/config
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/metadata:/metadata
+      - ${FOLDER_FOR_MEDIA:?err}/audiobooks:/audiobooks
+      - ${FOLDER_FOR_MEDIA:?err}/podcasts:/podcasts
+      # Trial only: a copy of the Kavita library, so both readers can be
+      # judged on the same books. Drop this line when the trial ends.
+      - ${FOLDER_FOR_MEDIA:?err}/books-abs:/ebooks
+    environment:
+      - TZ=${TIMEZONE:?err}
+    ports:
+      # 80 inside, not 13378 - the container listens on 80.
+      - "${WEBUI_PORT_AUDIOBOOKSHELF:?err}:80"
+    networks:
+      - mediastack
+
 networks:
   mediastack:
     name: mediastack
