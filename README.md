@@ -57,6 +57,7 @@ docker compose down
 | | bazarr | 6767 | subtitles |
 | **Libraries** | jellyfin | 8096 | video |
 | | kavita | 5000 | books, comics, manga |
+| | calibre-web-automated | 8083 | on trial against Kavita; one book record holds several formats, which Kavita cannot represent |
 | | immich | 2283 | photos and video |
 | **Management** | homepage | 80 | dashboard, password protected |
 | | portainer | 9000 | container management |
@@ -109,10 +110,18 @@ to the real connection. That is the kill switch working.
     └── media/               FOLDER_FOR_MEDIA
         ├── library/         tv, anime, movies, comics
         ├── torrents/        watch, incomplete, categories
-        ├── books/           Kavita
+        ├── books/           Kavita - one folder per book
+        ├── cwa-library/     Calibre-Web-Automated builds its own library here
+        ├── cwa-ingest/      drop box - CWA DELETES what it imports
+        ├── cwa-hold/        staging copy for the CWA trial, not mounted
         ├── tdarr-cache/     Tdarr scratch space, safe to empty
         └── gallery/         Immich - app-managed, do not reorganise
 ```
+
+**`books/` is one folder per book, never files at the root.** Kavita refuses a
+library with loose files, and it folds anything nested two or more levels deep
+into the top-level folder, so a folder per topic would make each topic a single
+series holding every book in it.
 
 **`library/` and `torrents/` must stay siblings under one parent.** That is what
 lets the *arr apps hardlink an import instead of copying it — the file exists in
