@@ -81,6 +81,31 @@ services:
     networks:
       - mediastack
 
+  calibre-web-automated:
+    # On trial against Kavita. Calibre's data model hangs several format files
+    # off one book record, so an EPUB and a PDF of the same book are one entry.
+    # Kavita cannot do that: its series identity is name AND format, so the
+    # same book in two formats is always two series there.
+    image: crocodilestick/calibre-web-automated:latest
+    container_name: calibre-web-automated
+    restart: unless-stopped
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/calibre-web-automated/config:/config
+      # WARNING: everything dropped in here is DELETED once imported. Never
+      # point this at a library you care about - only at a copy or a drop box.
+      - ${FOLDER_FOR_MEDIA:?err}/cwa-ingest:/cwa-book-ingest
+      # CWA builds its own Calibre library here, metadata.db and all. It does
+      # not read an existing folder tree in place the way Kavita does.
+      - ${FOLDER_FOR_MEDIA:?err}/cwa-library:/calibre-library
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - TZ=${TIMEZONE:?err}
+    ports:
+      - "${WEBUI_PORT_CWA:?err}:8083"
+    networks:
+      - mediastack
+
 networks:
   mediastack:
     name: mediastack
