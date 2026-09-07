@@ -10,7 +10,8 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `media` | jellyfin, kavita |
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, glances, wud |
-| `prayer` | Dubai prayer times from IACAD, cached a year ahead, for the Homepage tile |
+| `prayer` | Dubai prayer times from IACAD, cached a year ahead, for the dashboard tiles |
+| `glance` | the dashboard, on port 80, configured in `examples/glance/glance.yml` |
 | `dockge` | the UI itself |
 
 ## Three things that are load-bearing
