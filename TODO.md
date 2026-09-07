@@ -1,47 +1,22 @@
 # TODO
 
-The Tdarr node is the one real item left. Everything else here is small.
+## Tdarr node on the Windows desktop — running since 2026-09-03
 
-
-## Tdarr node on the Windows desktop — PARKED
-
-**The Tdarr server is switched off** (2026-08-27). It is behind a `parked`
-compose profile in `stacks/management`, so `docker compose up -d` skips it and
-it stays off across reboots. Config and queue are untouched in
-`appdata/tdarr` (9.8 MB). Its Uptime Kuma monitor is paused rather than deleted.
-
-To bring it back: `cd stacks/management && docker compose --profile parked up -d tdarr`
-
-Everything below still applies whenever the node work happens.
-
-The Tdarr **server** runs on the Pi already and holds the queue, but nothing
-encodes until a node exists. The Pi deliberately does not encode
-(`internalNode=false`) — it has no hardware video encoder.
+The server is un-parked and the node (`aborii-pc`, RTX 3080 Ti, NVENC) is
+registered as a **mapped** node with the Samba share on `T:` and translators
+`/media` → `T:/media/library`, `/temp` → `T:/media/tdarr-cache`. Unmapped nodes
+turned out to be Tdarr Pro only. The full write-up, including the package layout
+and the credential/hostname trap, is `TDARR-NODE.md` in the pi5-nas-setup repo.
 
 **Why this matters.** Live transcoding at playback is the only case where the
 Pi's missing encoder genuinely hurts, and it is the one path that cannot be
 deferred to another machine. Normalising the library ahead of time means
 Jellyfin direct plays instead, so the Pi only moves bytes.
 
-**Setup**
-
-- [ ] Install the Tdarr Node package for Windows on the desktop
-- [ ] Point it at the Pi: `192.168.0.143`, server port `8266`
-- [ ] Enable NVENC (RTX 3080 Ti) as the encoder
-- [ ] Map the Samba share so the node can reach the media
-
-**Path translation — the usual failure**
-
-The two machines see the same files by different paths:
-
-| | |
-|---|---|
-| Pi (server) | `/media/tv` |
-| Desktop (node) | `\192.168.0.143\storage\media\library\tv` |
-
-Tdarr has a path-translation setting for this. Getting it wrong means the node
-accepts jobs and fails every one, which looks like a broken node rather than a
-config problem.
+- [ ] Un-pause the Tdarr monitor in Uptime Kuma
+- [ ] Empty `tdarr-cache` (1.8 GB of scratch from the first attempt)
+- [ ] Pin the `tdarr` image tag, or expect the node to stop connecting whenever
+      `latest` moves — server and node versions must match exactly
 
 **Be careful before pointing it at 2.7 TB**
 

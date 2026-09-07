@@ -32,6 +32,11 @@ services:
   api:
     image: ${COMING_MANAGER_API_IMAGE:?run pnpm docker:build --push on the dev PC}
     container_name: coming-manager-api
+    labels:
+      # Built locally and pulled from localhost:5001, which from inside the
+      # wud container is wud itself. There is no registry to ask, so opt out
+      # rather than log a failed lookup at every check.
+      - wud.watch=false
     restart: unless-stopped
     # Runs as the owner of the mounted folders rather than root, so nothing it
     # writes needs sudo to clean up later.
@@ -201,6 +206,9 @@ services:
   frontend:
     image: ${COMING_MANAGER_WEB_IMAGE:?run pnpm docker:build --push on the dev PC}
     container_name: coming-manager-web
+    labels:
+      # Same as the api: a localhost:5001 image wud cannot look up.
+      - wud.watch=false
     restart: unless-stopped
     ports:
       - '${COMING_MANAGER_WEB_PORT:-4000}:4000'

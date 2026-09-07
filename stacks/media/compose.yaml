@@ -18,7 +18,9 @@
 
 services:
   jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
+    # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
+    # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
+    image: ghcr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
     restart: unless-stopped
     volumes:
@@ -36,7 +38,9 @@ services:
       - mediastack
 
   kavita:
-    image: lscr.io/linuxserver/kavita:latest
+    # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
+    # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
+    image: ghcr.io/linuxserver/kavita:latest
     container_name: kavita
     restart: unless-stopped
     volumes:
