@@ -35,6 +35,16 @@ services:
       # There is no TLS in front of this. Do not port-forward it to the
       # internet without putting a reverse proxy with a certificate first.
       - '${SFTPGO_WEB_PORT:-8080}:8080'
+      # WebDAV, for e-reader apps that speak it but not SFTP — Moon+ Reader on
+      # Android is why this exists. 10080 is SFTPGo's own default INSIDE the
+      # container, but on the host that port already belongs to the TLS proxy's
+      # Homepage listener, so the published side is 10081.
+      #
+      # Unencrypted, like the two above: WebDAV authenticates with HTTP Basic,
+      # so the password crosses the LAN base64-encoded rather than encrypted.
+      # That is the trade for a phone that will not trust the private CA. Keep
+      # it on the LAN and give the account a password used nowhere else.
+      - '${SFTPGO_WEBDAV_PORT:-10081}:10080'
 
     environment:
       TZ: ${TIMEZONE:?err}
@@ -53,6 +63,11 @@ services:
       SFTPGO_HTTPD__BINDINGS__0__PORT: 8080
       SFTPGO_SFTPD__BINDINGS__0__ADDRESS: ''
       SFTPGO_SFTPD__BINDINGS__0__PORT: 2022
+      # WebDAV ships DISABLED. SFTPGo decides a service is off by giving it no
+      # binding, so publishing the port alone changes nothing — the container
+      # simply has nothing listening on it. These two lines are what turn it on.
+      SFTPGO_WEBDAVD__BINDINGS__0__ADDRESS: ''
+      SFTPGO_WEBDAVD__BINDINGS__0__PORT: 10080
 
     volumes:
       # Config, the SQLite database, and the generated SSH host keys. Losing
