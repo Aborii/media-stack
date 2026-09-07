@@ -26,8 +26,15 @@ const CONTENT = `/api/pages/${SLUG}/content/`;
 // cache has expired, so it runs at the minute the tab was asked for.
 const EVERY   = SLUG === 'markets' ? 60000 : 5000;
 
-const BACKUP  = 'http://aboriis-pi:9101/';   // the browser's route to it
-const PCSW    = 'http://aboriis-pi:9102/';   // the power switch proxy
+// The two helper servers the buttons talk to, addressed the way the BROWSER
+// has to reach them - they are separate servers on their own ports, not part
+// of Glance. Over plain HTTP that is the port itself; over HTTPS a page is
+// not allowed to fetch http://, so it goes through the TLS proxy on the
+// mirrored port instead - the service port plus 10000.
+const HTTPS   = location.protocol === 'https:';
+const helper  = p => location.protocol + '//aboriis-pi:' + (HTTPS ? p + 10000 : p) + '/';
+const BACKUP  = helper(9101);   // the backup status service
+const PCSW    = helper(9102);   // the power switch proxy
 
 // True while the desktop tile has a dialog open or a press in flight, so the
 // refresh below leaves that one tile alone.

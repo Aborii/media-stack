@@ -58,7 +58,8 @@ docker compose down
 | **Libraries** | jellyfin | 8096 | video |
 | | kavita | 5000 | books, comics, manga |
 | | immich | 2283 | photos and video |
-| **Management** | homepage | 80 | dashboard, password protected |
+| **Management** | glance | 80 | the dashboard, sign-in required |
+| | homepage | 3000 | the dashboard Glance replaced, still running until it is clearly not needed |
 | | portainer | 9000 | container management |
 | | ~~tdarr~~ | 8265 | **parked** - a server with no node does nothing; `docker compose --profile parked up -d tdarr` |
 | **Monitoring** | uptime-kuma | 3001 | 15 service checks |
@@ -66,8 +67,7 @@ docker compose down
 | | dozzle | 8888 | live container logs |
 | | glances | - | host metrics, bound to the docker gateway |
 | | diun | - | image update watcher |
-| **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the Homepage tile |
-| | glance | 3004 | second dashboard, on trial beside Homepage; same links and checks, freer layout |
+| **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the prayer tiles |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network

@@ -7,8 +7,9 @@
 # of the dollar keeps one literal, which is how the commented blocks below
 # survive.
 #
-# Mirrors the Homepage dashboard: the same groups, the same links, the same
-# status checks, the same tiles - so the two can be compared on equal terms.
+# This is the dashboard on port 80: http://aboriis-pi/ opens it. It mirrors
+# the Homepage config - the same groups, links, status checks and tiles -
+# and Homepage itself is still running on 3000 while that is being checked.
 # Glance reloads this file on save, so a change shows on the next reload of
 # the page.
 #
@@ -222,7 +223,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=8')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=9')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
@@ -793,7 +794,7 @@ pages:
                   - { title: Registry,    url: http://aboriis-pi:5002 }
                   - { title: SFTPGo,      url: http://aboriis-pi:8080 }
                   - { title: Glances,     url: http://aboriis-pi:61210 }
-                  - { title: Homepage,    url: http://aboriis-pi/ }
+                  - { title: Homepage,    url: http://aboriis-pi:3000/ }
               - title: Monitoring
                 links:
                   - { title: Speedtest,   url: http://aboriis-pi:3030 }
@@ -845,7 +846,7 @@ pages:
           # tab is set to a minute rather than the longer values elsewhere.
           - type: html
             source: |
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=8')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=9')">
               <div class="flex items-center justify-between">
                 <span class="size-h6 color-paragraph">updated <span data-live-age>just now</span> &middot; every minute</span>
                 <button data-live-refresh title="Refresh now" aria-label="Refresh now"

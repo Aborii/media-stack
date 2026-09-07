@@ -1,12 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# glance — a second dashboard, running beside Homepage on its own port, so the
-# two can be compared live before either replaces the other.
+# glance — the dashboard, on port 80, so http://aboriis-pi/ opens it.
+# Homepage is still running on 3000 and stays there until it is clear that
+# nothing here is missing.
 #
-# Why try it: Homepage is groups of equal tiles in rows, and the only way past
-# that is custom.css. Glance is a single Go binary with a YAML config whose
-# custom-api widget renders a template you write, server-side, as real HTML -
-# so a tile can look exactly the way you want with no iframe and no CSS hacks.
-# It idles in a few tens of MB.
+# Why it took over: Homepage is groups of equal tiles in rows, and the only
+# way past that is custom.css. Glance is a single Go binary with a YAML
+# config whose custom-api widget renders a template you write, server-side,
+# as real HTML - so a tile can look exactly the way you want with no iframe
+# and no CSS hacks. It idles in a few tens of MB.
 #
 # The config is ONE file, glance.yml, at ${FOLDER_FOR_DATA}/glance. The
 # reference copy lives in examples/glance/ in this repo and mirrors the

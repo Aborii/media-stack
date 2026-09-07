@@ -49,6 +49,10 @@ services:
       - HOMEPAGE_AUTH_SECRET=${HOMEPAGE_AUTH_SECRET:-}
       - HOMEPAGE_EXTERNAL_URL=${HOMEPAGE_EXTERNAL_URL:-}
     ports:
+      # 3000, not 80: Glance is the dashboard now and holds port 80. Homepage
+      # stays up beside it, so nothing is lost while it is still the one being
+      # relied on. Every name it is reached by, port included, has to appear in
+      # HOMEPAGE_ALLOWED_HOSTS or it answers 400.
       - "${WEBUI_PORT_HOMEPAGE:?err}:3000"
     networks:
       - mediastack
