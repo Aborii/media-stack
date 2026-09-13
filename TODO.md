@@ -35,6 +35,34 @@ collection at the wrong quality and there is no undo.
 - Behaviour when the desktop is off for long stretches — queue depth is fine,
   but a partially converted library means mixed formats for a while.
 
+## Jellyfin 12 — waiting on plugins
+
+Jellyfin 12.0 came out on 2026-09-07. The image is pinned to
+`10.11.11ubu2604-ls47` until every installed plugin has a 12.0 build, because
+plugins built for 10.11 do not load on 12.0 and the upgrade cannot be rolled
+back without a restore.
+
+No 12.0 build yet (checked 2026-09-13):
+
+- [ ] Media Bar (IAmParadox27) — `v12` branch exists, author says not ready
+- [ ] Collection Sections (IAmParadox27) — update promised on 2026-09-08
+- [ ] Custom Tabs (IAmParadox27) — fix PR open, not merged
+- [ ] Themerr (LizardByte) — only a Renovate bump PR so far
+- [ ] AniSearch (official) — the 12.0 build failed in CI
+- [ ] Skin Manager (danieladov) — last release 2024, may never come
+
+The other 19 have 12.0 builds. Intro Skipper and Segment Editor publish them
+on a separate `12.0` line, so they must be reinstalled rather than updated.
+
+**Upgrade steps, once the list is clear**
+
+- [ ] Stop Jellyfin and back up `/srv/appdata/jellyfin` (17 G, 14 G of it metadata)
+- [ ] Remove the third-party plugins
+- [ ] Switch the image to the 12.0 tag and drop the `wud.tag.*` labels
+- [ ] Leave it alone while the migrations run — the release notes say not to stop it mid-way
+- [ ] Run a full library scan (slow the first time), hard-refresh the browser
+- [ ] Reinstall the plugins from their 12.0 builds
+
 ## Also outstanding
 
 - [ ] Delete `immich/model-cache` (786 MB) and the `Backups` folders (~680 MB)
