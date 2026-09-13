@@ -728,6 +728,7 @@ pages:
             sites:
               - { title: Uptime Kuma, url: http://aboriis-pi:3001, check-url: http://uptime-kuma:3001/,               icon: di:uptime-kuma }
               - { title: Kavita,      url: http://aboriis-pi:5000, check-url: http://kavita:5000/api/health,          icon: di:kavita }
+              - { title: Audiobookshelf, url: http://aboriis-pi:13378, check-url: http://audiobookshelf:80/healthcheck, icon: di:audiobookshelf }
               - { title: SFTPGo,      url: http://aboriis-pi:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
               - { title: Dozzle,      url: http://aboriis-pi:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
               - { title: What's Up Docker, url: http://aboriis-pi:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
@@ -808,6 +809,7 @@ pages:
                   - { title: Jellyfin,    url: http://aboriis-pi:8096 }
                   - { title: Immich,      url: http://aboriis-pi:2283 }
                   - { title: Kavita,      url: http://aboriis-pi:5000 }
+                  - { title: Audiobookshelf, url: http://aboriis-pi:13378 }
               - title: Automation
                 links:
                   - { title: Seerr,       url: http://aboriis-pi:5055 }

@@ -31,6 +31,7 @@ HTTP = [
     ("Radarr",         "http://radarr:7878/ping",                   OK2XX),
     ("Prowlarr",       "http://gluetun:9696/ping",                  OK2XX),
     ("Kavita",         "http://kavita:5000/api/health",             OK2XX),
+    ("Audiobookshelf", "http://audiobookshelf:80/healthcheck",      OK2XX),
     ("Portainer",      "http://portainer:9000/api/system/status",   OK2XX),
     ("Tdarr",          "http://tdarr:8265/",                        OK2XX),
     ("Dozzle",         "http://dozzle:8080/healthcheck",            OK2XX),

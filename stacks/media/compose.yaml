@@ -56,6 +56,42 @@ services:
     networks:
       - mediastack
 
+  audiobookshelf:
+    # Audiobooks, which Kavita cannot play - its file types stop at archives,
+    # EPUB, PDF and images. The audio is filed in the same work folders as the
+    # ebooks, so this library is the books folder itself.
+    #
+    # Two library settings are load-bearing and live in the web UI, not here
+    # (REBUILD.md): "Audiobooks only", so a folder holding just a PDF or an EPUB
+    # is skipped, and the folder watcher off, because Jellyfin holds nearly
+    # every inotify watch on this host.
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    # The image runs as root unless told otherwise. Create both appdata
+    # directories as this uid before the first start, or Docker makes them
+    # root-owned and the server cannot write its database.
+    user: "${PUID:?err}:${PGID:?err}"
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/config:/config
+      - ${FOLDER_FOR_DATA:?err}/audiobookshelf/metadata:/metadata
+      # Read-only: Kavita and the Malak bot own this tree. Audiobookshelf
+      # keeps its covers, edits and backups under /metadata instead.
+      - ${FOLDER_FOR_MEDIA:?err}/books:/books:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+    ports:
+      # 80 inside, not 13378 - the container listens on 80.
+      - "${WEBUI_PORT_AUDIOBOOKSHELF:?err}:80"
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:80/healthcheck || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 30s
+      retries: 3
+    networks:
+      - mediastack
+
   seerr:
     # Formerly Jellyseerr. That project stopped at v2.7.3 in Aug 2025 and
     # development moved here under the seerr-team org - fallenbagel/jellyseerr
