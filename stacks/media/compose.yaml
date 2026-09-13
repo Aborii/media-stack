@@ -20,7 +20,19 @@ services:
   jellyfin:
     # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
     # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
-    image: ghcr.io/linuxserver/jellyfin:latest
+    #
+    # Pinned to the last 10.11 build, not :latest. :latest moved to 12.0 on
+    # 2026-09-08, and 12.0 rewrites the database on first start - there is no
+    # way back without restoring a backup - and will not load plugins built for
+    # 10.11. Several of the installed ones have no 12.0 build yet (TODO.md), so
+    # a plain `docker compose pull` must not be able to upgrade this.
+    image: ghcr.io/linuxserver/jellyfin:10.11.11ubu2604-ls47
+    labels:
+      # Report new 10.11 builds only; without this wud flags 12.0 at every
+      # check. The transform turns 10.11.11ubu2604-ls47 into 10.11.11-47 so two
+      # builds of the same release still compare in order.
+      - wud.tag.include=^10\.11\.\d+ubu\d+-ls\d+$$
+      - wud.tag.transform=^(\d+\.\d+\.\d+)ubu\d+-ls(\d+)$$ => $$1-$$2
     container_name: jellyfin
     restart: unless-stopped
     volumes:

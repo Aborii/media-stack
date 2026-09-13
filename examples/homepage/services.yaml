@@ -345,6 +345,10 @@
           type: jellyfin
           url: http://jellyfin:8096
           key: PASTE_JELLYFIN_API_KEY
+          # v1 calls /emby/...?api_key=, and Jellyfin 12.0 removes both the
+          # /emby prefix and api_key. v2 sends an Authorization header instead
+          # and works on 10.11 too.
+          version: 2
           enableBlocks: true
           # Off: the now-playing section adds two rows to this tile even when
           # nothing is streaming, and a grid row is as tall as its tallest

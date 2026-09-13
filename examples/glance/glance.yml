@@ -321,7 +321,9 @@ pages:
                 cache: 10m
                 url: http://jellyfin:8096/Items/Counts
                 headers:
-                  X-Emby-Token: ${JELLYFIN_API_KEY}
+                  # Not X-Emby-Token: Jellyfin 12.0 switches the X-Emby-* headers
+                  # off on upgrade. This form works on 10.11 as well.
+                  Authorization: 'MediaBrowser Token="${JELLYFIN_API_KEY}"'
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://jellyfin:8096/System/Info/Public" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   <a href="http://aboriis-pi:8096" class="block" style="color:inherit;text-decoration:none">
