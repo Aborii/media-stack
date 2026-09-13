@@ -177,7 +177,7 @@ Lower numbers give a better picture and bigger files. Higher numbers give smalle
 softer picture.
 
 - `25` - bigger files, very close to the original
-- `28` - what this library uses; about 500 MB for a 45-minute episode at 1080p
+- `28` - what this library uses; about 350-550 MB for a 45-minute episode at 1080p
 - `30` and up - noticeably softer
 
 ---
@@ -206,7 +206,7 @@ There is a library just for this, called **H50 720p test**. It points at its own
 
 5. **Check the size.** When it finishes, the file moves to the
    **Transcode: Success/Not Required** tab. The new file in `T:\media\library\_tdarr-test`
-   should be roughly 12-20% of the original's size.
+   should be roughly 10-20% of the original's size.
 
 6. **Watch a few minutes of it** in VLC, next to the original. Look at dark scenes and fast
    action, because that is where a bad encode shows first.
@@ -274,7 +274,7 @@ A 45-minute 1080p episode takes about **9-10 minutes**. A 20-episode season take
 ### Step 6. Check the results
 
 When the queue reaches 0, open **Transcode: Success/Not Required** and look at the sizes. Each
-episode should be roughly 12-20% of what it was.
+episode should be roughly 10-20% of what it was.
 
 If a file is still its original size, see
 [A file finished but did not get smaller](#a-file-finished-but-did-not-get-smaller).
@@ -322,7 +322,7 @@ the last few minutes.
 
 ### A file finished but did not get smaller
 
-It shows under **Transcode: Success/Not Required**, but its size did not change. There are two
+It shows as finished in Tdarr, but its size did not change. There are two
 possible reasons, and in both the original is safe:
 
 - **It was not H.264.** It was probably already HEVC, so step 2 of the flow skipped it on
