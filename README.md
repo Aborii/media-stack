@@ -61,7 +61,7 @@ docker compose down
 | **Management** | glance | 80 | the dashboard, sign-in required |
 | | homepage | 3000 | the dashboard Glance replaced, still running until it is clearly not needed |
 | | portainer | 9000 | container management |
-| | tdarr | 8265 | transcode queue; the encoding runs on the node on the Windows desktop |
+| | tdarr | 8265 | transcode queue; the encoding runs on the node on the Windows desktop. How to use it: [TDARR.md](TDARR.md) |
 | **Monitoring** | uptime-kuma | 3001 | 15 service checks |
 | | scrutiny | 8081 | drive SMART health |
 | | dozzle | 8888 | live container logs |
