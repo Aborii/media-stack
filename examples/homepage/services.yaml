@@ -378,6 +378,14 @@
           url: http://kavita:5000
           key: PASTE_API_KEY
 
+    - Audiobookshelf:
+        icon: audiobookshelf.png
+        siteMonitor: http://audiobookshelf:80/healthcheck
+        href: http://aboriis-pi:13378
+        description: Audiobooks, beside the ebooks
+        server: my-docker
+        container: audiobookshelf
+
 - Automation:
     - Seerr:
         icon: seerr.png

@@ -57,6 +57,7 @@ docker compose down
 | | bazarr | 6767 | subtitles |
 | **Libraries** | jellyfin | 8096 | video |
 | | kavita | 5000 | books, comics, manga |
+| | audiobookshelf | 13378 | audiobooks, filed beside the ebooks in `books/` |
 | | immich | 2283 | photos and video |
 | **Management** | glance | 80 | the dashboard, sign-in required |
 | | homepage | 3000 | the dashboard Glance replaced, still running until it is clearly not needed |
@@ -81,7 +82,7 @@ Only the acquisition services are tunnelled:
           │
   ════════╪════════ mediastack bridge ════════
           │
-  sonarr radarr bazarr jellyfin kavita
+  sonarr radarr bazarr jellyfin kavita audiobookshelf
 ```
 
 qBittorrent is tunnelled because BitTorrent announces your IP to every peer in
@@ -110,7 +111,7 @@ to the real connection. That is the kill switch working.
     └── media/               FOLDER_FOR_MEDIA
         ├── library/         tv, anime, movies, comics
         ├── torrents/        watch, incomplete, categories
-        ├── books/           Kavita
+        ├── books/           Kavita (ebooks), Audiobookshelf (audio beside them)
         ├── tdarr-cache/     Tdarr scratch space, safe to empty
         └── gallery/         Immich - app-managed, do not reorganise
 ```

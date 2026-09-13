@@ -469,6 +469,50 @@ The Homepage widget needs an API key from **avatar > Settings > Account > API
 Key**, which is empty until you generate it. It shows two numbers, series count
 and file count — there is no queue or activity to display like the *arr widgets.
 
+### Audiobookshelf
+
+Audio only, and it shares Kavita's folder: a work folder under `books/` can hold
+the audio beside its PDF and EPUB. Audiobookshelf reads that tree read-only.
+Kavita never sees the audio, because its Books library matches only `.epub` and
+`.pdf`.
+
+The container runs as the stack's uid, so create its appdata first, under
+`FOLDER_FOR_DATA` from the env file (`/srv/appdata` on this Pi). Left to Docker,
+the directories come out root-owned and the server cannot write its database:
+
+```bash
+mkdir -p /srv/appdata/audiobookshelf/config /srv/appdata/audiobookshelf/metadata
+```
+
+The first visit creates the root user. Then, in this order:
+
+1. **Settings**: turn off "Automatically watch libraries for changes", then
+   restart the container. Jellyfin holds nearly every inotify watch on this host
+   (65,091 of the 65,118 limit when last counted), so the watcher cannot work
+   here anyway. Leave "Store covers with item" and "Store metadata with item"
+   off: the books mount is read-only, and either one writes into the work
+   folders.
+2. **Add a library**: type Books, folder `/books`.
+3. **In that library's settings**: turn on **Audiobooks only**, and give it a
+   daily scheduled scan.
+
+**Audiobooks only** is what keeps the ebooks out. With it on, a folder holding
+only a PDF or an EPUB is not a library item at all. A folder with audio becomes
+one audiobook, and the PDF or EPUB beside it is attached as a supplementary
+ebook.
+
+With the watcher off, nothing is picked up on its own. The Malak bot asks for a
+scan after it files audio (`POST /api/libraries/<id>/scan`, which needs an admin
+API key from **Settings > API Keys**). Anything copied in by hand waits for the
+scheduled scan, or a manual one.
+
+The folders are named `Title -- Author` with no author folder above them, so
+Audiobookshelf's folder parsing gives the whole name as the title and no author.
+A `metadata.opf` beside the audio sets the real title, author and narrator, and
+it outranks the tags inside the audio files. Parts of one book are numbered at
+the **start** of the file name, `01 - Title -- Author.mp3`, because the scanner
+takes the first number it finds and a title can contain digits.
+
 ### HTTPS over Tailscale — built, then switched back off
 
 `scripts/tailscale-https.sh` still works and is still reversible, but it is

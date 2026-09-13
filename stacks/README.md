@@ -7,7 +7,7 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 |---|---|
 | `vpn` | gluetun, qbittorrent, prowlarr, flaresolverr |
 | `arr` | sonarr, radarr, bazarr |
-| `media` | jellyfin, kavita |
+| `media` | jellyfin, kavita, audiobookshelf |
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, glances, wud |
 | `prayer` | Dubai prayer times from IACAD, cached a year ahead, for the dashboard tiles |
