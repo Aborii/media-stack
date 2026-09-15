@@ -32,6 +32,8 @@ HTTP = [
     ("Prowlarr",       "http://gluetun:9696/ping",                  OK2XX),
     ("Kavita",         "http://kavita:5000/api/health",             OK2XX),
     ("Audiobookshelf", "http://audiobookshelf:80/healthcheck",      OK2XX),
+    ("Pinchflat",      "http://pinchflat:8945/healthcheck",         OK2XX),
+    ("MeTube",         "http://metube:8081/",                       OK2XX),
     ("Portainer",      "http://portainer:9000/api/system/status",   OK2XX),
     ("Tdarr",          "http://tdarr:8265/",                        OK2XX),
     ("Dozzle",         "http://dozzle:8080/healthcheck",            OK2XX),

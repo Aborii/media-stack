@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# youtube — two yt-dlp front ends, for two different jobs.
+#
+#   pinchflat  follows channels and playlists, and files every new upload into
+#              library/youtube as a TV show that Jellyfin can read.
+#   metube     one-off downloads: paste any link yt-dlp understands and the
+#              file lands in media/youtube, which the PC sees at
+#              T:\media\youtube. Jellyfin does not look there.
+#
+# Neither has a login here. Like everything else on this host they are only
+# reachable over the LAN or the tailnet, never from the internet.
+# ─────────────────────────────────────────────────────────────────────────────
+name: youtube
+
+services:
+  pinchflat:
+    # :dev, not :latest. Development has been paused since September 2025, the
+    # last release's image build failed, and :latest is amd64 only - it will
+    # not start on this Pi. :dev is built from master for both architectures
+    # (kieraneglin/pinchflat#800, #841).
+    #
+    # A frozen image keeps working because it updates yt-dlp itself at every
+    # start, and yt-dlp is the part that has to keep up with YouTube. Deno,
+    # which yt-dlp now needs for YouTube, is already in the image.
+    image: ghcr.io/kieraneglin/pinchflat:dev
+    container_name: pinchflat
+    restart: unless-stopped
+    # The image runs as root unless told otherwise, and every download would
+    # come out root-owned. Create both host folders as this uid before the
+    # first start, or Docker makes them root-owned and nothing can be written.
+    user: "${PUID:?err}:${PGID:?err}"
+    volumes:
+      # Local disk on purpose: the database is SQLite in WAL mode, which does
+      # not survive a network share.
+      - ${FOLDER_FOR_DATA:?err}/pinchflat:/config
+      # Inside library/, so Jellyfin sees it at /data/media/youtube.
+      - ${FOLDER_FOR_MEDIA:?err}/library/youtube:/downloads
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - UMASK=${UMASK:?err}
+    ports:
+      - "${WEBUI_PORT_PINCHFLAT:?err}:8945"
+    # The image carries its own healthcheck, on /healthcheck.
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  metube:
+    image: ghcr.io/alexta69/metube:latest
+    container_name: metube
+    restart: unless-stopped
+    # Starts as root, chowns its folders to PUID:PGID - recursively, at every
+    # start - and then drops to that user. media/youtube holds nothing but its
+    # own downloads, so that is harmless here. Never point it at a folder
+    # another app owns.
+    volumes:
+      - ${FOLDER_FOR_MEDIA:?err}/youtube:/downloads
+      # The queue and history. The default is /downloads/.metube, which would
+      # put it in the Samba share beside the videos.
+      - ${FOLDER_FOR_DATA:?err}/metube:/state
+    environment:
+      - PUID=${PUID:?err}
+      - PGID=${PGID:?err}
+      - UMASK=${UMASK:?err}
+      - TZ=${TIMEZONE:?err}
+      - STATE_DIR=/state
+    ports:
+      # 8081 inside. On the host, 8081 is Scrutiny's.
+      - "${WEBUI_PORT_METUBE:?err}:8081"
+    # The image carries its own healthcheck, on /.
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

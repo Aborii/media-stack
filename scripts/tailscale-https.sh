@@ -55,6 +55,8 @@ SERVICES=(
   "immich        2283  12283"
   "kavita        5000  15000"
   "audiobookshelf 13378 23378"
+  "pinchflat     8945  18945"
+  "metube        8082  18082"
   "sonarr        8989  18989"
   "radarr        7878  17878"
   "bazarr        6767  16767"
