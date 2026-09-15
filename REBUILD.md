@@ -513,6 +513,43 @@ it outranks the tags inside the audio files. Parts of one book are numbered at
 the **start** of the file name, `01 - Title -- Author.mp3`, because the scanner
 takes the first number it finds and a title can contain digits.
 
+### Pinchflat and MeTube
+
+Both are in `stacks/youtube`. Create their folders first, as this uid. Pinchflat
+runs as the stack's uid and cannot fix ownership itself, and a folder Docker
+creates on its own comes out root-owned. Then link the env file in, since the
+stack reads every setting through it:
+
+```bash
+mkdir -p /srv/appdata/pinchflat /srv/appdata/metube \
+  /srv/storage/data/media/library/youtube /srv/storage/data/media/youtube
+ln -s ../../docker-compose.env ~/media-stack/stacks/youtube/.env
+cd ~/media-stack/stacks/youtube && docker compose up -d
+```
+
+**Pinchflat is on the `dev` tag on purpose.** Development has been paused since
+September 2025, the last release's image build failed, and `:latest` is amd64
+only, so it does not start on the Pi. `dev` is built for arm64 too. The image is
+frozen, but it updates yt-dlp itself, at every start and once a day after that:
+the December 2025 image came up with yt-dlp 2026.08.19. Restarting the container
+only makes the update happen now.
+
+In its UI:
+
+1. **Media Profiles > New**: pick the **Media Center** preset. Leave the output
+   path template alone. Only its leading `/shows/` may change; Jellyfin's
+   matching depends on the rest.
+2. **Sources > New**: a channel or playlist URL, with that profile.
+
+The preset files each channel as `shows/<channel>/Season <year>/`. In Jellyfin,
+add a **Shows** library on `/data/media/youtube/shows`, separate from the TV
+library.
+
+**MeTube** needs no setup. Downloads land in `media/youtube`, which the PC sees
+at `T:\media\youtube`, and the queue and history live in `/srv/appdata/metube`.
+At every start it chowns its download folder recursively to `PUID:PGID`, so
+never point it at a folder another app writes to.
+
 ### HTTPS over Tailscale — built, then switched back off
 
 `scripts/tailscale-https.sh` still works and is still reversible, but it is

@@ -59,6 +59,8 @@ docker compose down
 | | kavita | 5000 | books, comics, manga |
 | | audiobookshelf | 13378 | audiobooks, filed beside the ebooks in `books/` |
 | | immich | 2283 | photos and video |
+| **YouTube** | pinchflat | 8945 | follows channels into `library/youtube` as TV shows; on the `dev` tag, see `REBUILD.md` |
+| | metube | 8082 | one-off downloads of any link into `youtube/` |
 | **Management** | glance | 80 | the dashboard, sign-in required |
 | | homepage | 3000 | the dashboard Glance replaced, still running until it is clearly not needed |
 | | portainer | 9000 | container management |
@@ -109,10 +111,11 @@ to the real connection. That is the kill switch working.
 ├── appdata/                 container configs
 └── data/                    Samba share
     └── media/               FOLDER_FOR_MEDIA
-        ├── library/         tv, anime, movies, comics
+        ├── library/         tv, anime, movies, comics, youtube (Pinchflat)
         ├── torrents/        watch, incomplete, categories
         ├── books/           Kavita (ebooks), Audiobookshelf (audio beside them)
         ├── tdarr-cache/     Tdarr scratch space, safe to empty
+        ├── youtube/         MeTube one-off downloads
         └── gallery/         Immich - app-managed, do not reorganise
 ```
 

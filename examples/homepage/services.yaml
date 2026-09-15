@@ -469,3 +469,19 @@
           url: http://gluetun:8200
           username: aborii
           password: PASTE_PASSWORD
+
+    - Pinchflat:
+        icon: pinchflat.png
+        siteMonitor: http://pinchflat:8945/healthcheck
+        href: http://aboriis-pi:8945
+        description: YouTube channels, into the library
+        server: my-docker
+        container: pinchflat
+
+    - MeTube:
+        icon: metube.png
+        siteMonitor: http://metube:8081/
+        href: http://aboriis-pi:8082
+        description: One-off downloads, any link
+        server: my-docker
+        container: metube
