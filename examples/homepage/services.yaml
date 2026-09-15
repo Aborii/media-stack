@@ -474,7 +474,7 @@
         icon: pinchflat.png
         siteMonitor: http://pinchflat:8945/healthcheck
         href: http://aboriis-pi:8945
-        description: YouTube channels, into the library
+        description: YouTube channels and playlists, for Sonarr
         server: my-docker
         container: pinchflat
 

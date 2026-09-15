@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # youtube — two yt-dlp front ends, for two different jobs.
 #
-#   pinchflat  follows channels and playlists, and files every new upload into
-#              library/youtube as a TV show that Jellyfin can read.
+#   pinchflat  downloads channels and playlists into library/youtube. No
+#              Jellyfin library reads that folder; Sonarr imports from it.
 #   metube     one-off downloads: paste any link yt-dlp understands and the
 #              file lands in media/youtube, which the PC sees at
 #              T:\media\youtube. Jellyfin does not look there.
@@ -21,8 +21,7 @@ services:
     #
     # A frozen image keeps working because it updates yt-dlp itself, at every
     # start and once a day, and yt-dlp is the part that has to keep up with
-    # YouTube. Deno,
-    # which yt-dlp now needs for YouTube, is already in the image.
+    # YouTube. Deno, which yt-dlp now needs for YouTube, is already in the image.
     image: ghcr.io/kieraneglin/pinchflat:dev
     container_name: pinchflat
     restart: unless-stopped
@@ -34,7 +33,8 @@ services:
       # Local disk on purpose: the database is SQLite in WAL mode, which does
       # not survive a network share.
       - ${FOLDER_FOR_DATA:?err}/pinchflat:/config
-      # Inside library/, so Jellyfin sees it at /data/media/youtube.
+      # Inside library/, so Sonarr, which mounts the media folder as /data, can
+      # import from /data/library/youtube.
       - ${FOLDER_FOR_MEDIA:?err}/library/youtube:/downloads
     environment:
       - TZ=${TIMEZONE:?err}
