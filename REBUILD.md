@@ -264,7 +264,9 @@ mount points even on one filesystem, and a bind mount counts as a separate mount
 - Download client host is **gluetun**, not `qbittorrent`. Anything sharing
   gluetun's namespace has no hostname of its own on the bridge.
 - Categories must match the ones set in qBittorrent above.
-- Root folders: `/data/library/tv`, `/data/library/anime`, `/data/library/movies`.
+- Root folders: `/data/library/tv`, `/data/library/anime`, `/data/library/movies`,
+  and in Sonarr `/data/library/arabic-shows`, which Jellyfin shows as its own
+  library (see Pinchflat below).
 
 **If you restore an old database**, movies, **collections** and **import lists**
 each carry their own `rootFolderPath`. Fixing the movies alone leaves Radarr
@@ -534,16 +536,34 @@ frozen, but it updates yt-dlp itself, at every start and once a day after that:
 the December 2025 image came up with yt-dlp 2026.08.19. Restarting the container
 only makes the update happen now.
 
-In its UI:
+Nothing is set up in its UI, and no Jellyfin library reads `library/youtube`.
+It sits inside `library/` so that Sonarr, which mounts the media folder as
+`/data`, can import from it at `/data/library/youtube`.
 
-1. **Media Profiles > New**: pick the **Media Center** preset. Leave the output
-   path template alone. Only its leading `/shows/` may change; Jellyfin's
-   matching depends on the rest.
-2. **Sources > New**: a channel or playlist URL, with that profile.
+That is the route for an Arabic series that only exists on YouTube. Sonarr owns
+it, in the `/data/library/arabic-shows` root folder, and Jellyfin shows that
+folder as its own **Arabic Shows** library: type Shows, metadata language
+Arabic, real-time monitoring off. Pinchflat only downloads:
 
-The preset files each channel as `shows/<channel>/Season <year>/`. In Jellyfin,
-add a **Shows** library on `/data/media/youtube/shows`, separate from the TV
-library.
+1. Create a media profile first; any preset will do, since the Source overrides
+   the path, but a Source cannot be saved without one. Add the playlist as a
+   Source with **Download Media** off. Playlist order and upload dates rarely
+   match episode numbers, so when the titles carry them, write
+   `extras/yt-dlp-configs/source-<id>-config.txt` containing
+   `--parse-metadata 'title:.*?(?:Ep|Episode)\s*(?P<episode_number>\d+)'` and
+   set the Source's output path override to
+   `/{{ source_custom_name }}/Season 1/s01e%(episode_number)02d - {{ title }}.{{ ext }}`.
+   Then turn downloading on.
+2. In Sonarr, use **Manual Import** and set the series, episode, quality and
+   language yourself. Sonarr cannot match these files alone: their names carry
+   no series title and no quality tag, so it guesses SDTV and "Unknown Series".
+3. Scan the Arabic Shows library in Jellyfin. Sonarr has no Jellyfin connection
+   here, and the watcher is off.
+
+Remove the Source in Pinchflat once the import is done, so a weekly index never
+downloads the series again. Then rename its `source-<id>-config.txt`, for
+example to `.removed-<date>`: Pinchflat's SQLite tables can hand a deleted ID to
+the next Source, which would silently inherit that config.
 
 **MeTube** needs no setup. Downloads land in `media/youtube`, which the PC sees
 at `T:\media\youtube`, and the queue and history live in `/srv/appdata/metube`.
