@@ -212,7 +212,7 @@ def season_episodes(sonarr, series_id, season):
 
 
 def put_series_in_place(sonarr, show, profile_id):
-    """Add the show under the Arabic root, or move it there. Returns (id, added)."""
+    """Add the show under the Arabic root, or move it there. Returns the series id."""
     roots = sonarr.call("GET", "/rootfolder")
     if not any(r["path"].rstrip("/") == SONARR_ROOT for r in roots):
         sonarr.call("POST", "/rootfolder", {"path": SONARR_ROOT})
@@ -225,7 +225,7 @@ def put_series_in_place(sonarr, show, profile_id):
             series.update(path=path, rootFolderPath=SONARR_ROOT, qualityProfileId=profile_id)
             sonarr.call("PUT", f"/series/{series['id']}", series, moveFiles="true")
             print(f"sonarr:   moved to {path}, profile {QUALITY_PROFILE}")
-        return series["id"], False
+        return series["id"]
 
     # Unmonitored until the import is done: a monitored show with every episode
     # missing is exactly what an RSS sync goes looking for on the indexers.
@@ -235,7 +235,7 @@ def put_series_in_place(sonarr, show, profile_id):
                            "searchForCutoffUnmetEpisodes": False}}
     series = sonarr.call("POST", "/series", body)
     print(f"sonarr:   added as {series['path']}, profile {QUALITY_PROFILE}")
-    return series["id"], True
+    return series["id"]
 
 
 def import_files(sonarr, series_id, staged, episodes, container_dir, sonarr_dir):
@@ -353,12 +353,14 @@ def main():
         return
 
     profile = named(sonarr.call("GET", "/qualityprofile"), QUALITY_PROFILE, "quality profile")
-    series_id, added = put_series_in_place(sonarr, show, profile["id"])
+    series_id = put_series_in_place(sonarr, show, profile["id"])
     if episodes is None:
-        box = {}
-        if not wait_until(lambda: box.update(e=season_episodes(sonarr, series_id, args.season)) or box["e"], 180):
-            fail(f"Sonarr has not listed season {args.season}'s episodes after 3 minutes")
-        episodes = box["e"]
+        # Sonarr fills in a new show's episodes in the background after adding it.
+        deadline = time.monotonic() + 180
+        while not (episodes := season_episodes(sonarr, series_id, args.season)):
+            if time.monotonic() > deadline:
+                fail(f"Sonarr has not listed season {args.season}'s episodes after 3 minutes")
+            time.sleep(5)
         pairs, how = pair_episodes(entries, list(episodes), args.order)
         print(f"pairing:  {how}, checked against {len(episodes)} episodes in Sonarr")
 
@@ -375,15 +377,21 @@ def main():
         print(f"  [{i}/{len(todo)}] {name}  {entry['title'][:70]}", flush=True)
         result = in_container("yt-dlp", *YTDLP_OPTIONS, "--output", f"{container_dir}/{name}.%(ext)s",
                               f"https://www.youtube.com/watch?v={entry['id']}", check=False)
-        if result.returncode != 0 or not (host_dir / f"{name}.mp4").exists():
+        if not (host_dir / f"{name}.mp4").exists():
             failed.append(name)
             print(f"    failed: {result.stderr.strip()[-300:]}")
+        elif result.returncode != 0:
+            # The video is there; a step after it (SponsorBlock, the thumbnail)
+            # complained. The file is still worth importing.
+            print(f"    downloaded, with a complaint: {result.stderr.strip()[-200:]}")
 
     staged = [(f"s{args.season:02d}e{n:02d}", n) for _, n in todo if (host_dir / f"s{args.season:02d}e{n:02d}.mp4").exists()]
+    imported = 0
     if staged:
         print(f"import:   {len(staged)} files")
         import_files(sonarr, series_id, staged, episodes, container_dir, sonarr_dir)
         episodes = season_episodes(sonarr, series_id, args.season)
+        imported = sum(1 for _, n in staged if episodes[n]["hasFile"])
         missed = [name for name, n in staged if not episodes[n]["hasFile"]]
         if missed:
             failed += missed
@@ -391,11 +399,13 @@ def main():
     else:
         print("import:   nothing to import")
 
-    if added and not failed:
-        series = sonarr.call("GET", f"/series/{series_id}")
+    # Monitored once every episode in the playlist has a file, on whichever run
+    # gets there - so a first run with a failed download ends monitored on the next.
+    series = sonarr.call("GET", f"/series/{series_id}")
+    if not series["monitored"] and all(episodes[n]["hasFile"] for _, n in pairs):
         series["monitored"] = True
         sonarr.call("PUT", f"/series/{series_id}", series)
-        print("sonarr:   monitored now that the import is done")
+        print("sonarr:   monitored now that every episode in the playlist has a file")
 
     for folder in (host_dir, host_dir.parent):
         try:
@@ -403,7 +413,6 @@ def main():
         except OSError:
             break
 
-    imported = len(staged) - len([n for n in failed if n in {s for s, _ in staged}])
     if imported:
         jellyfin_scan(jellyfin, imported)
     have = sum(1 for e in episodes.values() if e["hasFile"])
