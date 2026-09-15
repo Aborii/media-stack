@@ -545,12 +545,15 @@ it, in the `/data/library/arabic-shows` root folder, and Jellyfin shows that
 folder as its own **Arabic Shows** library: type Shows, metadata language
 Arabic, real-time monitoring off. Pinchflat only downloads:
 
-1. Add the playlist as a Source with **Download Media** off. Playlist order and
-   upload dates rarely match episode numbers, so when the titles carry them,
-   write `extras/yt-dlp-configs/source-<id>-config.txt` containing
+1. Create a media profile first; any preset will do, since the Source overrides
+   the path, but a Source cannot be saved without one. Add the playlist as a
+   Source with **Download Media** off. Playlist order and upload dates rarely
+   match episode numbers, so when the titles carry them, write
+   `extras/yt-dlp-configs/source-<id>-config.txt` containing
    `--parse-metadata 'title:.*?(?:Ep|Episode)\s*(?P<episode_number>\d+)'` and
-   put `s01e%(episode_number)02d` in the Source's output path override. Then
-   turn downloading on.
+   set the Source's output path override to
+   `/{{ source_custom_name }}/Season 1/s01e%(episode_number)02d - {{ title }}.{{ ext }}`.
+   Then turn downloading on.
 2. In Sonarr, use **Manual Import** and set the series, episode, quality and
    language yourself. Sonarr cannot match these files alone: their names carry
    no series title and no quality tag, so it guesses SDTV and "Unknown Series".
@@ -558,7 +561,9 @@ Arabic, real-time monitoring off. Pinchflat only downloads:
    here, and the watcher is off.
 
 Remove the Source in Pinchflat once the import is done, so a weekly index never
-downloads the series again.
+downloads the series again. Then rename its `source-<id>-config.txt`, for
+example to `.removed-<date>`: Pinchflat's SQLite tables can hand a deleted ID to
+the next Source, which would silently inherit that config.
 
 **MeTube** needs no setup. Downloads land in `media/youtube`, which the PC sees
 at `T:\media\youtube`, and the queue and history live in `/srv/appdata/metube`.
