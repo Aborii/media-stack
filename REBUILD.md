@@ -517,19 +517,22 @@ takes the first number it finds and a title can contain digits.
 
 Both are in `stacks/youtube`. Create their folders first, as this uid. Pinchflat
 runs as the stack's uid and cannot fix ownership itself, and a folder Docker
-creates on its own comes out root-owned:
+creates on its own comes out root-owned. Then link the env file in, since the
+stack reads every setting through it:
 
 ```bash
 mkdir -p /srv/appdata/pinchflat /srv/appdata/metube \
   /srv/storage/data/media/library/youtube /srv/storage/data/media/youtube
+ln -s ../../docker-compose.env ~/media-stack/stacks/youtube/.env
+cd ~/media-stack/stacks/youtube && docker compose up -d
 ```
 
 **Pinchflat is on the `dev` tag on purpose.** Development has been paused since
 September 2025, the last release's image build failed, and `:latest` is amd64
 only, so it does not start on the Pi. `dev` is built for arm64 too. The image is
-frozen, but it updates yt-dlp itself at every start: the December 2025 image
-came up with yt-dlp 2026.08.19. Restarting the container is how to pick up a
-yt-dlp fix.
+frozen, but it updates yt-dlp itself, at every start and once a day after that:
+the December 2025 image came up with yt-dlp 2026.08.19. Restarting the container
+only makes the update happen now.
 
 In its UI:
 

@@ -19,8 +19,9 @@ services:
     # not start on this Pi. :dev is built from master for both architectures
     # (kieraneglin/pinchflat#800, #841).
     #
-    # A frozen image keeps working because it updates yt-dlp itself at every
-    # start, and yt-dlp is the part that has to keep up with YouTube. Deno,
+    # A frozen image keeps working because it updates yt-dlp itself, at every
+    # start and once a day, and yt-dlp is the part that has to keep up with
+    # YouTube. Deno,
     # which yt-dlp now needs for YouTube, is already in the image.
     image: ghcr.io/kieraneglin/pinchflat:dev
     container_name: pinchflat
