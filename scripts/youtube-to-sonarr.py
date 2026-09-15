@@ -8,8 +8,8 @@ for Big Dreams (2004):
   1. finds the show in Sonarr by TMDb ID and adds it under arabic-shows, or
      moves it there, with the search for missing episodes turned off
   2. works out which video is which episode
-  3. downloads every episode Sonarr does not have yet with yt-dlp, using the
-     options Pinchflat's Media Center profile used
+  3. downloads every episode Sonarr does not have yet with yt-dlp, in a
+     throwaway container, using the options Pinchflat's Media Center profile used
   4. imports the files with a Sonarr Manual Import, stating series, episode,
      quality and language
   5. scans the Arabic Shows library in Jellyfin
@@ -26,6 +26,14 @@ For a show Sonarr does not have yet, the episode list only exists once the show
 is added, so the pairing is checked a second time after that. If it fails
 there, the show stays in Sonarr unmonitored and without files: fix the pairing
 with --order and run again, or delete the show in Sonarr.
+
+WHERE YT-DLP COMES FROM
+
+A standalone image, not Pinchflat or MeTube, so removing either of those never
+breaks this. It carries yt-dlp with the ffmpeg, ffprobe and Deno that YouTube
+downloads need, is rebuilt within an hour of every yt-dlp release, and is
+pulled at the start of each run. Every call is a `docker run --rm`, so nothing
+stays running between runs.
 
 WHY A MANUAL IMPORT
 
@@ -62,20 +70,18 @@ QUALITY_PROFILE = "HD - 720p/1080p"
 LANGUAGE = "Arabic"
 JELLYFIN_LIBRARY = "Arabic Shows"
 
-# yt-dlp runs inside the pinchflat container: it is always up, updates yt-dlp
-# itself daily, and ships the ffmpeg and Deno that YouTube downloads now need.
-# The staging folder is one folder seen three ways - Pinchflat mounts
-# library/youtube as /downloads, and Sonarr mounts the whole media folder as
-# /data. Both sides of the move are on one filesystem, so the import is a rename.
-CONTAINER = "pinchflat"
-STAGING_HOST = "{media}/library/youtube/_import/tmdb-{tmdb}"
-STAGING_CONTAINER = "/downloads/_import/tmdb-{tmdb}"
-STAGING_SONARR = "/data/library/youtube/_import/tmdb-{tmdb}"
+IMAGE = "ghcr.io/jauderho/yt-dlp:latest"
+# One staging folder seen two ways. It is inside the media folder, which Sonarr
+# mounts as /data, so the import is a rename on one filesystem, not a copy.
+STAGING_HOST = "{media}/youtube-import/tmdb-{tmdb}"
+STAGING_SONARR = "/data/youtube-import/tmdb-{tmdb}"
 
 # What Pinchflat's Media Center profile passed, minus the loose thumbnail and
 # subtitle files it wrote beside the video. Sonarr imports only the video, so
 # those would be left behind in staging; both are still embedded in it.
 YTDLP_OPTIONS = [
+    # The image's own cache folder is root-only, and the container runs as PUID.
+    "--cache-dir", "/tmp/yt-dlp",
     "--no-progress", "--no-warnings",
     "--format", "bestvideo*+bestaudio/best",
     "--format-sort", "res:1080,+codec:avc:m4a",
@@ -122,12 +128,30 @@ class Api:
         return json.loads(raw) if raw else None
 
 
-def in_container(*args, check=True):
-    result = subprocess.run(["docker", "exec", CONTAINER, *args],
-                            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+def run_image(user, *args, entrypoint=None, mount=None, check=True):
+    """Run yt-dlp (or another tool in the image) once, as PUID:PGID, in a
+    container that is deleted when it exits. mount becomes /downloads."""
+    command = ["docker", "run", "--rm", "--user", user]
+    if mount is not None:
+        command += ["--volume", f"{mount}:/downloads"]
+    if entrypoint:
+        command += ["--entrypoint", entrypoint]
+    result = subprocess.run([*command, IMAGE, *args], stdin=subprocess.DEVNULL, capture_output=True, text=True)
     if check and result.returncode != 0:
-        fail(f"{args[0]} in {CONTAINER} exited {result.returncode}: {result.stderr.strip()[-400:]}")
+        fail(f"{entrypoint or 'yt-dlp'} exited {result.returncode}: {result.stderr.strip()[-400:]}")
     return result
+
+
+def pull_image():
+    pulled = subprocess.run(["docker", "pull", "-q", IMAGE], stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    if pulled.returncode == 0:
+        return
+    # A failed pull is fine as long as an older copy is here: it is only the
+    # freshness of yt-dlp at stake, not whether the run can happen.
+    have = subprocess.run(["docker", "image", "inspect", IMAGE], stdin=subprocess.DEVNULL, capture_output=True)
+    if have.returncode != 0:
+        fail(f"could not pull {IMAGE}: {pulled.stderr.strip()[-300:]}")
+    print(f"image:    pull failed, using the copy already here ({pulled.stderr.strip()[-120:]})")
 
 
 def wait_until(condition, seconds, step=5):
@@ -146,8 +170,9 @@ def named(items, name, what):
     fail(f"Sonarr has no {what} named {name!r}")
 
 
-def playlist_entries(url):
-    data = json.loads(in_container("yt-dlp", "--flat-playlist", "--dump-single-json", "--no-warnings", url).stdout)
+def playlist_entries(user, url):
+    out = run_image(user, "--cache-dir", "/tmp/yt-dlp", "--flat-playlist", "--dump-single-json", "--no-warnings", url).stdout
+    data = json.loads(out)
     entries, skipped = [], []
     for entry in data.get("entries") or []:
         if not entry or not entry.get("id"):
@@ -238,13 +263,13 @@ def put_series_in_place(sonarr, show, profile_id):
     return series["id"]
 
 
-def import_files(sonarr, series_id, staged, episodes, container_dir, sonarr_dir):
+def import_files(sonarr, series_id, staged, episodes, user, host_dir, sonarr_dir):
     language = named(sonarr.call("GET", "/language"), LANGUAGE, "language")
     qualities = {q["quality"]["name"]: q["quality"] for q in sonarr.call("GET", "/qualitydefinition")}
     files = []
     for name, number in staged:
-        out = in_container("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                           "stream=height", "-of", "csv=p=0", f"{container_dir}/{name}.mp4").stdout
+        out = run_image(user, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height",
+                        "-of", "csv=p=0", f"/downloads/{name}.mp4", entrypoint="ffprobe", mount=host_dir).stdout
         height = int(out.strip() or 0)
         resolution = 2160 if height >= 1800 else 1080 if height >= 900 else 720 if height >= 600 else 480
         quality = qualities[f"WEBDL-{resolution}p"]
@@ -304,15 +329,15 @@ def main():
     args = parser.parse_args()
 
     env = load_env(ENV_FILE)
-    for key in ("SONARR_API_KEY", "JELLYFIN_API_KEY", "FOLDER_FOR_MEDIA"):
+    for key in ("SONARR_API_KEY", "JELLYFIN_API_KEY", "FOLDER_FOR_MEDIA", "PUID", "PGID"):
         if not env.get(key):
             fail(f"{key} is not set in {ENV_FILE}")
     sonarr = Api(f"http://127.0.0.1:{env.get('WEBUI_PORT_SONARR', '8989')}/api/v3",
                  {"X-Api-Key": env["SONARR_API_KEY"]})
     jellyfin = Api(f"http://127.0.0.1:{env.get('WEBUI_PORT_JELLYFIN', '8096')}",
                    {"X-Emby-Token": env["JELLYFIN_API_KEY"]})
+    user = f"{env['PUID']}:{env['PGID']}"
     host_dir = Path(STAGING_HOST.format(media=env["FOLDER_FOR_MEDIA"], tmdb=args.tmdb))
-    container_dir = STAGING_CONTAINER.format(tmdb=args.tmdb)
     sonarr_dir = STAGING_SONARR.format(tmdb=args.tmdb)
 
     found = sonarr.call("GET", "/series/lookup", term=f"tmdb:{args.tmdb}")
@@ -322,7 +347,8 @@ def main():
     print(f"show:     {show['title']} ({show.get('year')}), TVDB {show['tvdbId']}, TMDb {args.tmdb}, "
           f"{'in Sonarr as series ' + str(show['id']) if show.get('id') else 'not in Sonarr yet'}")
 
-    title, entries, skipped = playlist_entries(args.playlist)
+    pull_image()
+    title, entries, skipped = playlist_entries(user, args.playlist)
     print(f"playlist: {title}, {len(entries)} videos" + (f", skipping {len(skipped)} private or deleted" if skipped else ""))
     if not entries:
         fail("the playlist has no videos")
@@ -375,8 +401,8 @@ def main():
             print(f"  [{i}/{len(todo)}] {name}  already downloaded")
             continue
         print(f"  [{i}/{len(todo)}] {name}  {entry['title'][:70]}", flush=True)
-        result = in_container("yt-dlp", *YTDLP_OPTIONS, "--output", f"{container_dir}/{name}.%(ext)s",
-                              f"https://www.youtube.com/watch?v={entry['id']}", check=False)
+        result = run_image(user, *YTDLP_OPTIONS, "--output", f"/downloads/{name}.%(ext)s",
+                           f"https://www.youtube.com/watch?v={entry['id']}", mount=host_dir, check=False)
         if not (host_dir / f"{name}.mp4").exists():
             failed.append(name)
             print(f"    failed: {result.stderr.strip()[-300:]}")
@@ -389,7 +415,7 @@ def main():
     imported = 0
     if staged:
         print(f"import:   {len(staged)} files")
-        import_files(sonarr, series_id, staged, episodes, container_dir, sonarr_dir)
+        import_files(sonarr, series_id, staged, episodes, user, host_dir, sonarr_dir)
         episodes = season_episodes(sonarr, series_id, args.season)
         imported = sum(1 for _, n in staged if episodes[n]["hasFile"])
         missed = [name for name, n in staged if not episodes[n]["hasFile"]]

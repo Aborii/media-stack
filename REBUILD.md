@@ -537,14 +537,13 @@ the December 2025 image came up with yt-dlp 2026.08.19. Restarting the container
 only makes the update happen now.
 
 Nothing is set up in its UI, and no Jellyfin library reads `library/youtube`.
-It sits inside `library/` so that Sonarr, which mounts the media folder as
-`/data`, can import from it at `/data/library/youtube`.
 
-That is the route for an Arabic series that only exists on YouTube. Sonarr owns
-it, in the `/data/library/arabic-shows` root folder, and Jellyfin shows that
-folder as its own **Arabic Shows** library: type Shows, metadata language
-Arabic, real-time monitoring off. `scripts/youtube-to-sonarr.py` does the rest
-from the show's TMDb ID and the playlist:
+An Arabic series that only exists on YouTube does not go through Pinchflat at
+all. Sonarr owns it, in the `/data/library/arabic-shows` root folder, and
+Jellyfin shows that folder as its own **Arabic Shows** library: type Shows,
+metadata language Arabic, real-time monitoring off.
+`scripts/youtube-to-sonarr.py` does the rest from the show's TMDb ID and the
+playlist:
 
 ```bash
 cd ~/media-stack
@@ -554,14 +553,16 @@ python3 scripts/youtube-to-sonarr.py --tmdb 115550 --playlist '...' --apply
 
 The first run changes nothing: it prints which video becomes which episode. The
 second adds the show to Sonarr (or moves it under `arabic-shows`) with searching
-off, downloads the missing episodes with yt-dlp inside the pinchflat container
-into `library/youtube/_import/`, imports them with a Sonarr Manual Import that
-states series, episode, quality and language, and scans Arabic Shows. Running
-it again only fetches what is still missing. The script's docstring explains how
-videos are paired with episodes and why the import has to be manual.
+off, downloads the missing episodes into `youtube-import/`, imports them with a
+Sonarr Manual Import that states series, episode, quality and language, and
+scans Arabic Shows. Running it again only fetches what is still missing. The
+script's docstring explains how videos are paired with episodes and why the
+import has to be manual.
 
-Pinchflat's own UI is not involved, so there is no Source or media profile to
-clean up afterwards.
+The downloads use yt-dlp from the standalone `ghcr.io/jauderho/yt-dlp` image,
+not Pinchflat or MeTube, so removing either never breaks this. The image is
+rebuilt within an hour of every yt-dlp release and pulled at the start of each
+run, and every download is a `docker run --rm`, so nothing stays running.
 
 **MeTube** needs no setup. Downloads land in `media/youtube`, which the PC sees
 at `T:\media\youtube`, and the queue and history live in `/srv/appdata/metube`.
