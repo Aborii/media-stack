@@ -179,6 +179,7 @@ Notable gluetun settings, and why:
 | `post-boot-check.sh` | What to run after a reboot, since services take ~8 minutes to fully answer. |
 | `sync-homepage-examples.py` | Copies the live dashboard config into `examples/`, stripping secrets. |
 | `uptime-kuma-*.py` | Recreate the monitors, notifications and status page. |
+| `youtube-to-sonarr.py` | From a TMDb ID and a YouTube playlist, puts an Arabic series into Sonarr under `arabic-shows`, then scans Jellyfin. Prints the plan unless given `--apply`. |
 | `reorganise-media.sh` | One-off, reshapes a migrated media tree into the layout above. `--dry-run`, and refuses to run during a transfer. |
 
 **`backup.sh` must run as root.** `appdata/immich/postgres` and
