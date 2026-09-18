@@ -4,7 +4,7 @@
 # The tunnel wedges now and then: gluetun keeps answering its control server
 # while the public IP stays blank, or Proton hands out an exit that never
 # carries traffic. The fix has always been the same - restart gluetun and the
-# three containers that live inside its network namespace - and until now that
+# four containers that live inside its network namespace - and until now that
 # meant finding a terminal. This is that same restart, behind one button.
 #
 # WHY THE WHOLE STACK AND NOT JUST GLUETUN. qBittorrent, Prowlarr, FlareSolverr

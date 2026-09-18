@@ -66,7 +66,7 @@ server:
 # The hash is full of dollar signs. It survives the env file either way -
 # checked - but single-quote it so nothing downstream has to be careful.
 #
-# What this does NOT cover: the two helper ports. The backup runner on
+# What this does NOT cover: the three helper ports. The backup runner on
 # 9101, the power switch proxy on 9102 and the VPN restart control on 9103
 # are separate servers with no auth of their own, so signing in here does
 # not stop anyone on the wifi reaching those directly.
