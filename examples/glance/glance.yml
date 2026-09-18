@@ -67,9 +67,9 @@ server:
 # checked - but single-quote it so nothing downstream has to be careful.
 #
 # What this does NOT cover: the two helper ports. The backup runner on
-# 9101 and the power switch proxy on 9102 are separate servers with no
-# auth of their own, so signing in here does not stop anyone on the wifi
-# reaching those directly.
+# 9101, the power switch proxy on 9102 and the VPN restart control on 9103
+# are separate servers with no auth of their own, so signing in here does
+# not stop anyone on the wifi reaching those directly.
 auth:
   secret-key: ${GLANCE_SECRET_KEY}
   users:
@@ -223,7 +223,7 @@ pages:
                    serves it with a two-hour cache, so without a new URL a
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=9')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=10')">
               <a data-live="prayer" href="http://aboriis-pi:3003/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
@@ -565,6 +565,15 @@ pages:
               # address. A five-minute cache held that blank on the page long
               # after the tunnel was back. Now it reads "reconnecting" for as
               # long as it is true and no longer.
+              #
+              # The Restart button asks the vpnctl helper on the Pi to restart
+              # gluetun and everything in its network namespace - the manual
+              # fix for a wedged tunnel, which used to need an SSH session. It
+              # confirms first, then follows the job until it finishes.
+              # Nothing about the helper is read server-side on purpose: a
+              # subrequest to it would put this tile in an error state
+              # whenever the helper itself is down, and then the tunnel would
+              # look broken because its restart button is.
               - type: custom-api
                 title: Gluetun
                 cache: 10s
@@ -592,7 +601,12 @@ pages:
                       {{ end }}
                     </div>
                   </div>
-                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  <div class="flex items-center justify-between gap-10 margin-top-10">
+                    <p class="size-h6">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span> <span data-vpn="msg" class="color-paragraph"></span></p>
+                    <button data-vpn="restart" title="Restart gluetun and everything behind it"
+                            style="font:inherit;font-size:.8em;padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.75;flex:none"
+                            onclick="glanceLive.vpnRestart(this)">Restart</button>
+                  </div>
                   </div>
               # Homepage's Portainer tile: containers by state, from the
               # environment Homepage uses (3 here - this install has been
@@ -852,7 +866,7 @@ pages:
           # tab is set to a minute rather than the longer values elsewhere.
           - type: html
             source: |
-              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=9')">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=10')">
               <div class="flex items-center justify-between">
                 <span class="size-h6 color-paragraph">updated <span data-live-age>just now</span> &middot; every minute</span>
                 <button data-live-refresh title="Refresh now" aria-label="Refresh now"
