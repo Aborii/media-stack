@@ -556,55 +556,64 @@ pages:
           - type: split-column
             widgets:
               # Homepage's Gluetun tile: where the tunnel comes out, and the
-              # forwarded port. /v1/portforward directly, as Homepage's
-              # version 2 does - the older path redirects. No page to open,
-              # so the check is the control server itself.
+              # forwarded port - plus the button that restarts the whole VPN
+              # stack when it has stopped carrying traffic.
+              #
+              # ITS OWN REQUEST GOES TO vpnctl, NOT GLUETUN, and that is the
+              # whole trick. A custom-api widget whose url or subrequest fails
+              # renders as an ERROR box instead of the template, so when the
+              # tunnel wedged the tile lost its own restart button - the one
+              # moment it is needed. Measured on a throwaway Glance: a failed
+              # SUBREQUEST replaces the widget with the error, while a failed
+              # request made INSIDE the template comes back as status 0 and
+              # the template still renders. So everything gluetun is asked
+              # from the template, and the widget's own request goes to the
+              # one server that is up precisely when gluetun is not.
+              #
+              # That also gives the tile something true to say while the
+              # tunnel is down: vpnctl reports gluetun's container health, and
+              # the step of a restart already running.
               #
               # Live, on a short cache: the tunnel reconnects now and then,
               # and while it does the control server answers with an empty
               # address. A five-minute cache held that blank on the page long
               # after the tunnel was back. Now it reads "reconnecting" for as
               # long as it is true and no longer.
-              #
-              # The Restart button asks the vpnctl helper on the Pi to restart
-              # gluetun and everything in its network namespace - the manual
-              # fix for a wedged tunnel, which used to need an SSH session. It
-              # confirms first, then follows the job until it finishes.
-              # Nothing about the helper is read server-side on purpose: a
-              # subrequest to it would put this tile in an error state
-              # whenever the helper itself is down, and then the tunnel would
-              # look broken because its restart button is.
               - type: custom-api
                 title: Gluetun
                 cache: 10s
-                url: http://gluetun:8320/v1/publicip/ip
-                headers:
-                  X-API-Key: ${GLUETUN_API_KEY}
-                subrequests:
-                  port:
-                    url: http://gluetun:8320/v1/portforward
-                    headers:
-                      X-API-Key: ${GLUETUN_API_KEY}
+                url: http://vpnctl:9103/
                 template: |
-                  {{ $t0 := now }}{{ $h := newRequest "http://gluetun:8320/v1/publicip/ip" | withHeader "X-API-Key" "${GLUETUN_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  {{ $ip := .JSON.String "public_ip" }}
+                  {{ $t0 := now }}{{ $pub := newRequest "http://gluetun:8320/v1/publicip/ip" | withHeader "X-API-Key" "${GLUETUN_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $up := eq $pub.Response.StatusCode 200 }}
+                  {{ $ip := "" }}{{ $city := "" }}{{ $country := "" }}{{ $port := 0 }}
+                  {{ if $up }}
+                    {{ $ip = $pub.JSON.String "public_ip" }}
+                    {{ $city = $pub.JSON.String "city" }}
+                    {{ $country = $pub.JSON.String "country" }}
+                    {{ $pf := newRequest "http://gluetun:8320/v1/portforward" | withHeader "X-API-Key" "${GLUETUN_API_KEY}" | getResponse }}
+                    {{ if eq $pf.Response.StatusCode 200 }}{{ $port = $pf.JSON.Int "port" }}{{ end }}
+                  {{ end }}
+                  {{ $health := .JSON.String `containers.#(name=="gluetun").health` }}
+                  {{ $busy := .JSON.Bool "busy" }}
                   <div data-live="vpn">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/gluetun.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
                       {{ if $ip }}
                       <div><div class="color-highlight size-h4">{{ $ip }}</div><div class="size-h6">PUBLIC IP</div></div>
-                      <div><div class="color-highlight size-h4">{{ .JSON.String "city" }}, {{ .JSON.String "country" }}</div><div class="size-h6">EXIT</div></div>
-                      <div><div class="color-highlight size-h4">{{ (.Subrequest "port").JSON.Int "port" }}</div><div class="size-h6">PORT</div></div>
+                      <div><div class="color-highlight size-h4">{{ $city }}, {{ $country }}</div><div class="size-h6">EXIT</div></div>
+                      <div><div class="color-highlight size-h4">{{ $port }}</div><div class="size-h6">PORT</div></div>
                       {{ else }}
-                      <div class="grow"><div class="color-negative size-h4">reconnecting&hellip;</div><div class="size-h6">TUNNEL</div></div>
+                      <div><div class="color-negative size-h4">{{ if $up }}reconnecting&hellip;{{ else }}no tunnel{{ end }}</div><div class="size-h6">TUNNEL</div></div>
+                      <div><div class="size-h4 {{ if eq $health "healthy" }}color-positive{{ else }}color-negative{{ end }}">{{ if $health }}{{ $health }}{{ else }}unknown{{ end }}</div><div class="size-h6">CONTAINER</div></div>
                       {{ end }}
                     </div>
                   </div>
                   <div class="flex items-center justify-between gap-10 margin-top-10">
-                    <p class="size-h6">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span> <span data-vpn="msg" class="color-paragraph"></span></p>
-                    <button data-vpn="restart" title="Restart gluetun and everything behind it"
-                            style="font:inherit;font-size:.8em;padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.75;flex:none"
+                    <p class="size-h6">{{ if $up }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $pub.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span> {{ if .JSON.Bool "dry" }}<span class="color-negative">&middot; TEST MODE</span> {{ end }}<span data-vpn="msg" class="color-paragraph">{{ if $busy }}&middot; {{ .JSON.String "message" }}{{ end }}</span></p>
+                    <button data-vpn="restart" title="Restart gluetun and everything behind it"{{ if $busy }} disabled{{ end }}
+                            style="font:inherit;font-size:.8em;padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:{{ if $busy }}.35{{ else }}.75{{ end }};flex:none"
                             onclick="glanceLive.vpnRestart(this)">Restart</button>
                   </div>
                   </div>
