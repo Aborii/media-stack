@@ -537,33 +537,32 @@ the December 2025 image came up with yt-dlp 2026.08.19. Restarting the container
 only makes the update happen now.
 
 Nothing is set up in its UI, and no Jellyfin library reads `library/youtube`.
-It sits inside `library/` so that Sonarr, which mounts the media folder as
-`/data`, can import from it at `/data/library/youtube`.
 
-That is the route for an Arabic series that only exists on YouTube. Sonarr owns
-it, in the `/data/library/arabic-shows` root folder, and Jellyfin shows that
-folder as its own **Arabic Shows** library: type Shows, metadata language
-Arabic, real-time monitoring off. Pinchflat only downloads:
+An Arabic series that only exists on YouTube does not go through Pinchflat at
+all. Sonarr owns it, in the `/data/library/arabic-shows` root folder, and
+Jellyfin shows that folder as its own **Arabic Shows** library: type Shows,
+metadata language Arabic, real-time monitoring off.
+`scripts/youtube-to-sonarr.py` does the rest from the show's TMDb ID and the
+playlist:
 
-1. Create a media profile first; any preset will do, since the Source overrides
-   the path, but a Source cannot be saved without one. Add the playlist as a
-   Source with **Download Media** off. Playlist order and upload dates rarely
-   match episode numbers, so when the titles carry them, write
-   `extras/yt-dlp-configs/source-<id>-config.txt` containing
-   `--parse-metadata 'title:.*?(?:Ep|Episode)\s*(?P<episode_number>\d+)'` and
-   set the Source's output path override to
-   `/{{ source_custom_name }}/Season 1/s01e%(episode_number)02d - {{ title }}.{{ ext }}`.
-   Then turn downloading on.
-2. In Sonarr, use **Manual Import** and set the series, episode, quality and
-   language yourself. Sonarr cannot match these files alone: their names carry
-   no series title and no quality tag, so it guesses SDTV and "Unknown Series".
-3. Scan the Arabic Shows library in Jellyfin. Sonarr has no Jellyfin connection
-   here, and the watcher is off.
+```bash
+cd ~/media-stack
+python3 scripts/youtube-to-sonarr.py --tmdb 115550 --playlist 'https://www.youtube.com/playlist?list=...'
+python3 scripts/youtube-to-sonarr.py --tmdb 115550 --playlist '...' --apply
+```
 
-Remove the Source in Pinchflat once the import is done, so a weekly index never
-downloads the series again. Then rename its `source-<id>-config.txt`, for
-example to `.removed-<date>`: Pinchflat's SQLite tables can hand a deleted ID to
-the next Source, which would silently inherit that config.
+The first run changes nothing: it prints which video becomes which episode. The
+second adds the show to Sonarr (or moves it under `arabic-shows`) with searching
+off, downloads the missing episodes into `youtube-import/`, imports them with a
+Sonarr Manual Import that states series, episode, quality and language, and
+scans Arabic Shows. Running it again only fetches what is still missing. The
+script's docstring explains how videos are paired with episodes and why the
+import has to be manual.
+
+The downloads use yt-dlp from the standalone `ghcr.io/jauderho/yt-dlp` image,
+not Pinchflat or MeTube, so removing either never breaks this. The image is
+rebuilt within an hour of every yt-dlp release and pulled at the start of each
+run, and every download is a `docker run --rm`, so nothing stays running.
 
 **MeTube** needs no setup. Downloads land in `media/youtube`, which the PC sees
 at `T:\media\youtube`, and the queue and history live in `/srv/appdata/metube`.
