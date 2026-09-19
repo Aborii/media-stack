@@ -574,6 +574,14 @@ pages:
               # tunnel is down: vpnctl reports gluetun's container health, and
               # the step of a restart already running.
               #
+              # The status line reports the TUNNEL, not the control server.
+              # Those are different things and the difference is the whole
+              # point: a wedged gluetun answers /v1/publicip/ip in 5 ms with
+              # an empty address, which read as a green OK beside the words
+              # "reconnecting". So it is OK only when there is a public IP,
+              # NO TUNNEL when the control server answers without one, and
+              # DOWN with the status code when even that does not reply.
+              #
               # Live, on a short cache: the tunnel reconnects now and then,
               # and while it does the control server answers with an empty
               # address. A five-minute cache held that blank on the page long
@@ -611,7 +619,7 @@ pages:
                     </div>
                   </div>
                   <div class="flex items-center justify-between gap-10 margin-top-10">
-                    <p class="size-h6">{{ if $up }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $pub.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span> {{ if .JSON.Bool "dry" }}<span class="color-negative">&middot; TEST MODE</span> {{ end }}<span data-vpn="msg" class="color-paragraph">{{ if $busy }}&middot; {{ .JSON.String "message" }}{{ end }}</span></p>
+                    <p class="size-h6">{{ if $ip }}<span class="color-positive">OK</span>{{ else if $up }}<span class="color-negative">NO TUNNEL</span>{{ else }}<span class="color-negative">DOWN {{ $pub.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span> {{ if .JSON.Bool "dry" }}<span class="color-negative">&middot; TEST MODE</span> {{ end }}<span data-vpn="msg" class="color-paragraph">{{ if $busy }}&middot; {{ .JSON.String "message" }}{{ end }}</span></p>
                     <button data-vpn="restart" title="Restart gluetun and everything behind it"{{ if $busy }} disabled{{ end }}
                             style="font:inherit;font-size:.8em;padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:{{ if $busy }}.35{{ else }}.75{{ end }};flex:none"
                             onclick="glanceLive.vpnRestart(this)">Restart</button>
