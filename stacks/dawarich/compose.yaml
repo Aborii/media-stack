@@ -141,8 +141,10 @@ services:
     depends_on:
       dawarich_db:
         condition: service_healthy
+        restart: true
       dawarich_redis:
         condition: service_healthy
+        restart: true
     logging:
       driver: 'json-file'
       options:
@@ -196,6 +198,7 @@ services:
     depends_on:
       dawarich_app:
         condition: service_healthy
+        restart: true
     logging:
       driver: 'json-file'
       options:
