@@ -1,0 +1,215 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dawarich — private location history, the Google Timeline replacement.
+#
+# Four containers: Rails web, Sidekiq worker, its own Postgres, its own Redis.
+#
+# IT DOES NOT JOIN THE SHARED postgres17 CLUSTER, and this is not a preference.
+# Dawarich needs PostGIS, which postgres:17-alpine does not ship, and the only
+# ARM64 PostGIS 17 image is Debian/glibc while the shared cluster is Alpine/musl.
+# Pointing the shared cluster's data directory at a glibc image would leave every
+# text index built under a different collation - Malak's and coming-manager's
+# databases would return wrong rows with no error at all. Immich sits in its own
+# container for the same class of reason.
+#
+# The phone app records offline and uploads when it can reach this again, so a
+# reboot or a VPN drop costs nothing. The server being down is not data loss.
+# ─────────────────────────────────────────────────────────────────────────────
+name: dawarich
+
+services:
+  dawarich_db:
+    container_name: dawarich_db
+    # imresamu/postgis, NOT postgis/postgis. The official postgis/postgis tags
+    # are amd64-only - pulling one on the Pi fails with "no matching manifest".
+    # imresamu is the ARM64 rebuild the Dawarich docs themselves point to.
+    image: imresamu/postgis:17-3.5-alpine
+    restart: unless-stopped
+    environment:
+      TZ: ${TIMEZONE:?err}
+      POSTGRES_USER: ${DAWARICH_DB_USER:?err}
+      POSTGRES_PASSWORD: ${DAWARICH_DB_PASSWORD:?err}
+      POSTGRES_DB: ${DAWARICH_DB_NAME:?err}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      # Bind mount on the data disk, matching every other stack, so it is
+      # visible for backup instead of hiding in a named volume.
+      - ${FOLDER_FOR_DATA:?err}/dawarich/db:/var/lib/postgresql/data
+    # Not published on the host. Nothing outside this stack talks to it, and the
+    # shared cluster already owns 5432 there.
+    #
+    # 256m, not the 1G upstream suggests. That figure is for instances importing
+    # years of Takeout at once; raise it for the duration of a big import.
+    shm_size: 256mb
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${DAWARICH_DB_USER} -d ${DAWARICH_DB_NAME}']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - dawarich
+
+  dawarich_redis:
+    container_name: dawarich_redis
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Sidekiq's job queue only. Losing it loses in-flight jobs, never recorded
+    # points, so the append-only log is off and the snapshots are lazy.
+    command: redis-server --save 900 1 --appendonly no
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/dawarich/redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - dawarich
+
+  dawarich_app:
+    container_name: dawarich_app
+    # PINNED, deliberately, unlike most of this repo. Dawarich releases carry
+    # data migrations that rewrite the points table, and on a Pi off a USB disk
+    # one of those runs for a long time with the app down. Read the release
+    # notes, then bump this by hand. WUD reporting the new tag is the intended
+    # workflow here, not an unattended pull.
+    image: freikin/dawarich:1.14.5
+    restart: unless-stopped
+    entrypoint: web-entrypoint.sh
+    command: ['bin/rails', 'server', '-p', '3000', '-b', '::']
+    ports:
+      - '${WEBUI_PORT_DAWARICH:-3004}:3000'
+    environment:
+      RAILS_ENV: production
+      SELF_HOSTED: 'true'
+      # PUID/PGID, not `user:`. The entrypoint drops privileges itself and
+      # breaks if the container is started as a non-root uid.
+      PUID: ${PUID:?err}
+      PGID: ${PGID:?err}
+      TIME_ZONE: ${TIMEZONE:?err}
+      REDIS_URL: redis://dawarich_redis:6379
+      DATABASE_HOST: dawarich_db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: ${DAWARICH_DB_USER:?err}
+      DATABASE_PASSWORD: ${DAWARICH_DB_PASSWORD:?err}
+      DATABASE_NAME: ${DAWARICH_DB_NAME:?err}
+      # Rails answers any Host header not on this list with a bare 403 and no
+      # hint in the UI. Every address a phone or a browser might use has to be
+      # here: LAN name, LAN IP, tailnet IP, and the tls-proxy name.
+      APPLICATION_HOSTS: ${DAWARICH_HOSTS:?err}
+      APPLICATION_PROTOCOL: http
+      # Losing this makes stored credentials unreadable. It belongs in the
+      # shared env file and is never regenerated casually. Generate it once:
+      #   openssl rand -hex 64
+      SECRET_KEY_BASE: ${DAWARICH_SECRET_KEY_BASE:?err}
+      # Keep reverse-geocoding results instead of asking again on every view.
+      STORE_GEODATA: 'true'
+      RAILS_LOG_TO_STDOUT: 'true'
+      PROMETHEUS_EXPORTER_ENABLED: 'false'
+      # One Puma worker is plenty for a household instance and roughly halves
+      # idle memory.
+      WEB_CONCURRENCY: 1
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/dawarich/storage:/var/app/storage
+      - ${FOLDER_FOR_DATA:?err}/dawarich/public:/var/app/public
+      # Drop a Google Takeout or GPX file in here and it is imported without
+      # going through a browser upload.
+      - ${FOLDER_FOR_DATA:?err}/dawarich/watched:/var/app/tmp/imports/watched
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:3000/api/v1/health | grep -q ok
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First boot loads the whole schema, and a version bump runs the data
+      # migrations. Both are slow here; a short start_period would kill the
+      # container mid-migration and leave the schema half applied.
+      start_period: 300s
+    depends_on:
+      dawarich_db:
+        condition: service_healthy
+      dawarich_redis:
+        condition: service_healthy
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - dawarich
+      - mediastack
+
+  dawarich_sidekiq:
+    container_name: dawarich_sidekiq
+    # Same tag as dawarich_app, always. They share a schema, and a mismatched
+    # pair processes jobs against a schema the worker does not expect.
+    image: freikin/dawarich:1.14.5
+    restart: unless-stopped
+    entrypoint: sidekiq-entrypoint.sh
+    command: ['sidekiq']
+    environment:
+      RAILS_ENV: production
+      SELF_HOSTED: 'true'
+      PUID: ${PUID:?err}
+      PGID: ${PGID:?err}
+      TIME_ZONE: ${TIMEZONE:?err}
+      REDIS_URL: redis://dawarich_redis:6379
+      DATABASE_HOST: dawarich_db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: ${DAWARICH_DB_USER:?err}
+      DATABASE_PASSWORD: ${DAWARICH_DB_PASSWORD:?err}
+      DATABASE_NAME: ${DAWARICH_DB_NAME:?err}
+      APPLICATION_HOSTS: ${DAWARICH_HOSTS:?err}
+      APPLICATION_PROTOCOL: http
+      SECRET_KEY_BASE: ${DAWARICH_SECRET_KEY_BASE:?err}
+      STORE_GEODATA: 'true'
+      RAILS_LOG_TO_STDOUT: 'true'
+      PROMETHEUS_EXPORTER_ENABLED: 'false'
+      # 2 threads. Each one holds a database connection and a chunk of the
+      # points it is reverse-geocoding, so more of them on 4 cores mostly makes
+      # an import fight Jellyfin. Raise it for a big Takeout import, then put
+      # it back.
+      BACKGROUND_PROCESSING_CONCURRENCY: 2
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/dawarich/storage:/var/app/storage
+      - ${FOLDER_FOR_DATA:?err}/dawarich/public:/var/app/public
+      - ${FOLDER_FOR_DATA:?err}/dawarich/watched:/var/app/tmp/imports/watched
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -f sidekiq || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    depends_on:
+      dawarich_app:
+        condition: service_healthy
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - dawarich
+
+networks:
+  # Private to this stack. The database and Redis have no business being
+  # reachable from the rest of the house.
+  dawarich:
+    driver: bridge
+  # Only the web container joins this, so Glance and the tls-proxy can see it.
+  mediastack:
+    name: mediastack
+    external: true
