@@ -40,13 +40,25 @@ services:
     # 256m, not the 1G upstream suggests. That figure is for instances importing
     # years of Takeout at once; raise it for the duration of a big import.
     shm_size: 256mb
+    # A real query, NOT pg_isready. pg_isready only asks whether the postmaster
+    # answers the socket, so it reports success for a server that is up and
+    # refusing every connection. That is not theoretical: on 2026-09-20 a stray
+    # recursive chown took this data directory away from uid 70, every backend
+    # died with "could not open file global/pg_filenode.map", and all four
+    # containers sat there reporting healthy for hours while the app served
+    # 500s. Measured on the Pi against a database that cannot be served,
+    # pg_isready exits 0 and this exits 2.
     healthcheck:
       test:
-        ['CMD-SHELL', 'pg_isready -U ${DAWARICH_DB_USER} -d ${DAWARICH_DB_NAME}']
+        - CMD-SHELL
+        - psql -U ${DAWARICH_DB_USER} -d ${DAWARICH_DB_NAME} -tAc "select 1" >/dev/null 2>&1
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      # Longer than a pg_isready check would need. First boot has to run initdb
+      # and then create the PostGIS extensions, which took about two and a half
+      # minutes here, and a query check genuinely cannot pass until that ends.
+      start_period: 180s
     logging:
       driver: 'json-file'
       options:
