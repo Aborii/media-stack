@@ -68,12 +68,34 @@ services:
       - -c
       - ssl_key_file=/var/lib/postgresql/data/server.key
     shm_size: 256mb
+    # A real query, NOT pg_isready. pg_isready only asks whether the postmaster
+    # answers on the socket, so a server that is up and refusing every single
+    # connection still satisfies it. Dawarich proved that the hard way on
+    # 2026-09-20: its data directory lost its ownership, every backend died
+    # with "could not open file global/pg_filenode.map", and the container
+    # reported healthy for eight hours while the app served nothing but 500s.
+    #
+    # This cluster carries malak, coming-manager and aldafter, so the same
+    # blind spot here would take three services down quietly instead of one.
+    #
+    # The local socket is "trust" in pg_hba, so no password is involved. The
+    # hostssl line governs network connections only and is untouched by this.
+    #
+    # stderr is deliberately NOT redirected. Docker keeps each probe's output
+    # in .State.Health.Log, which is the first thing anyone reads when this
+    # goes unhealthy, and psql's stderr is where the reason lives. -tAc already
+    # keeps a passing probe silent.
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${SHARED_POSTGRES_USER} -d postgres']
+      test:
+        - CMD-SHELL
+        - psql -U ${SHARED_POSTGRES_USER} -d postgres -tAc "select 1" >/dev/null
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      # 60s rather than 30s. A query cannot succeed until initdb has finished,
+      # which on a first boot takes longer than the postmaster taking the
+      # socket. An existing cluster is ready well inside this.
+      start_period: 60s
     logging:
       driver: 'json-file'
       options:
