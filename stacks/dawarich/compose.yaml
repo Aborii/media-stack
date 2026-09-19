@@ -51,7 +51,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - psql -U ${DAWARICH_DB_USER} -d ${DAWARICH_DB_NAME} -tAc "select 1" >/dev/null 2>&1
+        # stdout only. stderr is left alone deliberately: docker stores each
+        # probe's output in .State.Health.Log, which is the first place anyone
+        # looks when this goes unhealthy, and psql's stderr is where the reason
+        # lives. Swallowing it would have hidden the pg_filenode.map message.
+        - psql -U ${DAWARICH_DB_USER} -d ${DAWARICH_DB_NAME} -tAc "select 1" >/dev/null
       interval: 30s
       timeout: 10s
       retries: 5
