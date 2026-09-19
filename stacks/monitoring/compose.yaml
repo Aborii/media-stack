@@ -131,9 +131,9 @@ services:
       # proxy allows exactly what a watcher needs: containers, images, events.
       - WUD_WATCHER_LOCAL_HOST=dockerproxy
       - WUD_WATCHER_LOCAL_PORT=2375
-      # true = watch everything, no per-container labels needed. The two
-      # coming-manager containers opt out with wud.watch=false because their
-      # images come from localhost:5001, which from in here is wud itself.
+      # true = watch everything, no per-container labels needed. Containers whose
+      # images come from localhost:5001 opt out with wud.watch=false, because
+      # from in here that address is wud itself.
       - WUD_WATCHER_LOCAL_WATCHBYDEFAULT=true
       # Daily at 09:00, not the hourly default and not weekly. Weekly was
       # tried with Diun and was wrong: up to seven days of not knowing that

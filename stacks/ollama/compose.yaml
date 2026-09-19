@@ -1,15 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Ollama — embedding model server.
 #
-# Its own stack rather than part of coming-manager, for one practical reason:
-# this is the most memory-hungry optional thing on the box, and a separate
-# stack means it can be stopped on its own without touching the app.
+# Its own stack rather than part of the application that uses it, for one
+# practical reason: this is the most memory-hungry optional thing on the box,
+# and a separate stack means it can be stopped without touching that app.
 #
-# Only consumer today is coming-manager, which reaches it at
-# http://ollama:11434/v1 over mediastack. Without EMBEDDING_* set there, the
-# "Similar meaning (AI)" tag matching simply reports unavailable and matching
-# stays lexical - a supported state, so stopping this stack degrades the app
-# rather than breaking it.
+# Its only consumer today is an application stack kept outside this repo,
+# which reaches it at http://ollama:11434/v1 over mediastack. Without the
+# embedding variables set there, its "Similar meaning (AI)" tag matching
+# reports unavailable and matching stays lexical - a supported state, so
+# stopping this stack degrades that app rather than breaking it.
 #
 # NOTE: starting the container is not enough. The model has to be pulled once:
 #   docker exec ollama ollama pull nomic-embed-text

@@ -6,10 +6,10 @@
 # it is pinned to PostgreSQL 14 with its own vectorchord/pgvectors build, so
 # it cannot join this cluster.
 #
-# Alpine, matching the coming-manager dev instance exactly. Dump/restore only
-# cares about the server version, but text collation comes from the C library —
-# keeping both ends on musl avoids index ordering surprises when a database
-# moves between them.
+# Alpine, matching the dev instance these databases are restored from. Dump
+# and restore only care about the server version, but text collation comes
+# from the C library, so keeping both ends on musl avoids index ordering
+# surprises when a database moves between them.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -75,8 +75,8 @@ services:
     # with "could not open file global/pg_filenode.map", and the container
     # reported healthy for eight hours while the app served nothing but 500s.
     #
-    # This cluster carries malak, coming-manager and aldafter, so the same
-    # blind spot here would take three services down quietly instead of one.
+    # This cluster carries every application database on the box, so the same
+    # blind spot here would take several services down quietly, not just one.
     #
     # The local socket is "trust" in pg_hba, so no password is involved. The
     # hostssl line governs network connections only and is untouched by this.
@@ -91,9 +91,9 @@ services:
         # One behaviour this adds: a real query needs a connection slot, so if
         # max_connections is ever exhausted this probe fails and the container
         # goes unhealthy, where pg_isready would have stayed green. That is
-        # correct - a cluster with no slots left cannot serve malak,
-        # coming-manager or aldafter either - and nothing restarts on
-        # unhealthy, so it is a signal and not a bounce.
+        # correct - a cluster with no slots left cannot serve the applications
+        # on it either - and nothing restarts on unhealthy, so it is a signal
+        # and not a bounce.
         - psql -U ${SHARED_POSTGRES_USER} -d postgres -tAc "select 1" >/dev/null
       interval: 30s
       timeout: 10s
