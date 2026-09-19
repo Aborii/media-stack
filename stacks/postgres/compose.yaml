@@ -88,6 +88,12 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
+        # One behaviour this adds: a real query needs a connection slot, so if
+        # max_connections is ever exhausted this probe fails and the container
+        # goes unhealthy, where pg_isready would have stayed green. That is
+        # correct - a cluster with no slots left cannot serve malak,
+        # coming-manager or aldafter either - and nothing restarts on
+        # unhealthy, so it is a signal and not a bounce.
         - psql -U ${SHARED_POSTGRES_USER} -d postgres -tAc "select 1" >/dev/null
       interval: 30s
       timeout: 10s
