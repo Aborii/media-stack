@@ -26,7 +26,7 @@ const CONTENT = `/api/pages/${SLUG}/content/`;
 // cache has expired, so it runs at the minute the tab was asked for.
 const EVERY   = SLUG === 'markets' ? 60000 : 5000;
 
-// The two helper servers the buttons talk to, addressed the way the BROWSER
+// The helper servers the buttons talk to, addressed the way the BROWSER
 // has to reach them - they are separate servers on their own ports, not part
 // of Glance. Over plain HTTP that is the port itself; over HTTPS a page is
 // not allowed to fetch http://, so it goes through the TLS proxy on the
@@ -35,10 +35,14 @@ const HTTPS   = location.protocol === 'https:';
 const helper  = p => location.protocol + '//aboriis-pi:' + (HTTPS ? p + 10000 : p) + '/';
 const BACKUP  = helper(9101);   // the backup status service
 const PCSW    = helper(9102);   // the power switch proxy
+const VPNCTL  = helper(9103);   // the VPN stack restart control
 
 // True while the desktop tile has a dialog open or a press in flight, so the
 // refresh below leaves that one tile alone.
 let pcBusy = false;
+
+// The same, for the Gluetun tile while its Restart button is mid-flow.
+let vpnBusy = false;
 
 // Replaces every [data-live] element, and the server-stats widget, with the
 // freshly rendered copy. Skipped while the tab is hidden: a dashboard left
@@ -61,6 +65,9 @@ async function refresh(force) {
     // a swap there would close a dialog being read, or wipe the progress
     // message with the server's own idea of the tile.
     if (el.dataset.live === 'pc' && pcBusy) continue;
+    // Same for the Gluetun tile: a restart takes a minute and writes its
+    // progress into the tile, which a swap would wipe every five seconds.
+    if (el.dataset.live === 'vpn' && vpnBusy) continue;
     const fresh = doc.querySelector(`[data-live="${el.dataset.live}"]`);
     if (fresh) el.replaceWith(fresh);
   }
@@ -401,10 +408,85 @@ async function pcPress(btn, what, state) {
   }, 2000);
 }
 
+/* ------------------------------------------------------------- vpn --- */
+
+const VPN_ASK = {
+  title: 'Restart the VPN stack?',
+  body: 'Restarts gluetun, waits for the tunnel to come back, then restarts qBittorrent, Prowlarr, FlareSolverr and the port sync that live inside it.\n\n'
+      + 'Downloads stop and resume, and anything using the Shadowsocks or HTTP proxy through the Pi drops for about a minute.',
+  confirmText: 'Restart',
+  danger: true,
+};
+
+// The Restart button on the Gluetun tile. Asks first - this one is a minute
+// of no tunnel for everything behind it, so a stray tap while scrolling is
+// exactly what the dialog is there to catch.
+//
+// The helper does the work in the background and reports progress on GET /,
+// so this posts once and then follows the job rather than holding a request
+// open for the whole restart.
+async function vpnRestart(btn) {
+  const tile = btn.closest('.widget') || document;
+  const set = (v) => tile.querySelectorAll('[data-vpn="msg"]').forEach((e) => {
+    e.textContent = v ? '· ' + v : '';
+  });
+
+  vpnBusy = true;
+  const finish = (holdMs = 5000) => {
+    btn.disabled = false;
+    btn.style.opacity = '.75';
+    if (holdMs) setTimeout(() => { vpnBusy = false; }, holdMs);
+    else vpnBusy = false;
+  };
+
+  if (!await ask(VPN_ASK)) { vpnBusy = false; return; }
+
+  btn.disabled = true;
+  btn.style.opacity = '.35';
+  set('restarting…');
+
+  let started;
+  try {
+    started = await (await fetch(VPNCTL + 'restart', { method: 'POST' })).json();
+  } catch {
+    set('control unreachable');
+    finish();
+    return;
+  }
+  if (!started.ok) { set(started.error || 'refused'); finish(); return; }
+  if (started.dry) {
+    // Test mode: the helper answered but restarted nothing, so there is no
+    // job to follow and polling for one would only time out.
+    set(started.message || 'test mode');
+    finish(7000);
+    return;
+  }
+
+  // Follow the job. The helper names the step it is on - gluetun, then the
+  // wait for the tunnel, then each passenger - so this is just its own words
+  // put on the tile.
+  const at = Date.now();
+  const poll = setInterval(async () => {
+    let d;
+    try {
+      d = await (await fetch(VPNCTL, { cache: 'no-store' })).json();
+    } catch {
+      return;                                   // the Pi is busy restarting
+    }
+    set(d.message || d.step);
+    // Six minutes is well past the helper's own wait for the tunnel, so
+    // reaching it means something is stuck rather than slow.
+    if (!d.busy || Date.now() - at > 360000) {
+      clearInterval(poll);
+      finish();
+    }
+  }, 3000);
+}
+
 // Replace whatever was here rather than standing aside for it. A page open
 // since before an edit holds the old module - Glance serves this with a
 // two-hour cache - and the tiles call these functions by name, so an old
 // object still in place means a button that silently does nothing. Clearing
 // the previous timer first is what stops two of them polling at once.
 if (window.glanceLive && window.glanceLive.timer) clearInterval(window.glanceLive.timer);
-window.glanceLive = { refresh, refreshNow, runBackup, pcPress, pcRefresh, timer: setInterval(refresh, EVERY) };
+window.glanceLive = { refresh, refreshNow, runBackup, pcPress, pcRefresh, vpnRestart, timer: setInterval(refresh, EVERY) };

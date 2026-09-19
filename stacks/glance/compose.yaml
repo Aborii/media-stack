@@ -128,6 +128,57 @@ services:
         max-size: '10m'
         max-file: '3'
 
+  # The dashboard's Restart button for the VPN stack.
+  #
+  # Same shape as pcswitch above, for the same reason: the browser cannot do
+  # this itself. Restarting a container is a Docker API write, and the proxy
+  # every other tile reads Docker through (dockerproxy, in stacks/management)
+  # sets POST=0 - on purpose, because Dozzle and WUD must not be able to
+  # restart anything. So this one small server gets the socket instead, and
+  # only ever inspects and restarts the container names listed below.
+  #
+  # It restarts gluetun, waits for the tunnel to report healthy, and then
+  # restarts the containers that share gluetun's network namespace - which is
+  # what makes the restart actually stick. See stacks/glance/vpnctl.py.
+  #
+  # On the bridge with a published port, not host networking: unlike the power
+  # switch there is no name here that only the host can resolve. The port is
+  # still open to anyone on the wifi, the same bargain the backup and power
+  # buttons make - do not port-forward it.
+  vpnctl:
+    image: python:3.12-alpine
+    container_name: vpnctl
+    restart: unless-stopped
+    command: ["python", "-u", "/app/vpnctl.py"]
+    volumes:
+      - ./vpnctl.py:/app/vpnctl.py:ro
+      # The real socket. There is no read-only form of this that can still
+      # restart a container; what limits it is the script, which makes exactly
+      # two kinds of call against a fixed list of names.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - VPNCTL_PORT=${WEBUI_PORT_VPNCTL:?err}
+      - VPNCTL_CONTAINERS=${VPNCTL_CONTAINERS:-gluetun,qbittorrent,qbit-port-sync,prowlarr,flaresolverr}
+      # 1 while testing the dashboard: the button answers as usual but nothing
+      # is restarted. The tile prints TEST MODE while this is on.
+      - VPNCTL_DRY_RUN=${VPNCTL_DRY_RUN:-0}
+    ports:
+      - "${WEBUI_PORT_VPNCTL:?err}:${WEBUI_PORT_VPNCTL:?err}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['VPNCTL_PORT']+'/',timeout=5)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
 networks:
   mediastack:
     name: mediastack
