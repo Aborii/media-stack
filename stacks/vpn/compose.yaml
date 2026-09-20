@@ -134,7 +134,11 @@ services:
       # Restarting never fixed a slow lookup; it only dropped every session.
       # Dialing IPs tests what actually matters (does the tunnel carry
       # traffic) without letting DNS latency kill it.
-      - HEALTH_TARGET_ADDRESSES=1.1.1.1:443,8.8.8.8:443
+      #
+      # Port 853, not 443, since the move to DNS-over-TLS: 853 is the port
+      # this tunnel's own resolvers actually use, so the probe exercises the
+      # path that matters instead of a port nothing here talks on any more.
+      - HEALTH_TARGET_ADDRESSES=1.1.1.1:853,8.8.8.8:853
       # ICMP, NOT dns. The earlier "Proton drops ICMP" reading was taken while
       # the tunnel was passing nothing at all - retested healthy it is 0%% loss
       # to both 1.1.1.1 and 8.8.8.8. A dns small check ties the healthcheck to
