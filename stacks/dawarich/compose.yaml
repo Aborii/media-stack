@@ -7,9 +7,9 @@
 # Dawarich needs PostGIS, which postgres:17-alpine does not ship, and the only
 # ARM64 PostGIS 17 image is Debian/glibc while the shared cluster is Alpine/musl.
 # Pointing the shared cluster's data directory at a glibc image would leave every
-# text index built under a different collation - Malak's and coming-manager's
-# databases would return wrong rows with no error at all. Immich sits in its own
-# container for the same class of reason.
+# text index built under a different collation, and every application database on
+# that cluster would return wrong rows with no error at all. Immich sits in its
+# own container for the same class of reason.
 #
 # The phone app records offline and uploads when it can reach this again, so a
 # reboot or a VPN drop costs nothing. The server being down is not data loss.

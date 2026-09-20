@@ -14,7 +14,7 @@
 #   pnpm docker:build --platform=linux/arm64 \
 #     --push
 #
-# Then on this machine, `docker compose pull` in stacks/coming-manager resolves
+# Then on this machine, `docker compose pull` in the consuming stack resolves
 # the same `localhost:5001/...` names.
 #
 # Storage lives on the data disk with everything else. Deletes are enabled so
