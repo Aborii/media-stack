@@ -43,6 +43,7 @@ services:
       # error instead of the whole page failing.
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
       - IMMICH_API_KEY=${IMMICH_API_KEY:-}
+      - DAWARICH_API_KEY=${DAWARICH_API_KEY:-}
       - SEERR_API_KEY=${SEERR_API_KEY:-}
       - SONARR_API_KEY=${SONARR_API_KEY:-}
       - RADARR_API_KEY=${RADARR_API_KEY:-}
