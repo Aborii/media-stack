@@ -393,7 +393,7 @@ pages:
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/dawarich.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
                       <div><div class="color-highlight size-h3">{{ .JSON.Int "totalPointsTracked" | formatNumber }}</div><div class="size-h6">POINTS</div></div>
-                      <div><div class="color-highlight size-h3">{{ .JSON.Int "totalDistanceKm" | formatNumber }}</div><div class="size-h6">KM TOTAL</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "totalDistanceKm") }}</div><div class="size-h6">KM TOTAL</div></div>
                       <div><div class="color-highlight size-h3">{{ printf "%.0f" $yk }}</div><div class="size-h6">KM IN {{ $y }}</div></div>
                     </div>
                   </div>
