@@ -14,6 +14,11 @@
 # the dashboard until 2026-09-23 and those notes are kept as the record of what
 # each tile is meant to show; nothing here depends on it any more.
 #
+# THIS IS A COPY, kept by hand. The live file is /srv/appdata/glance/glance.yml
+# on the Pi and nothing syncs the two, so check this against the live one before
+# trusting it. The path is spelled out rather than written with a dollar and
+# braces because Glance substitutes those even inside a comment.
+#
 # Two kinds of URL, and the distinction matters:
 #
 #   href / title-url  opened by YOUR BROWSER, so it is the bare hostname
