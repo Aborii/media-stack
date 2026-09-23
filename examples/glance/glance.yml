@@ -7,13 +7,14 @@
 # of the dollar keeps one literal, which is how the commented blocks below
 # survive.
 #
-# This is the dashboard on port 80: http://aboriis-pi/ opens it. It mirrors
-# the Homepage config - the same groups, links, status checks and tiles -
-# and Homepage itself is still running on 3000 while that is being checked.
-# Glance reloads this file on save, so a change shows on the next reload of
-# the page.
+# This is the dashboard on port 80: http://aboriis-pi/ opens it. Glance
+# reloads this file on save, so a change shows on the next reload of the page.
 #
-# Two kinds of URL, as on Homepage, and the distinction matters:
+# Many tiles below note the Homepage tile they were ported from. Homepage was
+# the dashboard until 2026-09-23 and those notes are kept as the record of what
+# each tile is meant to show; nothing here depends on it any more.
+#
+# Two kinds of URL, and the distinction matters:
 #
 #   href / title-url  opened by YOUR BROWSER, so it is the bare hostname
 #                     aboriis-pi, which resolves at home, on the LAN and over
@@ -22,8 +23,7 @@
 #   every widget url  it is the container name. qBittorrent and Prowlarr live
 #                     in gluetun's network namespace and are gluetun:<port>.
 #
-# API keys come from the env file, passed through by compose.yaml. They are
-# the same keys the Homepage config carries.
+# API keys come from the env file, passed through by compose.yaml.
 #
 # Every app tile follows one shape, because a custom-api widget has no icon,
 # link or status of its own:
@@ -699,7 +699,7 @@ pages:
                   </div>
                   </div>
               # Homepage's Portainer tile: containers by state, from the
-              # environment Homepage uses (3 here - this install has been
+              # environment id the dashboard uses (3 here - this install has been
               # recreated, so not the 2 most guides assume).
               - type: custom-api
                 title: Portainer
@@ -878,7 +878,6 @@ pages:
                   - { title: Registry,    url: http://aboriis-pi:5002 }
                   - { title: SFTPGo,      url: http://aboriis-pi:8080 }
                   - { title: Glances,     url: http://aboriis-pi:61210 }
-                  - { title: Homepage,    url: http://aboriis-pi:3000/ }
               - title: Monitoring
                 links:
                   - { title: Speedtest,   url: http://aboriis-pi:3030 }

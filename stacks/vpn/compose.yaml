@@ -106,7 +106,7 @@ services:
       # the Spain exits times out or gets reset for most queries - hundreds
       # of "exchanging over https connection ... context deadline exceeded"
       # warnings per hour, and the public IP lookup right after a reconnect
-      # loses its race with DNS often enough that the Homepage tile goes red.
+      # loses its race with DNS often enough that the dashboard tile goes red.
       # A ten-minute A/B on the same box, same key, same country: DoT on
       # node-es-17 logged 0 upstream failures, DoH on node-es-14 logged 666,
       # the live DoH tunnel logged 892. So the transport is the variable.

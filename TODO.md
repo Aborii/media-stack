@@ -40,7 +40,6 @@ collection at the wrong quality and there is no undo.
 - [ ] Delete `immich/model-cache` (786 MB) and the `Backups` folders (~680 MB)
       copied unnecessarily — Immich re-downloads its models, and the dumps are of
       databases that came across live.
-- [ ] Narrow `HOMEPAGE_ALLOWED_HOSTS` once settled — it lists every name now.
 - [ ] Watch the first few nights of backup uploads. The receiver on the PC only
       catches one if the PC is on; a run of misses means the archive rotation on
       the Pi (3 kept) is too shallow for how often that machine is off.

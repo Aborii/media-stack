@@ -25,22 +25,17 @@
 #   ports    https://host:18989       works with every app, unchanged.
 #
 # Ports win. The rule is simply the HTTP port plus 10000, so anything you
-# already know still applies. Homepage is the exception and takes 443, since it
-# is the front door and should answer at the bare hostname.
+# already know still applies.
 #
 # The same port cannot be reused: Docker publishes on 0.0.0.0, which already
 # includes the Tailscale address, so serve would collide with the container.
 #
-# HOMEPAGE IS DELIBERATELY ABSENT
+# THE DASHBOARD IS ABSENT, and 443 is free
 #
-# It pins its login callback to one hostname, HOMEPAGE_EXTERNAL_URL, and that is
-# http://aboriis-pi. Serve it under a second name and signing in silently
-# bounces back to the login page - the session cookie is set for a host the
-# browser is not on, so nothing reports an error, you just never log in.
-#
-# It also gains nothing. `aboriis-pi` already resolves in both places: router
-# DNS and mDNS on the LAN, MagicDNS over the tailnet. One name, working
-# everywhere, is exactly what a pinned callback needs.
+# Glance is on port 80, published on 0.0.0.0, so the tailnet name already opens
+# it over plain HTTP. Nothing here fronts it with TLS. 443 is the obvious place
+# for it - the front door should answer at the bare hostname - but that is a
+# decision about the dashboard's own auth and has not been made yet.
 #
 # THIS IS TAILNET ONLY. The LAN keeps talking plain HTTP on the original ports,
 # which is deliberate - local access must not depend on Tailscale being up.

@@ -55,7 +55,7 @@ services:
         max-size: '10m'
         max-file: '3'
     networks:
-      # Joined so Portainer and Homepage — both on mediastack — can reach the
+      # Joined so Portainer and Glance — both on mediastack — can reach the
       # registry as http://registry:5000. This is container-to-container only
       # and changes nothing about exposure: the host mapping above is still
       # bound to 127.0.0.1, so the LAN still cannot reach it.

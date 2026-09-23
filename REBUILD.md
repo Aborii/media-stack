@@ -362,12 +362,14 @@ auth = "apikey"
 apikey = "..."
 ```
 
+The role is still named `homepage` because that is the string in the live
+gluetun config; the dashboard it was named for is gone, the key is not.
+
 `/v1/openvpn/portforwarded` is the old path and **301s** to `/v1/portforward`.
 Both are listed because a redirect lands on a route that must itself be granted.
-In Homepage this is what `version: 2` on the widget is for — version 1 asks for
-the old path, and a redirect the proxy will not follow fails the *entire*
-widget, not just the port field. The tile then renders with no numbers and no
-error anywhere, which reads as a bad API key.
+A client that asks for the old path and will not follow the redirect fails the
+*entire* tile, not just the port field, and it renders with no numbers and no
+error anywhere — which reads as a bad API key.
 
 Validate the file before restarting the real thing, since a bad config takes the
 whole stack down with it:
@@ -432,25 +434,6 @@ Clients need the cert. libpq reads `%APPDATA%\postgresql\root.crt` on Windows
 automatically. Node's `pg` ignores `sslmode` in the URL entirely and needs
 `ssl: { ca, rejectUnauthorized: true }` passed explicitly.
 
-### Homepage
-
-Set `HOMEPAGE_AUTH_ENABLED`, `HOMEPAGE_AUTH_PASSWORD`, `HOMEPAGE_AUTH_SECRET`
-and `HOMEPAGE_EXTERNAL_URL` in `docker-compose.env`.
-
-Two reasons, not one. Without auth the dashboard answers 200 to anyone who can
-reach it — a full index of every service with working links. And Homepage serves
-`custom.js` **only to authenticated users**, so the script that makes links
-follow the host you arrived on does nothing at all with auth off.
-
-`HOMEPAGE_EXTERNAL_URL` pins the login callback to one hostname. Reach the
-dashboard by a different name and the session cookie lands on the wrong host and
-you appear logged out.
-
-Widget API keys go in `services.yaml`, which is mode 600 and deliberately not in
-this repo. `examples/homepage/` holds sanitised copies. The Immich key needs only
-`server.statistics`; Portainer needs the environment id from `/api/endpoints`,
-which is not always 2.
-
 ### Kavita
 
 Every book must sit in **its own folder**. Kavita refuses a library that has
@@ -467,9 +450,9 @@ covers and descriptions.
 For a comic library pick the type **Comic (Flexible)**, not **Comic** — the
 latter is the strict ComicVine naming scheme and will misparse ordinary files.
 
-The Homepage widget needs an API key from **avatar > Settings > Account > API
+The dashboard tile needs an API key from **avatar > Settings > Account > API
 Key**, which is empty until you generate it. It shows two numbers, series count
-and file count — there is no queue or activity to display like the *arr widgets.
+and file count — there is no queue or activity to display like the *arr tiles.
 
 ### Audiobookshelf
 
@@ -610,12 +593,11 @@ a base URL — Immich and Portainer do not. Ports work with every app unchanged,
 so the rule is the HTTP port plus 10000. The *same* port cannot be reused:
 Docker publishes on `0.0.0.0`, which already includes the Tailscale address.
 
-**Homepage is deliberately excluded.** It pins its login callback to one
-hostname via `HOMEPAGE_EXTERNAL_URL`. Serve it under a second name and signing
-in bounces silently back to the login page — the cookie is set for a host the
-browser is not on, and nothing logs an error. It also gains nothing, because
-`aboriis-pi` already resolves on the LAN via mDNS and over the tailnet via
-MagicDNS. One name that works everywhere is what a pinned callback wants.
+**The dashboard is not served here, and 443 is free.** Glance is on port 80 and
+published on `0.0.0.0`, so the tailnet name already opens it over plain HTTP.
+443 is the obvious place to front it with TLS — the front door should answer at
+the bare hostname — but that is a decision about Glance's own sign-in and has
+not been made yet.
 
 **The LAN is untouched** and still plain HTTP on the original ports. That is
 deliberate: local access must keep working when the internet is down.
@@ -689,11 +671,11 @@ curl -T notatar.gz  -H "X-Backup-Key: $KEY" ...
 curl -T good.tar.gz ...            # no key at all
 ```
 
-### Homepage — widget gotchas
+### Dashboard — process tile gotchas
 
-**The process tile's order comes from glances, not from Homepage.** The widget
-shows the first few entries in the order the API hands them over and does no
-sorting of its own — there is no option for it. `--sort-processes
+**The process tile's order comes from glances, not from the dashboard.** The
+tile shows the first few entries in the order the API hands them over and does
+no sorting of its own — there is no option for it. `--sort-processes
 memory_percent` on the glances container is the only way to change it. Memory is
 the better default here: CPU is spiky, so whatever happens to be busy the
 instant the page loads wins, while memory is the constrained resource on 8 GB
@@ -768,8 +750,9 @@ Set the admin password within a few minutes of first start or it locks itself.
 Do not trust "the container is running".
 
 ```bash
-# containerd really is on the disk, not the card
-docker exec homepage grep -oE "upperdir=[^,]*" /proc/mounts
+# containerd really is on the disk, not the card. Any container with a shell
+# will do - glance is a static binary and has none.
+docker exec radarr grep -oE "upperdir=[^,]*" /proc/mounts
 
 # hardlinks work, so imports do not duplicate
 docker exec radarr sh -c "touch /data/torrents/movies/.t && ln /data/torrents/movies/.t /data/library/movies/.t && echo OK; rm -f /data/torrents/movies/.t /data/library/movies/.t"

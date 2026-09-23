@@ -1,18 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # glance — the dashboard, on port 80, so http://aboriis-pi/ opens it.
-# Homepage is still running on 3000 and stays there until it is clear that
-# nothing here is missing.
 #
-# Why it took over: Homepage is groups of equal tiles in rows, and the only
-# way past that is custom.css. Glance is a single Go binary with a YAML
+# Why it replaced Homepage: Homepage is groups of equal tiles in rows, and the
+# only way past that is custom.css. Glance is a single Go binary with a YAML
 # config whose custom-api widget renders a template you write, server-side,
 # as real HTML - so a tile can look exactly the way you want with no iframe
 # and no CSS hacks. It idles in a few tens of MB.
 #
 # The config is ONE file, glance.yml, at ${FOLDER_FOR_DATA}/glance. The
-# reference copy lives in examples/glance/ in this repo and mirrors the
-# Homepage dashboard: the same groups, links, status checks and the prayer
-# tile. Glance reloads the file on change, so editing it is the whole deploy.
+# reference copy lives in examples/glance/ in this repo. Glance reloads the
+# file on change, so editing it is the whole deploy.
 # ─────────────────────────────────────────────────────────────────────────────
 name: glance
 
@@ -28,17 +25,17 @@ services:
     volumes:
       - ${FOLDER_FOR_DATA:?err}/glance:/app/config
       # Read-only, purely so the server-stats widget reports the data disk
-      # and the SD card rather than the container's own filesystem - the same
-      # two mounts Homepage's resources widget uses, for the same reason.
-      # /var/lib/homepage-diskstat is an EMPTY directory on the root partition:
+      # and the SD card rather than the container's own filesystem.
+      # /var/lib/homepage-diskstat is an EMPTY directory on the root partition,
+      # named after the dashboard that first needed it:
       # statfs reports the filesystem containing a path, so this surfaces the
       # SD card without exposing anything on it.
       - /srv/storage:/srv/storage:ro
       - /var/lib/homepage-diskstat:/hostroot:ro
     environment:
       - TZ=${TIMEZONE:?err}
-      # The API keys the tiles use - the same ones the Homepage config holds,
-      # copied into the env file. Defaults to empty rather than :?err so the
+      # The API keys the tiles use, kept in the env file rather than in
+      # glance.yml. Defaults to empty rather than :?err so the
       # dashboard still starts with a key missing; that tile then shows an
       # error instead of the whole page failing.
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
@@ -54,9 +51,8 @@ services:
       - SPEEDTEST_API_KEY=${SPEEDTEST_API_KEY:-}
       - GLUETUN_API_KEY=${GLUETUN_API_KEY:-}
       - UPTIMEKUMA_SLUG=${UPTIMEKUMA_SLUG:-home-services}
-      # qBittorrent has no API key: the tile logs in with these, the same
-      # pair the Homepage widget used, and keeps the session cookie for the
-      # calls that follow. Never reaches the browser.
+      # qBittorrent has no API key: the tile logs in with these and keeps the
+      # session cookie for the calls that follow. Never reaches the browser.
       - QBIT_USER=${QBIT_USER:-}
       - QBIT_PASS=${QBIT_PASS:-}
       # Sign-in, once the two values exist - glance.yml says how to make
