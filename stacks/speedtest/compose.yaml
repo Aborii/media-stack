@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # speedtest-tracker — records the real internet speed on a schedule, and feeds
-# the Speedtest tile on Homepage.
+# the Speedtest tile on the dashboard.
 #
 # DELIBERATELY NOT BEHIND THE VPN. Everything in stacks/vpn shares gluetun's
 # network namespace; this does not. A speedtest run through the tunnel would

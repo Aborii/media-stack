@@ -38,7 +38,7 @@ services:
       # WebDAV, for e-reader apps that speak it but not SFTP — Moon+ Reader on
       # Android is why this exists. 10080 is SFTPGo's own default INSIDE the
       # container, but on the host that port already belongs to the TLS proxy's
-      # Homepage listener, so the published side is 10081.
+      # listener for the dashboard on port 80, so the published side is 10081.
       #
       # Unencrypted, like the two above: WebDAV authenticates with HTTP Basic,
       # so the password crosses the LAN base64-encoded rather than encrypted.

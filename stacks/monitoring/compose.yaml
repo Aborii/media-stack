@@ -91,7 +91,7 @@ services:
   # What's Up Docker. Watches every container's image for a newer tag or a
   # rebuilt digest and says so. Replaced Diun on 2026-09-03 for one reason: it
   # has a page. Diun could only talk; this lists every container with its
-  # running tag and the newest one at http://aboriis-pi:3002, and the Homepage
+  # running tag and the newest one at http://aboriis-pi:3002, and the dashboard
   # tile counts what is pending.
   #
   # REPORTS ONLY. There is deliberately no docker trigger, so it never pulls or
@@ -169,12 +169,12 @@ services:
     networks:
       - mediastack
 
-  # Host metrics the Homepage resources widget cannot reach: per-core CPU,
+  # Host metrics the dashboard's server-stats widget cannot reach: per-core CPU,
   # network throughput, disk I/O, process list.
   #
   # network_mode: host is required - on the bridge it would report the
   # CONTAINER's network counters, which is not what anyone wants from a system
-  # monitor. That means it is not on the mediastack network, so Homepage reaches
+  # monitor. That means it is not on the mediastack network, so Glance reaches
   # it through the bridge gateway instead of by name.
   #
   # --bind 172.28.10.1 keeps it on the docker gateway only. With host networking
@@ -189,7 +189,7 @@ services:
     environment:
       - TZ=${TIMEZONE:?err}
       # --sort-processes decides the order of /api/4/processlist, and the
-      # Homepage process widget simply shows the first few in the order glances
+      # dashboard process tile simply shows the first few in the order glances
       # hands them over - it does no sorting of its own and has no option to.
       # So this flag is the only way to change what that tile shows.
       #
@@ -214,7 +214,7 @@ services:
       # it is reachable only from inside the mediastack network - and this
       # container is on host networking, so it cannot see it. Handing glances
       # the raw socket instead would give a monitoring tool full control of the
-      # daemon. Container state is already covered by Homepage, Dozzle and
+      # daemon. Container state is already covered by Glance, Dozzle and
       # Portainer; what glances is here for is HOST metrics.
     volumes:
       - /:/rootfs:ro
@@ -222,7 +222,7 @@ services:
   # A SECOND glances, for exactly one reason: --sort-processes is a LAUNCH FLAG,
   # not an API parameter. /api/4/processlist always comes back in the order the
   # running instance was told to sort in, a ?sort= query string is ignored, and
-  # the Homepage process widget does no sorting of its own - it calls splice()
+  # the dashboard process tile does no sorting of its own - it calls splice()
   # on whatever order it is handed. So a CPU-ordered tile and a memory-ordered
   # tile cannot share one instance. It is two processes or it is one tile.
   #
@@ -255,13 +255,13 @@ services:
   # rather than needing an ssh tunnel every time.
   #
   # Why a separate container instead of just giving glances a password: glances
-  # binds ONE address, and that address (172.28.10.1) is what both Homepage
+  # binds ONE address, and that address (172.28.10.1) is what both dashboard
   # tiles read. Changing it to reach a browser would break them; adding auth to
   # it would make them carry credentials. A proxy in front changes neither -
   # stop this container and the tiles are completely unaffected.
   #
   # Published on ALL interfaces, so http://aboriis-pi:61210 works from the LAN
-  # and the Homepage tiles can link to it. This was a deliberate choice made
+  # and the dashboard tiles can link to it. This was a deliberate choice made
   # knowing the trade-off: the wifi here is an open network (see the glances
   # notes above), and the login form posts over plain http, so the password
   # crosses the LAN unencrypted at sign-in. The gate itself still stands; it is

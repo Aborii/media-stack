@@ -34,6 +34,9 @@ HTTP = [
     ("Audiobookshelf", "http://audiobookshelf:80/healthcheck",      OK2XX),
     ("Pinchflat",      "http://pinchflat:8945/healthcheck",         OK2XX),
     ("MeTube",         "http://metube:8081/",                       OK2XX),
+    # The dashboard. Not "/", which 303s to the login page once auth is on -
+    # /api/healthz answers 200 and needs no session.
+    ("Glance",         "http://glance:8080/api/healthz",            OK2XX),
     ("Portainer",      "http://portainer:9000/api/system/status",   OK2XX),
     ("Tdarr",          "http://tdarr:8265/",                        OK2XX),
     ("Dozzle",         "http://dozzle:8080/healthcheck",            OK2XX),
@@ -41,9 +44,6 @@ HTTP = [
     ("Scrutiny",       "http://scrutiny:8080/",                     OK3XX),
     ("Bazarr",         "http://bazarr:6767/",                       OK4XX),
 ]
-# Homepage rejects unknown Host headers with 400, so an HTTP check would report
-# it permanently down. A TCP check on the port is the honest signal.
-PORT = [("Homepage", "homepage", 3000)]
 
 api = UptimeKumaApi("http://127.0.0.1:3001", wait_events=0.5)
 api.login(sys.argv[1], sys.argv[2])
@@ -64,14 +64,6 @@ try:
                             accepted_statuscodes=codes)
         ids.append(r["monitorID"]); time.sleep(0.3)
         print("  added  %-16s %s" % (name, url))
-
-    for name, host, port in PORT:
-        if name in existing:
-            print("  skip   %s (exists)" % name); ids.append(existing[name]); continue
-        r = api.add_monitor(type=MonitorType.PORT, name=name, hostname=host,
-                            port=port, interval=60, retryInterval=60, maxretries=2)
-        ids.append(r["monitorID"]); time.sleep(0.3)
-        print("  added  %-16s tcp %s:%d" % (name, host, port))
 
     print("")
     print("  %d monitors" % len(ids))

@@ -1,6 +1,6 @@
 ###########################################################################
 ##
-##  Dashboard, container UI and the transcode queue.
+##  Container UI and the transcode queue.
 ##
 ##  Part of the mediastack network, which is shared by every stack and
 ##  created outside them - so containers still reach each other by name
@@ -12,52 +12,6 @@
 ###########################################################################
 
 services:
-  homepage:
-    image: ghcr.io/gethomepage/homepage:latest
-    container_name: homepage
-    restart: unless-stopped
-    volumes:
-      - ${FOLDER_FOR_DATA:?err}/homepage:/app/config
-      # Read-only, purely so the disk-usage widget reports the real
-      # figures rather than the container's own filesystem.
-      - /srv/storage:/srv/storage:ro
-      # An EMPTY directory on the root partition. statfs reports the filesystem
-      # containing a path, so this surfaces the SD card usage without exposing
-      # anything - mounting host / would have worked but shows far too much.
-      # Without it a filling SD card gives no warning until the Pi stops.
-      - /var/lib/homepage-diskstat:/hostroot:ro
-    environment:
-      - PUID=${PUID:?err}
-      - PGID=${PGID:?err}
-      - UMASK=${UMASK:?err}
-      - TZ=${TIMEZONE:?err}
-      # Required since v0.9: without it Homepage refuses requests whose
-      # Host header it does not recognise, and you get a blank page.
-      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS:-*}
-      # Authentication. Two reasons, not one:
-      #
-      #  1. The dashboard answered 200 with no credentials to anyone on the
-      #     wifi - an open network - handing over a full index of every service
-      #     with working links to Portainer and the arr apps.
-      #  2. Homepage serves custom.js ONLY to authenticated users. Without auth
-      #     the file is served but never referenced in the page, so the script
-      #     that makes links follow the host you arrived on never ran.
-      #
-      # Secrets live in docker-compose.env, which is gitignored.
-      - HOMEPAGE_AUTH_ENABLED=${HOMEPAGE_AUTH_ENABLED:-false}
-      - HOMEPAGE_AUTH_PASSWORD=${HOMEPAGE_AUTH_PASSWORD:-}
-      - HOMEPAGE_AUTH_SECRET=${HOMEPAGE_AUTH_SECRET:-}
-      - HOMEPAGE_EXTERNAL_URL=${HOMEPAGE_EXTERNAL_URL:-}
-    ports:
-      # 3000, not 80: Glance is the dashboard now and holds port 80. Homepage
-      # stays up beside it, so nothing is lost while it is still the one being
-      # relied on. Every name it is reached by, port included, has to appear in
-      # HOMEPAGE_ALLOWED_HOSTS or it answers 400.
-      - "${WEBUI_PORT_HOMEPAGE:?err}:3000"
-    networks:
-      - mediastack
-
-
   dockerproxy:
     image: tecnativa/docker-socket-proxy:latest
     container_name: dockerproxy

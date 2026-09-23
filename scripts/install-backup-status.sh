@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install and start the backup status service that feeds the Homepage tile.
+# Install and start the backup status service that feeds the dashboard tile.
 #
 # Separate from the unit file so the command you type stays short. A long
 # ssh one-liner full of && and quotes is passed through two shells before it

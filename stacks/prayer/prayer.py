@@ -3,7 +3,7 @@
 #
 # A port of the fetching-and-caching half of the ESP32 prayer clock
 # (esp32-st7789-display, src/prayer.cpp) to a container on the Pi, so the
-# Homepage dashboard can carry a prayer-times tile without a second device
+# dashboard can carry a prayer-times tile without a second device
 # doing the same work. Only the IACAD source is ported: it is the official
 # Dubai timetable and the one the panel actually runs on. The firmware's other
 # two sources - Aladhan and an on-device calculation - exist for travelling,
@@ -677,7 +677,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.route(head=False)
 
-    # Homepage's siteMonitor probes with HEAD first and only falls back to GET
+    # A dashboard site monitor probes with HEAD first and only falls back to GET
     # when it has to. Without this, BaseHTTPRequestHandler answers HEAD with
     # 501 and the tile's status dot goes red against a container that is
     # serving perfectly.
@@ -708,7 +708,7 @@ class Handler(BaseHTTPRequestHandler):
         if not head:
             self.wfile.write(body)
 
-    # Homepage polls every few seconds; a line per poll would bury the lines
+    # The dashboard polls every few seconds; a line per poll would bury the lines
     # that matter. Fetches and failures log themselves above.
     def log_message(self, fmt, *args):
         pass

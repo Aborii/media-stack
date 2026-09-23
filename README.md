@@ -62,10 +62,9 @@ docker compose down
 | **YouTube** | pinchflat | 8945 | downloads channels and playlists into `library/youtube` for Sonarr to import; on the `dev` tag, see `REBUILD.md` |
 | | metube | 8082 | one-off downloads of any link into `youtube/` |
 | **Management** | glance | 80 | the dashboard, sign-in required |
-| | homepage | 3000 | the dashboard Glance replaced, still running until it is clearly not needed |
 | | portainer | 9000 | container management |
 | | tdarr | 8265 | transcode queue; the encoding runs on the node on the Windows desktop. How to use it: [TDARR.md](TDARR.md) |
-| **Monitoring** | uptime-kuma | 3001 | 15 service checks |
+| **Monitoring** | uptime-kuma | 3001 | 16 service checks |
 | | scrutiny | 8081 | drive SMART health |
 | | dozzle | 8888 | live container logs |
 | | glances | - | host metrics, bound to the docker gateway |
@@ -178,7 +177,6 @@ Notable gluetun settings, and why:
 | `vpn-health.sh` | Tells a genuine VPN drop apart from a reboot. |
 | `qbit-port-sync.sh` | Pushes Proton's forwarded port into qBittorrent, which changes on every reconnect. |
 | `post-boot-check.sh` | What to run after a reboot, since services take ~8 minutes to fully answer. |
-| `sync-homepage-examples.py` | Copies the live dashboard config into `examples/`, stripping secrets. |
 | `uptime-kuma-*.py` | Recreate the monitors, notifications and status page. |
 | `reorganise-media.sh` | One-off, reshapes a migrated media tree into the layout above. `--dry-run`, and refuses to run during a transfer. |
 
@@ -231,8 +229,8 @@ drops, which is a poor failure mode for local storage.
 **Use `http://aboriis-pi` everywhere**, not the long tailnet name and not
 `.local`. It is the only form that resolves in all three cases - the router
 answers for the DHCP hostname at home, mDNS covers it as a fallback, and
-MagicDNS covers it remotely. It also keeps the Homepage auth cookie on one host,
-which `HOMEPAGE_EXTERNAL_URL` pins to a single name.
+MagicDNS covers it remotely. It also keeps the dashboard's sign-in cookie on one
+host, so a session follows you between home and the tailnet.
 
 | Reachable at | |
 |---|---|
@@ -250,10 +248,6 @@ the dashboard had no way to tell which. `REBUILD.md` has the reasoning.
 
 `.local` is mDNS - a local broadcast that cannot cross Tailscale - so links
 built on it work at home and die remotely.
-
-**Homepage needs every name added to `HOMEPAGE_ALLOWED_HOSTS`.** It rejects any
-Host header it does not recognise with a blank 400, which looks like the
-service being down. The tailnet IP and MagicDNS name are both listed there.
 
 **Subnet routing is advertised but needs approving** in the Tailscale admin
 console under Machines → aboriis-pi → Edit route settings. Until then the Pi

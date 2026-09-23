@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Backup state as JSON for Homepage, plus a small page with a Run button.
+"""Backup state as JSON for the dashboard, plus a small page with a Run button.
 
 WHY THIS SITS ON THE PI
 
-Pointing Homepage straight at the receiver on the PC breaks the moment the PC
+Pointing the dashboard straight at the receiver on the PC breaks the moment the PC
 sleeps, which is most of the time - the tile would read as an error when the
 backups are perfectly healthy and simply waiting. So the Pi answers instead. It
 knows everything about the queue, and asks the PC only for what it cannot know

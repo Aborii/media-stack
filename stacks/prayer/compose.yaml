@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # prayer — Dubai prayer times from IACAD, cached a year ahead, feeding the
-# Prayer times tile on Homepage.
+# Prayer times tile on the dashboard.
 #
 # A port of the fetching and caching half of the ESP32 prayer clock
 # (esp32-st7789-display). The panel on the desk keeps doing its own fetching;

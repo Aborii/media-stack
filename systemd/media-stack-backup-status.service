@@ -1,9 +1,9 @@
 [Unit]
-Description=Serve backup queue and offsite status as JSON for the Homepage dashboard
+Description=Serve backup queue and offsite status as JSON for the dashboard
 # It reads the staging directory and asks the receiver over the tailnet, so it
 # wants the network up - but it must not FAIL without it. An unreachable PC is a
 # field in the response, not an error, which is the whole reason this sits on
-# the Pi rather than pointing Homepage at the PC directly.
+# the Pi rather than pointing the dashboard at the PC directly.
 After=network-online.target tailscaled.service
 Wants=network-online.target
 
