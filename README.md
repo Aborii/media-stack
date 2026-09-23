@@ -241,6 +241,7 @@ which `HOMEPAGE_EXTERNAL_URL` pins to a single name.
 | Immich | `:2283` |
 | Jellyfin | `:8096` |
 | Uptime Kuma | `:3001` |
+| Dawarich | `:3004` |
 
 `scripts/tailscale-https.sh` can put the same services behind real certificates
 on the tailnet, on the normal port plus 10000. It is **switched off** - it worked,

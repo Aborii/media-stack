@@ -357,6 +357,48 @@ pages:
                   </div>
                   <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
                   </a>
+              # Dawarich, the location history. It sits beside Immich because
+              # the two are joined at the hip here: Dawarich reads the GPS out
+              # of the Immich library and draws those photos on the map.
+              #
+              # DAWARICH_API_KEY is not an admin key like the others. Dawarich
+              # issues one per user, on the account page at /users/edit, and it
+              # returns only that user's own numbers.
+              #
+              # `dawarich_app` HAS TO BE IN DAWARICH_HOSTS, and this is the one
+              # thing to know about this tile. Rails checks the Host header and
+              # answers a bare 403 for a name that is not on that list, which is
+              # exactly what a request addressed to the container by name is -
+              # and /api/v1/health answers 200 regardless, so the tile happily
+              # reported OK while printing three zeros. That is why the last
+              # line below prints the stats call's own status when it is not
+              # 200, rather than trusting the health check alone.
+              #
+              # An hour's cache. These figures move when the phone uploads a
+              # batch, which is minutes at best, and none of it is worth a round
+              # trip on every page load.
+              - type: custom-api
+                title: Dawarich
+                title-url: http://aboriis-pi:3004
+                cache: 1h
+                url: http://dawarich_app:3000/api/v1/stats
+                headers:
+                  Authorization: Bearer ${DAWARICH_API_KEY}
+                  Accept: application/json
+                template: |
+                  {{ $t0 := now }}{{ $h := newRequest "http://dawarich_app:3000/api/v1/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
+                  {{ $y := (now).Format "2006" }}{{ $yk := 0.0 }}{{ range .JSON.Array "yearlyStats" }}{{ if eq (printf "%d" (.Int "year")) $y }}{{ $yk = .Float "totalDistanceKm" }}{{ end }}{{ end }}
+                  <a href="http://aboriis-pi:3004" class="block" style="color:inherit;text-decoration:none">
+                  <div class="flex items-center gap-10">
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/dawarich.svg" alt="" style="width:34px;height:34px;flex:none">
+                    <div class="grow flex justify-between text-center">
+                      <div><div class="color-highlight size-h3">{{ .JSON.Int "totalPointsTracked" | formatNumber }}</div><div class="size-h6">POINTS</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.0f" (.JSON.Float "totalDistanceKm") }}</div><div class="size-h6">KM TOTAL</div></div>
+                      <div><div class="color-highlight size-h3">{{ printf "%.0f" $yk }}</div><div class="size-h6">KM IN {{ $y }}</div></div>
+                    </div>
+                  </div>
+                  <p class="size-h6 margin-top-10">{{ if eq $h.Response.StatusCode 200 }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">DOWN {{ $h.Response.StatusCode }}</span>{{ end }}{{ if ne .Response.StatusCode 200 }} <span class="color-negative">&middot; STATS {{ .Response.StatusCode }}</span>{{ end }} <span class="color-paragraph">&middot; {{ $ms }} ms</span></p>
+                  </a>
 
           # ── Automation ──
           - type: split-column
