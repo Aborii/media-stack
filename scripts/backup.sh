@@ -396,14 +396,17 @@ fi
 
 # Read from the markers the flush leaves, rather than from its exit code: 0
 # covers both "delivered" and "the PC is off", and those are different news.
-if [ -f "$ARCHIVE.sent" ]; then
+# A failed tar is checked first: it leaves a partial archive with no checksum,
+# which the flush marks bad, and reading that marker would blame the PC for a
+# file it never saw.
+if [ "$archive_line" = "not built" ]; then
+  delivery="Nothing delivered - the archive was not built."
+elif [ -f "$ARCHIVE.sent" ]; then
   delivery="Delivered to the PC."
 elif [ -f "$ARCHIVE.bad" ]; then
   delivery="REFUSED by the PC - it will not be retried."
-elif [ -f "$ARCHIVE" ]; then
-  delivery="Not delivered yet - the PC did not answer. Retried every 30 minutes."
 else
-  delivery="Nothing to deliver."
+  delivery="Not delivered yet - the PC did not answer. Retried every 30 minutes."
 fi
 
 echo

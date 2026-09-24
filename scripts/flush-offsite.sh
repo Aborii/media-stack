@@ -157,14 +157,19 @@ for a in "${pending[@]}"; do
   # whole point. A 400 means this archive is bad and must stop being retried; a
   # 401 means the KEY is wrong and every archive will fail, so marking them bad
   # would destroy the queue over a config mistake. Those must not read alike.
-  err=$(mktemp)
-  code=$(curl -sS --max-time 3600 -o /dev/null -w '%{http_code}' -T "$a" \
+  #
+  # The body is kept because the receiver puts the reason for a refusal in it -
+  # "checksum mismatch", "too large". curl's stderr is empty on an ordinary 400,
+  # so without the body a refusal reads as a bare status code.
+  err=$(mktemp); body=$(mktemp)
+  code=$(curl -sS --max-time 3600 -o "$body" -w '%{http_code}' -T "$a" \
     -H "X-Backup-Key: $(cat "$UPLOAD_KEY_FILE")" \
     -H "X-Backup-Name: $name" \
     -H "X-Backup-Sha256: $sha" \
     "$UPLOAD_URL" 2>"$err") && rc=0 || rc=$?
-  detail=$(tr -d '\r' < "$err" | tail -1)
-  rm -f "$err"
+  detail=$(tr -d '\r' < "$body" | head -c 200 | tr '\n' ' ' | sed 's/ *$//')
+  [ -n "$detail" ] || detail=$(tr -d '\r' < "$err" | tail -1)
+  rm -f "$err" "$body"
 
   case "$code" in
     200)
