@@ -61,7 +61,7 @@ mode 600.
 | SHA-256 matches the declared value | `400 checksum mismatch` |
 | gzip magic bytes | `400 not a gzipped tar` |
 | `ustar` marker at offset 257 inside | `400 not a gzipped tar` |
-| between 1 MB and 4 GB | `400 too small` / `413 too large` |
+| between 1 MB and 8 GB | `400 too small` / `413 too large` |
 
 Verified against all six. A rejected upload is deleted from `.incoming` rather
 than left behind looking plausible.

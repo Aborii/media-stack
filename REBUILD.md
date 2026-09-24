@@ -636,6 +636,20 @@ models — and is excluded. What is protected is the roughly 1 GB of
 configuration. Losing artwork costs time after a restore; losing a config file
 costs an evening remembering what was in it.
 
+That list needs keeping up. New apps bring new caches and new databases, and
+twice the archive crept past 4 GB unnoticed: first a Docker registry cache, then
+Jellyfin's trickplay images and extracted subtitles. Every Postgres the stack
+runs also needs a `dump_db` line in `backup.sh` and its data directory in
+`EXCLUDES` — Dawarich ran for weeks with its live data directory copied
+file-by-file and no dump at all. The archive warning (below) is what now
+catches the size half of that.
+
+Each run posts to the Telegram backups topic (`TELEGRAM_TOPIC_BACKUPS` in
+`docker-compose.env`, same bot and group as the arr apps): OK or FAILED with
+the archive size, the dumps and whether it reached the PC; a separate warning
+when the archive passes 4 GB; and a message if a run dies partway. The PC's
+hard cap is 8 GB, so the warning arrives with room to act.
+
 **All of that still lands on the disk it is backing up.** So the last step packs
 the newest snapshot plus that run's dumps into one dated `.tar.gz`, checksums
 it, and uploads it to the PC.

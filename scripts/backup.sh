@@ -44,6 +44,40 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo - the database directories are not readable otherwise" >&2; exit 1; }
 
+# ------------------------------------------------------------------ reporting
+# Every run reports to the Telegram "backups" topic: OK, FAILED, or stopped
+# early. Stopped early matters most. set -e ends this script on any unexpected
+# error, and a backup that quietly stops being taken is exactly the failure this
+# script family exists to catch - so the EXIT trap turns it into a message
+# naming the stage it died in.
+TG_HELPER="$(dirname "$0")/notify-telegram.sh"
+if [ -f "$TG_HELPER" ]; then
+  # shellcheck source=notify-telegram.sh
+  . "$TG_HELPER"
+else
+  tg_backup() { :; }
+  echo "  notify-telegram.sh missing at $TG_HELPER - this run will not be reported" >&2
+fi
+# The size the archive is meant to stay under. Passing it still delivers - the
+# receiver's hard cap is 8 GB - but it posts a warning, so the growth is found
+# and trimmed while there is still room. Both earlier times the archive grew
+# past 4 GB (a Docker registry cache, then Jellyfin's caches) it was only
+# noticed when the receiver was about to refuse it.
+WARN_BYTES=${WARN_BYTES:-$((4 * 1024 * 1024 * 1024))}
+HOST=$(hostname)
+stage="checking the destination"
+problems=()
+dump_report=()
+reported=0
+problem() { note "$*"; problems+=("$*"); fail=1; }
+on_exit() {
+  local rc=$?
+  [ "$reported" = "1" ] && return
+  tg_backup "Backup FAILED on $HOST - stopped early (exit $rc) while $stage.
+Run $STAMP. Details: journalctl -u media-stack-backup.service"
+}
+trap on_exit EXIT
+
 # The source used to live on the same disk as DEST, so an unmounted data disk
 # produced an empty source and the run failed safely. It does not any more:
 # appdata is on the NVMe and is always there, so with the disk unmounted this
@@ -74,7 +108,11 @@ while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); do
 EXCLUDES=(
   'immich/postgres/'              # dumped below, and unsafe to copy live
   'postgres17/data/'              # dumped below, and unsafe to copy live
+  'dawarich/db/'                  # dumped below, and unsafe to copy live
   'immich/server/encoded-video/'  # 19G  video transcodes
+  'jellyfin/data/data/trickplay/' # 1.0G scrub-bar preview images, rebuilt by Jellyfin's scheduled task
+  'jellyfin/data/data/subtitles/' # 840M subtitles pulled out of the video files, re-extracted on demand
+  'ollama/models/'                # 260M embedding model, re-pulled by ollama
   'jellyfin/data/metadata/'       # 12G  posters, fanart, backdrops
   'registry/'                     # 2.1G pull-through cache of Docker Hub, re-pulled on demand
   'radarr/MediaCover/'            # 2.1G movie posters
@@ -92,38 +130,52 @@ fail=0
 note() { printf '  %s\n' "$*"; }
 
 # ------------------------------------------------------------------ databases
+stage="dumping the databases"
 echo "== database dumps =="
 
-if docker ps --format '{{.Names}}' | grep -qx immich_postgres; then
-  U=$(docker inspect immich_postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')
-  D=$(docker inspect immich_postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')
-  out="$DEST/dumps/immich-$STAMP.sql.gz"
-  if docker exec immich_postgres pg_dump -U "$U" -d "$D" 2>/dev/null | gzip > "$out"; then
-    note "immich      $(du -h "$out" | cut -f1)"
-  else
-    note "immich      FAILED"; fail=1
+# One function for every database, so the next one added cannot get a subtly
+# different copy of the logic. Each Postgres here runs in its own container
+# and owns its data directory, which is excluded from the appdata copy above:
+# a live data directory copied file by file can capture a torn state that will
+# not replay. Dawarich ran for weeks with its data directory copied that way
+# and no dump at all, because each database used to be spelled out by hand.
+#
+# $3 is the tool. pg_dump for a database that owns its container; pg_dumpall
+# for the shared cluster, where roles and grants matter as much as the data -
+# a per-database dump restored into a cluster with no matching roles fails on
+# every GRANT.
+dump_db() {
+  local name=$1 container=$2 tool=$3 cvars U D out
+  if ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
+    note "$(printf '%-11s' "$name") container not running - skipped"
+    dump_report+=("$name skipped (not running)")
+    return 0
   fi
-else
-  note "immich      container not running - skipped"
-fi
+  cvars=$(docker inspect "$container" --format '{{range .Config.Env}}{{println .}}{{end}}')
+  U=$(sed -n 's/^POSTGRES_USER=//p' <<<"$cvars")
+  D=$(sed -n 's/^POSTGRES_DB=//p' <<<"$cvars")
+  out="$DEST/dumps/$name-$STAMP.sql.gz"
+  if [ "$tool" = pg_dumpall ]; then
+    set -- pg_dumpall -U "$U"
+  else
+    set -- pg_dump -U "$U" -d "$D"
+  fi
+  if docker exec "$container" "$@" 2>/dev/null | gzip > "$out"; then
+    note "$(printf '%-11s' "$name") $(du -h "$out" | cut -f1)"
+    dump_report+=("$name $(du -h "$out" | cut -f1)")
+  else
+    problem "$(printf '%-11s' "$name") dump FAILED"
+    dump_report+=("$name FAILED")
+  fi
+}
 
-if docker ps --format '{{.Names}}' | grep -qx postgres17; then
-  U=$(docker inspect postgres17 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')
-  out="$DEST/dumps/postgres17-$STAMP.sql.gz"
-  # pg_dumpall, not pg_dump: this is a shared cluster, so roles and grants
-  # matter as much as the data. A per-database dump restored into a cluster
-  # with no matching roles fails on every GRANT.
-  if docker exec postgres17 pg_dumpall -U "$U" 2>/dev/null | gzip > "$out"; then
-    note "postgres17  $(du -h "$out" | cut -f1)"
-  else
-    note "postgres17  FAILED"; fail=1
-  fi
-else
-  note "postgres17  container not running - skipped"
-fi
+dump_db immich     immich_postgres pg_dump
+dump_db postgres17 postgres17      pg_dumpall
+dump_db dawarich   dawarich_db     pg_dump
 
 # A truncated gzip still leaves a file behind, and a backup you cannot restore
 # is worse than none because you stop worrying about it.
+stage="verifying the dumps"
 echo
 echo "== verifying dumps =="
 for f in "$DEST"/dumps/*-"$STAMP".sql.gz; do
@@ -131,11 +183,12 @@ for f in "$DEST"/dumps/*-"$STAMP".sql.gz; do
   if gzip -t "$f" 2>/dev/null && [ "$(stat -c %s "$f")" -gt 10240 ]; then
     note "$(basename "$f")  OK"
   else
-    note "$(basename "$f")  CORRUPT OR EMPTY"; fail=1
+    problem "$(basename "$f")  CORRUPT OR EMPTY"
   fi
 done
 
 # ------------------------------------------------------------------- appdata
+stage="copying appdata"
 echo
 echo "== appdata =="
 
@@ -148,7 +201,7 @@ du_args=()
 if [ "$FULL" = "1" ]; then
   note "FULL=1 - including derived data, this will be tens of GB"
   # even then, never copy a live database directory
-  for e in 'immich/postgres/' 'postgres17/data/'; do
+  for e in 'immich/postgres/' 'postgres17/data/' 'dawarich/db/'; do
     rsync_args+=(--exclude "$e"); du_args+=(--exclude "${e%/}")
   done
 else
@@ -184,15 +237,16 @@ note "source $(numfmt --to=iec "$src")  copy $(numfmt --to=iec "$dst")"
 # denied is not an error to rsync, which is why this script exists. Too large
 # means excluded paths are lingering in the destination.
 if [ "$dst" -lt $(( src * 95 / 100 )) ]; then
-  note "COPY IS SHORT - something was skipped"; fail=1
+  problem "COPY IS SHORT - something was skipped"
 elif [ "$dst" -gt $(( src * 120 / 100 )) ]; then
-  note "COPY IS LARGER THAN THE SOURCE - stale excluded paths are lingering"; fail=1
+  problem "COPY IS LARGER THAN THE SOURCE - stale excluded paths are lingering"
 fi
 
 # ------------------------------------------------------------------- rotate
+stage="rotating old backups"
 echo
 echo "== rotation (keeping $KEEP of each) =="
-for p in immich postgres17; do
+for p in immich postgres17 dawarich; do
   n=$(ls -1t "$DEST"/dumps/$p-*.sql.gz 2>/dev/null | wc -l || true)
   if [ "$n" -gt "$KEEP" ]; then
     ls -1t "$DEST"/dumps/$p-*.sql.gz | tail -n +$((KEEP + 1)) | xargs -r rm --
@@ -227,6 +281,7 @@ fi
 #
 # Tar as root, then hand ownership to the login user so the archive can be read
 # and checked without privilege afterwards.
+stage="building the offsite archive"
 echo
 echo "== offsite archive =="
 OFFSITE="$DEST/offsite"
@@ -286,13 +341,24 @@ sys_excludes=(
 # --warning=no-file-changed: /home is live and files WILL move under tar. That
 # is a warning, not a failure, and letting it set a non-zero exit would hide
 # the failures that do matter.
+archive_line="not built"
 if tar czf "$ARCHIVE" "${sys_excludes[@]}" --warning=no-file-changed "${tar_args[@]}" 2>/dev/null; then
   sha256sum "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
   chown "$OWNER":"$OWNER" "$ARCHIVE" "$ARCHIVE.sha256"
   chmod 640 "$ARCHIVE"; chmod 644 "$ARCHIVE.sha256"
-  note "$(basename "$ARCHIVE")  $(du -h "$ARCHIVE" | cut -f1)"
+  size=$(stat -c %s "$ARCHIVE")
+  archive_line="$(basename "$ARCHIVE"), $(numfmt --to=iec "$size")"
+  note "$(basename "$ARCHIVE")  $(numfmt --to=iec "$size")"
+  # Posted now, not folded into the summary, so it arrives even if the upload
+  # below hangs for an hour.
+  if [ "$size" -gt "$WARN_BYTES" ]; then
+    note "ARCHIVE IS OVER $(numfmt --to=iec "$WARN_BYTES") - find what grew"
+    tg_backup "Backup WARNING on $HOST: the archive is $(numfmt --to=iec "$size"), over the $(numfmt --to=iec "$WARN_BYTES") line.
+$(basename "$ARCHIVE")
+It will still be delivered - the PC accepts up to 8G - but something in appdata grew. Compare it with an older archive and exclude whatever its app can rebuild."
+  fi
 else
-  note "ARCHIVE FAILED"; fail=1
+  problem "ARCHIVE FAILED"
 fi
 
 # --- hand it to the offsite flush -------------------------------------------
@@ -314,19 +380,51 @@ fi
 # Its exit status reports on the QUEUE, not on this backup. A refused archive is
 # worth surfacing; the PC being off is not, and the flush already exits 0 for
 # that case precisely because the local backup has succeeded by this point.
+#
+# FLUSH_QUIET_NAME: the flush posts to Telegram when it delivers an archive the
+# timer picked up later, but this run's own delivery goes in the summary below,
+# so it is told not to post that one twice. Refusals it always posts itself.
+stage="handing the archive to the offsite flush"
 FLUSH=${FLUSH:-$(dirname "$0")/flush-offsite.sh}
 if [ -x "$FLUSH" ]; then
   echo
-  "$FLUSH" || fail=1
+  FLUSH_QUIET_NAME=$(basename "$ARCHIVE") "$FLUSH" || problem "offsite flush reported a problem - see its lines above"
 else
   echo
-  note "flush-offsite.sh missing at $FLUSH - archive is staged but NOT sent"
-  fail=1
+  problem "flush-offsite.sh missing at $FLUSH - archive is staged but NOT sent"
+fi
+
+# Read from the markers the flush leaves, rather than from its exit code: 0
+# covers both "delivered" and "the PC is off", and those are different news.
+if [ -f "$ARCHIVE.sent" ]; then
+  delivery="Delivered to the PC."
+elif [ -f "$ARCHIVE.bad" ]; then
+  delivery="REFUSED by the PC - it will not be retried."
+elif [ -f "$ARCHIVE" ]; then
+  delivery="Not delivered yet - the PC did not answer. Retried every 30 minutes."
+else
+  delivery="Nothing to deliver."
 fi
 
 echo
 echo "== total =="
 note "$(du -sh "$DEST" | cut -f1) in $DEST"
+
+# ------------------------------------------------------------------- report
+dumps_line=$(printf '%s, ' "${dump_report[@]}"); dumps_line=${dumps_line%, }
+if [ "$fail" -eq 0 ]; then status="Backup OK"; else status="Backup FAILED"; fi
+msg="$status on $HOST - run $STAMP
+Archive: $archive_line
+$delivery
+Dumps: ${dumps_line:-none}
+appdata: source $(numfmt --to=iec "$src"), copy $(numfmt --to=iec "$dst")"
+if [ ${#problems[@]} -gt 0 ]; then
+  msg+=$'\nProblems:'
+  for p in "${problems[@]}"; do msg+=$'\n- '"$(echo "$p" | tr -s ' ')"; done
+  msg+=$'\nDetails: journalctl -u media-stack-backup.service'
+fi
+reported=1
+tg_backup "$msg"
 
 echo
 if [ "$fail" -eq 0 ]; then

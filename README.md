@@ -170,8 +170,9 @@ Notable gluetun settings, and why:
 
 | | |
 |---|---|
-| `backup.sh` | Nightly, as root. Dumps both databases, snapshots appdata, then packs a dated archive and hands it to the flush below. Root is not optional - see below. |
-| `flush-offsite.sh` | Sends any archive the PC has not accepted yet, newest first. Also runs on its own timer every 30 minutes, because the PC is rarely awake at 03:30. |
+| `backup.sh` | Nightly, as root. Dumps every database, snapshots appdata, then packs a dated archive and hands it to the flush below. Posts the result to the Telegram backups topic, and a warning when the archive passes 4 GB. Root is not optional - see below. |
+| `flush-offsite.sh` | Sends any archive the PC has not accepted yet, newest first. Also runs on its own timer every 30 minutes, because the PC is rarely awake at 03:30. Posts late deliveries, refusals, and archives still undelivered after two days. |
+| `notify-telegram.sh` | Sourced by the two above. Posts into `TELEGRAM_TOPIC_BACKUPS` with the shared bot, and never fails a backup because Telegram was unreachable. |
 | `install-offsite-flush.sh` | One-off. Installs and starts that timer. |
 | `tailscale-https.sh` | Puts every web UI behind a real certificate on the tailnet. |
 | `vpn-health.sh` | Tells a genuine VPN drop apart from a reboot. |
