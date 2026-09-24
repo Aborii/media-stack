@@ -57,7 +57,11 @@ const KEEP     = parseInt(process.env.BACKUP_KEEP || '7', 10);
 const KEY_FILE = process.env.BACKUP_KEY_FILE || path.join(HOME, 'receiver.key');
 
 const MIN_BYTES = 1 * 1024 * 1024;          // smaller than this is not a real backup
-const MAX_BYTES = 4 * 1024 * 1024 * 1024;   // refuse to be used as a disk filler
+// A hard ceiling, not the size budget. The archive is meant to stay under 4 GB,
+// and backup.sh posts a Telegram warning when it passes that, so the growth is
+// seen and trimmed while this still accepts it. When the ceiling itself was 4 GB
+// there was no room between "too big" and "refused and marked bad for good".
+const MAX_BYTES = 8 * 1024 * 1024 * 1024;   // refuse to be used as a disk filler
 const NAME_RE   = /^media-stack-\d{8}-\d{6}\.tar\.gz$/;
 
 const INCOMING = path.join(ARCHIVES, '.incoming');

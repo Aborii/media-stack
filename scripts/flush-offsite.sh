@@ -58,9 +58,31 @@ KEEP_RESOLVED=${KEEP_RESOLVED:-3}
 # a runaway, not to save space. Reaching it means the PC has been off a
 # fortnight and that deserves a loud line, not a silent delete.
 MAX_PENDING=${MAX_PENDING:-14}
+# An archive still undelivered after this long gets one Telegram warning. The PC
+# being off for a night is normal and says nothing; two days means the receiver
+# is probably dead, which is how delivery silently stopped for two days in
+# August while every tick logged "PC is probably off" with the PC on.
+STALE_HOURS=${STALE_HOURS:-48}
+# backup.sh reports its own archive's delivery in its summary, and names that
+# archive here so a successful send is not posted twice.
+FLUSH_QUIET_NAME=${FLUSH_QUIET_NAME:-}
 DRY=${DRY:-0}
 
 note() { printf '  %s\n' "$*"; }
+
+# Telegram, into the backups topic. The timer runs this every 30 minutes, so
+# anything that can repeat is posted ONCE, guarded by a marker beside the
+# archive (.warned, .stale-warned) or in the queue (.key-warned). Otherwise one
+# wrong key would post forty-eight identical messages a day.
+TG_HELPER="$(dirname "$0")/notify-telegram.sh"
+if [ -f "$TG_HELPER" ]; then
+  # shellcheck source=notify-telegram.sh
+  . "$TG_HELPER"
+else
+  tg_backup() { :; }
+fi
+[ "$DRY" = "1" ] && TG_DISABLE=1
+HOST=$(hostname)
 
 # Writability, not uid. The offsite directory is root-owned so in practice this
 # means sudo - but testing the queue logic against a scratch DEST you own should
@@ -122,6 +144,7 @@ for a in "${pending[@]}"; do
     note "$name  NO CHECKSUM - marking bad"
     : > "$a.bad"
     fail=1
+    tg_backup "Backup REFUSED on $HOST: $name has no checksum, so its build was interrupted. Marked bad, will not be sent."
     continue
   fi
 
@@ -134,20 +157,28 @@ for a in "${pending[@]}"; do
   # whole point. A 400 means this archive is bad and must stop being retried; a
   # 401 means the KEY is wrong and every archive will fail, so marking them bad
   # would destroy the queue over a config mistake. Those must not read alike.
-  err=$(mktemp)
-  code=$(curl -sS --max-time 3600 -o /dev/null -w '%{http_code}' -T "$a" \
+  #
+  # The body is kept because the receiver puts the reason for a refusal in it -
+  # "checksum mismatch", "too large". curl's stderr is empty on an ordinary 400,
+  # so without the body a refusal reads as a bare status code.
+  err=$(mktemp); body=$(mktemp)
+  code=$(curl -sS --max-time 3600 -o "$body" -w '%{http_code}' -T "$a" \
     -H "X-Backup-Key: $(cat "$UPLOAD_KEY_FILE")" \
     -H "X-Backup-Name: $name" \
     -H "X-Backup-Sha256: $sha" \
     "$UPLOAD_URL" 2>"$err") && rc=0 || rc=$?
-  detail=$(tr -d '\r' < "$err" | tail -1)
-  rm -f "$err"
+  detail=$(tr -d '\r' < "$body" | head -c 200 | tr '\n' ' ' | sed 's/ *$//')
+  [ -n "$detail" ] || detail=$(tr -d '\r' < "$err" | tail -1)
+  rm -f "$err" "$body"
 
   case "$code" in
     200)
       : > "$a.sent"
+      rm -f -- "$a.warned" "$OFFSITE/.key-warned"
       sent=$((sent + 1))
       note "$name  sent ($(du -h "$a" | cut -f1))"
+      [ "$name" != "$FLUSH_QUIET_NAME" ] && \
+        tg_backup "Backup delivered to the PC: $name ($(du -h "$a" | cut -f1))."
       ;;
     000)
       # Never connected. Expected whenever the PC is off, and NOT an error - the
@@ -163,15 +194,24 @@ for a in "${pending[@]}"; do
       note "$name  REFUSED ($code ${detail:-no detail}) - marking bad, will not retry"
       : > "$a.bad"
       fail=1
+      tg_backup "Backup REFUSED by the PC on $HOST: $name ($(du -h "$a" | cut -f1)), http $code${detail:+ - $detail}. Marked bad, will not be retried."
       ;;
     401)
       note "REFUSED: receiver rejected the key - fix $UPLOAD_KEY_FILE"
       fail=1
+      if [ ! -f "$OFFSITE/.key-warned" ]; then
+        : > "$OFFSITE/.key-warned"
+        tg_backup "Backup upload BLOCKED on $HOST: the PC rejected the upload key. Nothing is being delivered until $UPLOAD_KEY_FILE matches the receiver's key."
+      fi
       break
       ;;
     *)
       note "$name  upload failed (http ${code:-?}, curl $rc) ${detail:-}"
       fail=1
+      if [ ! -f "$a.warned" ]; then
+        : > "$a.warned"
+        tg_backup "Backup upload FAILED on $HOST: $name (http ${code:-?}, curl $rc)${detail:+ - $detail}. Retrying every 30 minutes; this is the only message for this archive."
+      fi
       break
       ;;
   esac
@@ -201,7 +241,7 @@ if [ "$DRY" != "1" ]; then
     while IFS= read -r a; do
       n=$((n + 1))
       [ "$n" -le "$KEEP_RESOLVED" ] && continue
-      rm -f -- "$a" "$a.sha256" "$a.sent" "$a.bad"
+      rm -f -- "$a" "$a.sha256" "$a.sent" "$a.bad" "$a.warned" "$a.stale-warned"
     done < <(printf '%s\n' "${resolved[@]}" | sort -r)
     note "staged: removed $(( ${#resolved[@]} - KEEP_RESOLVED )) delivered, $KEEP_RESOLVED kept"
   fi
@@ -214,8 +254,9 @@ if [ "$DRY" != "1" ]; then
     over=$(( ${#still_pending[@]} - MAX_PENDING ))
     note "PENDING CAP HIT: $over undelivered archive(s) dropped - the PC has not"
     note "  accepted a backup in ${#still_pending[@]} runs. Bring it online."
+    tg_backup "Backup archives DROPPED on $HOST: the PC has not accepted a backup in ${#still_pending[@]} runs, so the oldest $over undelivered archive(s) were deleted to stay under the cap of $MAX_PENDING. Bring the PC and its receiver online."
     while IFS= read -r a; do
-      rm -f -- "$a" "$a.sha256"
+      rm -f -- "$a" "$a.sha256" "$a.warned" "$a.stale-warned"
       note "  dropped $(basename "$a")"
       over=$((over - 1))
       [ "$over" -le 0 ] && break
@@ -224,6 +265,20 @@ if [ "$DRY" != "1" ]; then
   elif [ ${#still_pending[@]} -gt 0 ]; then
     note "${#still_pending[@]} archive(s) still waiting for the receiver"
   fi
+
+  # Overdue, warned once per archive. Age comes from the file, not the name,
+  # because the name's stamp is local time and mtime needs no parsing.
+  now=$(date +%s)
+  for a in "${still_pending[@]}"; do
+    [ -f "$a" ] || continue
+    [ -f "$a.stale-warned" ] && continue
+    age_h=$(( (now - $(stat -c %Y "$a")) / 3600 ))
+    if [ "$age_h" -ge "$STALE_HOURS" ]; then
+      : > "$a.stale-warned"
+      note "$(basename "$a")  undelivered for ${age_h}h"
+      tg_backup "Backup NOT DELIVERED on $HOST: $(basename "$a") has waited ${age_h}h for the PC. Is the PC on, and is the Pi Backup Receiver task running?"
+    fi
+  done
 
   # Counted AFTER the prune, not before. A count taken earlier would name a bad
   # archive that this very run had just deleted - the sort of true-once line that
