@@ -20,7 +20,15 @@ services:
   jellyfin:
     # ghcr.io, not lscr.io: the same image, lscr.io is an alias for ghcr.io. But
     # wud can look up ghcr.io anonymously and lscr.io only with a GitHub login.
-    image: ghcr.io/linuxserver/jellyfin:latest
+    #
+    # Pinned, not :latest. A Jellyfin major rewrites the database on first
+    # start, with no way back short of restoring a backup, and drops plugins
+    # built for the old ABI. So a plain `docker compose pull` must never be the
+    # thing that upgrades it.
+    image: ghcr.io/linuxserver/jellyfin:12.2ubu2604-ls53
+    labels:
+      # Releases only (12.2ubu2604-ls53, 12.2.1ubu2604-ls60), never nightlies.
+      - wud.tag.include=^\d+\.\d+(\.\d+)?ubu\d+-ls\d+$$
     container_name: jellyfin
     restart: unless-stopped
     volumes:
