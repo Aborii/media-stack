@@ -814,7 +814,7 @@ pages:
           # below the alert price. 1m: the endpoint is a database read, and a
           # longer cache kept new products off the tile for minutes.
           - type: custom-api
-            title: Prices
+            title: Prices watcher
             title-url: http://aboriis-pi:3005/
             cache: 1m
             url: http://price-watcher:3000/api/glance?limit=6
