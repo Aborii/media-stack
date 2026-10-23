@@ -50,6 +50,8 @@ services:
       - PORTAINER_ENV=${PORTAINER_ENV:-3}
       - SPEEDTEST_API_KEY=${SPEEDTEST_API_KEY:-}
       - GLUETUN_API_KEY=${GLUETUN_API_KEY:-}
+      # Amazon Watcher's GLANCE_API_TOKEN (~/amazon-watcher/.env), for the Amazon prices tile.
+      - AMAZON_WATCHER_TOKEN=${AMAZON_WATCHER_TOKEN:-}
       - UPTIMEKUMA_SLUG=${UPTIMEKUMA_SLUG:-home-services}
       # qBittorrent has no API key: the tile logs in with these and keeps the
       # session cookie for the calls that follow. Never reaches the browser.
