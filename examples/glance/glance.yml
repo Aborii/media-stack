@@ -806,6 +806,43 @@ pages:
       # ── right: the background services ────────────────────────────────────
       - size: small
         widgets:
+          # Prices: the first items of Price Watcher's list (~/price-watcher on
+          # this Pi, its own repo), in the order set on its web page, with each
+          # shop's own product image. Glance reaches it by container name over
+          # the mediastack network; the token is GLANCE_API_TOKEN from
+          # ~/price-watcher/.env, passed in as PRICE_WATCHER_TOKEN. Green means
+          # below the alert price. 1m: the endpoint is a database read, and a
+          # longer cache kept new products off the tile for minutes.
+          - type: custom-api
+            title: Prices
+            title-url: http://aboriis-pi:3005/
+            cache: 1m
+            url: http://price-watcher:3000/api/glance?limit=6
+            headers:
+              Authorization: Bearer ${PRICE_WATCHER_TOKEN}
+            template: |
+              {{ $items := .JSON.Array "items" }}
+              {{ if eq (len $items) 0 }}
+              <p class="color-paragraph">Nothing watched yet. Send the bot a product link.</p>
+              {{ else }}
+              <ul class="list list-gap-14">
+              {{ range $items }}
+                <li style="display:flex;gap:10px;align-items:center">
+                  {{ if .String "imageUrl" }}<img src="{{ .String "imageUrl" }}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:44px;height:44px;object-fit:contain;border-radius:6px;background:#fff;flex:none">{{ end }}
+                  <div style="min-width:0">
+                    <a class="size-h5 color-highlight block text-truncate" href="{{ .String "url" }}" target="_blank" rel="noreferrer">{{ .String "title" }}</a>
+                    <ul class="list-horizontal-text">
+                      <li{{ if .Bool "belowThreshold" }} class="color-positive"{{ end }}>{{ .String "priceText" }}</li>
+                      {{ if .Bool "hasThreshold" }}<li>alert {{ .String "thresholdText" }}</li>{{ end }}
+                      {{ if .Bool "paused" }}<li>paused</li>{{ end }}
+                      {{ if .String "problem" }}<li class="color-negative">check failing</li>{{ end }}
+                    </ul>
+                  </div>
+                </li>
+              {{ end }}
+              </ul>
+              {{ end }}
+
           # Only what has no tile of its own: every app with a tile carries
           # its own check on its last line. The check goes to the container
           # over the docker network; the link opens the browser URL.
@@ -1041,39 +1078,6 @@ pages:
               - { symbol: EMAAR.AE, name: Emaar }
               - { symbol: EMIRATESNBD.AE, name: Emirates NBD }
               - { symbol: 2222.SR, name: Saudi Aramco }
-
-          # Amazon prices: the first items of Amazon Watcher's list
-          # (~/amazon-watcher on this Pi), in the order set on its web page.
-          # Glance reaches it by container name over the mediastack network.
-          # The token is GLANCE_API_TOKEN from ~/amazon-watcher/.env, passed in
-          # as AMAZON_WATCHER_TOKEN. Green means below the alert price. The app
-          # checks each link every few minutes at most, so 5m is plenty here.
-          - type: custom-api
-            title: Amazon prices
-            title-url: http://aboriis-pi:3005/
-            cache: 5m
-            url: http://amazon-watcher:3000/api/glance?limit=6
-            headers:
-              Authorization: Bearer ${AMAZON_WATCHER_TOKEN}
-            template: |
-              {{ $items := .JSON.Array "items" }}
-              {{ if eq (len $items) 0 }}
-              <p class="color-paragraph">Nothing watched yet. Send the bot an amazon.ae link.</p>
-              {{ else }}
-              <ul class="list list-gap-10">
-              {{ range $items }}
-                <li>
-                  <a class="size-h5 color-highlight block text-truncate" href="{{ .String "url" }}" target="_blank" rel="noreferrer">{{ .String "title" }}</a>
-                  <ul class="list-horizontal-text">
-                    <li{{ if .Bool "belowThreshold" }} class="color-positive"{{ end }}>{{ .String "priceText" }}</li>
-                    {{ if .Bool "hasThreshold" }}<li>alert {{ .String "thresholdText" }}</li>{{ end }}
-                    {{ if .Bool "paused" }}<li>paused</li>{{ end }}
-                    {{ if .String "problem" }}<li class="color-negative">check failing</li>{{ end }}
-                  </ul>
-                </li>
-              {{ end }}
-              </ul>
-              {{ end }}
 
 # Not ported, and why:
 #
