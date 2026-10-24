@@ -38,10 +38,10 @@ services:
       - immich-database
     healthcheck:
       disable: false
-    # Hard ceiling. Thumbnail and video jobs grew this to ~1.7 GB of
-    # anonymous memory with the host's swap already full, and the whole Pi
-    # hung until it restarted. With a limit the OOM kill lands here instead,
-    # and restart: unless-stopped brings Immich back on its own.
+    # Hard ceiling. A long background job (1.1 TB read in one run) grew this
+    # to ~1.7 GB of anonymous memory with the host's swap already full, and
+    # the whole Pi hung until it restarted. With a limit the OOM kill lands
+    # here instead, and restart: unless-stopped brings Immich back on its own.
     # memswap_limit equal to mem_limit keeps it out of the shared zram.
     mem_limit: ${IMMICH_SERVER_MEM_LIMIT:-1536m}
     memswap_limit: ${IMMICH_SERVER_MEM_LIMIT:-1536m}
