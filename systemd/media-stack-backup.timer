@@ -1,0 +1,14 @@
+[Unit]
+Description=Nightly media-stack backup
+
+[Timer]
+# 03:30 - after Immich finishes its own database dump at 02:00, and well clear
+# of any evening use.
+OnCalendar=*-*-* 03:30:00
+# The host is not always on. Persistent means a missed run happens shortly after
+# the next boot instead of being skipped until tomorrow.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

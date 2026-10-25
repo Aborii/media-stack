@@ -40,7 +40,13 @@ services:
     #
     # Was parked behind a compose profile from 2026-08-27 until the node
     # existed (2026-09-03), since a server with no node does nothing.
-    image: ghcr.io/haveagitgat/tdarr:latest
+    #
+    # Pinned rather than :latest because the node on the desktop must run the
+    # exact same version: a silent server upgrade (WUD, or a fresh pull on a
+    # new host) would leave the node unable to connect. 2.86.01 is the digest
+    # that ran on the Pi (sha256:45742f00...) and ships an amd64 build too.
+    # To upgrade, bump this tag and the node package on the desktop together.
+    image: ghcr.io/haveagitgat/tdarr:2.86.01
     container_name: tdarr
     restart: unless-stopped
     volumes:

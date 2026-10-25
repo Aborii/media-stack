@@ -621,6 +621,13 @@ appdata/immich/postgres    owner 999
 appdata/postgres17/data    owner 70
 ```
 
+The service and timer live in `systemd/`. Install them with:
+
+```
+sudo cp systemd/media-stack-backup.service systemd/media-stack-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now media-stack-backup.timer
+```
+
 An rsync as a normal user hits permission denied on both, **skips them, and
 reports success**. That is exactly how Immich arrived on this Pi with 61 GB of
 photos and an empty database. Databases are therefore dumped, not copied — a
