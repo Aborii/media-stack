@@ -1,0 +1,16 @@
+[Unit]
+Description=Back up media-stack databases and appdata
+# The databases are dumped through docker exec, so the daemon has to be up.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/aborii/media-stack/scripts/backup.sh
+# Root is required: both database directories are mode 700 owned by the
+# container user, and a non-root run skips them without reporting an error.
+User=root
+# Backups compete with everything else for the same USB disk, so keep them out
+# of the way of playback and imports rather than racing them.
+Nice=10
+IOSchedulingClass=idle

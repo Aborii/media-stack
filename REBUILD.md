@@ -616,6 +616,13 @@ curl -s -o /dev/null -w '%{http_code} %{ssl_verify_result}
 root. Root matters: two directories are mode 700 owned by the container's user,
 not by you.
 
+The service and timer live in `systemd/`. Install them with:
+
+```
+sudo cp systemd/media-stack-backup.service systemd/media-stack-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now media-stack-backup.timer
+```
+
 ```
 appdata/immich/postgres    owner 999
 appdata/postgres17/data    owner 70
