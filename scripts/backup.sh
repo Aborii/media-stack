@@ -228,8 +228,13 @@ PREV=$(find "$DEST/appdata" -maxdepth 1 -mindepth 1 -type d ! -name "$STAMP" 2>/
 rsync "${rsync_args[@]}" "$APPDATA/" "$SNAP/" 2>&1 | tail -3
 ln -sfn "$SNAP" "$DEST/appdata/latest"
 
-src=$(du -sb "${du_args[@]}" "$APPDATA" | cut -f1)
-dst=$(du -sb "$SNAP" | cut -f1)
+# GNU du, not whatever `du` is. Ubuntu 26.04 ships the Rust uutils du, whose
+# --exclude ignores multi-component patterns like 'immich/server/thumbs', so
+# the source total kept every excluded directory and the check below reported
+# "COPY IS SHORT" on a correct snapshot. Ubuntu keeps GNU du as `gnudu`.
+DU=$(command -v gnudu || command -v du)
+src=$("$DU" -sb "${du_args[@]}" "$APPDATA" | cut -f1)
+dst=$("$DU" -sb "$SNAP" | cut -f1)
 note "source $(numfmt --to=iec "$src")  copy $(numfmt --to=iec "$dst")"
 # Compare sizes rather than trusting rsync's exit code: a skipped directory is
 # not an error to rsync, which is the whole reason this script exists.
@@ -313,7 +318,11 @@ lsblk -o NAME,SIZE,FSTYPE,UUID,PARTUUID,MOUNTPOINT > "$STATE/blkid.txt" 2>/dev/n
 tar_args=(-C "$DEST/appdata" "$STAMP")
 # Root filesystem config, relative to / so members are stored as etc/... rather
 # than /etc/... - tar strips the leading slash anyway and warns when it does.
-tar_args+=(-C / etc home/aborii boot/firmware)
+# /boot/firmware exists only on the Pi. On any other host, naming it makes tar
+# exit non-zero and set -e stops the run before the archive is handed off.
+root_paths=(etc home/aborii)
+[ -d /boot/firmware ] && root_paths+=(boot/firmware)
+tar_args+=(-C / "${root_paths[@]}")
 tar_args+=(-C "$DEST" system-state)
 
 shopt -s nullglob
