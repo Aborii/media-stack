@@ -79,12 +79,12 @@ services:
     ports:
       # Published on the LAN, unlike the registry itself. That is the entire
       # point of this container: something a browser can open, at
-      # http://aboriis-pi:5002.
+      # http://aboriis-mini:5002.
       - '${REGISTRY_UI_PORT:-5002}:80'
     environment:
       TZ: ${TIMEZONE:?err}
       SINGLE_REGISTRY: 'true'
-      REGISTRY_TITLE: ${REGISTRY_UI_TITLE:-aboriis-pi registry}
+      REGISTRY_TITLE: ${REGISTRY_UI_TITLE:-aboriis-mini registry}
       NGINX_PROXY_PASS_URL: http://registry:5000
       SHOW_CONTENT_DIGEST: 'true'
       # Defaults to false. This UI has no authentication of any kind, so

@@ -3,7 +3,7 @@
 
 Every URL was verified with curl FROM INSIDE the uptime-kuma container before
 being added, so none of them 404. Container names are used rather than
-aboriis-pi because Uptime Kuma sits on the same bridge - checking via the host
+aboriis-mini because Uptime Kuma sits on the same bridge - checking via the host
 would bounce off the firewall and test the wrong path.
 """
 import sys, time

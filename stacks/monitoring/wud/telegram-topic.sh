@@ -25,7 +25,7 @@ esac
 
 text="Image update: ${display_name:-${name:-container}}
 ${what}
-Nothing was pulled. Open http://aboriis-pi:3002 to review."
+Nothing was pulled. Open http://aboriis-mini:3002 to review."
 
 # -o /dev/null and -f: a failure prints only "The requested URL returned error"
 # with the status code, never the URL, so the bot token stays out of the logs.

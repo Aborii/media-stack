@@ -324,13 +324,14 @@ services:
     volumes:
       - ${FOLDER_FOR_DATA:?err}/flaresolverr:/config
 
-    # Hard ceiling. Every solve starts a full Chromium, and parallel requests
-    # stack them: three at once grew this to ~1.1 GB on a host with no swap
-    # left, and the whole Pi stopped answering. With a limit, Chromium dies
-    # here instead, the solve fails and the caller retries later.
-    # memswap_limit equal to mem_limit keeps it out of the shared zram.
-    mem_limit: ${FLARESOLVERR_MEM_LIMIT:-1g}
-    memswap_limit: ${FLARESOLVERR_MEM_LIMIT:-1g}
+    # A ceiling against runaway Chromiums, not against a small host. Every
+    # solve starts a full Chromium and parallel requests stack them: three at
+    # once grew this to ~1.1 GB and froze the 8 GB Pi. The mini has the room,
+    # so the ceiling is generous, but a leak still kills a solve here instead
+    # of growing until the host swaps. memswap_limit equal to mem_limit keeps
+    # it out of swap.
+    mem_limit: ${FLARESOLVERR_MEM_LIMIT:-3g}
+    memswap_limit: ${FLARESOLVERR_MEM_LIMIT:-3g}
 
     # Ports are published by gluetun.
     network_mode: "service:gluetun"

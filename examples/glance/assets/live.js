@@ -32,7 +32,7 @@ const EVERY   = SLUG === 'markets' ? 60000 : 5000;
 // not allowed to fetch http://, so it goes through the TLS proxy on the
 // mirrored port instead - the service port plus 10000.
 const HTTPS   = location.protocol === 'https:';
-const helper  = p => location.protocol + '//aboriis-pi:' + (HTTPS ? p + 10000 : p) + '/';
+const helper  = p => location.protocol + '//aboriis-mini:' + (HTTPS ? p + 10000 : p) + '/';
 const BACKUP  = helper(9101);   // the backup status service
 const PCSW    = helper(9102);   // the power switch proxy
 const VPNCTL  = helper(9103);   // the VPN stack restart control

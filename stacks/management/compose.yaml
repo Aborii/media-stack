@@ -31,12 +31,17 @@ services:
       - mediastack
 
   tdarr:
-    # Server only. The Pi holds the library scan, the flows and the queue;
-    # every job runs on the Tdarr node on the Windows desktop (aborii-pc),
-    # which has the GPU. The node is a mapped node: it reaches the same files
-    # through the Samba share and translates /media and /temp to its own
-    # paths. Server and node versions must match exactly, so a bump of this
-    # image means re-downloading the node package on the desktop.
+    # Server plus an internal node, aboriis-mini, that encodes on the Intel
+    # iGPU, so the library keeps converting with the desktop off. The desktop
+    # node (aborii-pc, Nvidia) still joins when it is on. The flows' encoder
+    # step is set to hardwareType "auto", so each node picks its own GPU; a
+    # flow pinned to nvenc fails on this node. Give this node GPU workers only:
+    # on a CPU worker "auto" falls back to software x265.
+    #
+    # The desktop node is a mapped node: it reaches the same files through the
+    # Samba share and translates /media and /temp to its own paths. Server and
+    # node versions must match exactly, so a bump of this image means
+    # re-downloading the node package on the desktop.
     #
     # Was parked behind a compose profile from 2026-08-27 until the node
     # existed (2026-09-03), since a server with no node does nothing.
@@ -57,6 +62,8 @@ services:
       # Transcode scratch space. Kept on the data disk, not the SD card -
       # this churns hard during a conversion.
       - ${FOLDER_FOR_MEDIA:?err}/tdarr-cache:/temp
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
@@ -65,8 +72,8 @@ services:
       - serverIP=0.0.0.0
       - serverPort=${TDARR_SERVER_PORT:?err}
       - webUIPort=${WEBUI_PORT_TDARR:?err}
-      # The whole point: the Pi coordinates, the desktop encodes.
-      - internalNode=false
+      - internalNode=true
+      - nodeName=aboriis-mini
       - inContainer=true
       - ffmpegVersion=7
     ports:

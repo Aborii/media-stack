@@ -227,7 +227,7 @@ The LAN is **also** allowed through the firewall, deliberately: a Pi reachable
 only over Tailscale becomes unreachable from the same room whenever the internet
 drops, which is a poor failure mode for local storage.
 
-**Use `http://aboriis-pi` everywhere**, not the long tailnet name and not
+**Use `http://aboriis-mini` everywhere**, not the long tailnet name and not
 `.local`. It is the only form that resolves in all three cases - the router
 answers for the DHCP hostname at home, mDNS covers it as a fallback, and
 MagicDNS covers it remotely. It also keeps the dashboard's sign-in cookie on one
@@ -235,7 +235,7 @@ host, so a session follows you between home and the tailnet.
 
 | Reachable at | |
 |---|---|
-| Dashboard | `http://aboriis-pi` |
+| Dashboard | `http://aboriis-mini` |
 | Portainer | `:9000` |
 | Immich | `:2283` |
 | Jellyfin | `:8096` |
@@ -251,7 +251,7 @@ the dashboard had no way to tell which. `REBUILD.md` has the reasoning.
 built on it work at home and die remotely.
 
 **Subnet routing is advertised but needs approving** in the Tailscale admin
-console under Machines → aboriis-pi → Edit route settings. Until then the Pi
+console under Machines → aboriis-mini → Edit route settings. Until then the Pi
 itself is reachable but other devices on the home LAN are not. It also needs
 IP forwarding enabled on the host to work properly.
 

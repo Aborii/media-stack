@@ -35,13 +35,6 @@ services:
     volumes:
       # Pulled models persist here; without it every restart re-downloads them.
       - ${FOLDER_FOR_DATA:?err}/ollama:/root/.ollama
-    # Hard ceiling, deliberately set. Swap on this host is already fully
-    # consumed, so unbounded growth here would push the kernel into killing
-    # whichever process it likes least - possibly immich or jellyfin. Capping
-    # ollama makes IT the thing that dies under pressure instead, and a failed
-    # embedding degrades one optional subsystem rather than taking down media
-    # services. Raise only after watching real usage.
-    mem_limit: ${OLLAMA_MEM_LIMIT:-1500m}
     healthcheck:
       test: ['CMD-SHELL', 'ollama list >/dev/null 2>&1 || exit 1']
       interval: 60s

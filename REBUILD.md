@@ -43,15 +43,15 @@ covers host services; `DOCKER-USER` covers published container ports, which
 never traverse `INPUT` because Docker routes them through `FORWARD`. Doing one
 and not the other is why "SSH works but every web UI times out".
 
-**On a host that is not Raspberry Pi OS** (Ubuntu Server, say), install
-`libnss-mdns`. Raspberry Pi OS ships it; Ubuntu Server does not, and without it
-the host cannot look up `.local` names, so `pcswitch` never reaches
-`pcswitch.local` and its health check fails forever:
+**On the mini (Ubuntu Server)** the same rules come from this repo instead:
+`scripts/host-firewall.sh`, run at boot and after every docker restart by
+`systemd/media-stack-firewall.service` (install steps in that file). The uplink
+is named in `/etc/default/media-stack-firewall`, since at boot the Wi-Fi may not
+have a route to guess it from yet.
 
-```bash
-sudo apt install -y libnss-mdns
-getent hosts pcswitch.local    # must print an address
-```
+`libnss-mdns` is worth installing on Ubuntu Server too, so `ssh pcswitch.local`
+and friends work from the host. `pcswitch` itself does not need it: it asks
+mDNS on its own.
 
 Tailscale last — see `TAILSCALE.md` in that repo. Two things cannot be set from
 the Pi: **approve the subnet route** and **disable key expiry**, both in the
@@ -303,12 +303,12 @@ and come back with a restore. **The Jellyfin connection does not** — Seerr
 authenticates against Jellyfin with an admin username and password, so that
 half is a browser step every time.
 
-Open `http://aboriis-pi:5055`, sign in with a Jellyfin admin account, and
+Open `http://aboriis-mini:5055`, sign in with a Jellyfin admin account, and
 pick the libraries to sync. The API returns **403 on every route** until that
 is done, so there is no way to script around it.
 
 - Internal addresses are `radarr:7878` and `sonarr:8989`; `externalUrl` is
-  what ends up in links handed to a browser, so it is `aboriis-pi` instead.
+  what ends up in links handed to a browser, so it is `aboriis-mini` instead.
 - Anime is split off to `/data/library/anime` with `animeSeriesType: anime`.
   Without that, anime requests land in `/data/library/tv` and Sonarr numbers
   them by season rather than absolute episode.
@@ -410,6 +410,20 @@ Automatic dumps land in `UPLOAD_LOCATION/backups`. To restore:
 
 Restoring a 2.x dump straight into 3.x is not worth the gamble.
 
+### The Intel iGPU — Jellyfin and Immich
+
+The compose files hand `/dev/dri` over; using it is a setting in each app.
+
+- **Jellyfin**, Dashboard > Playback > Transcoding: **Intel QuickSync (QSV)**,
+  device `/dev/dri/renderD128`, decoding for H264, HEVC, MPEG2, VC1, VP8, VP9
+  and AV1, both **Intel Low-Power** encoders on. For HDR use **VPP Tone
+  mapping**, not plain **Tone mapping**: that one needs OpenCL, which the
+  linuxserver image does not ship, and every HDR transcode fails with it on.
+- **Immich**, Administration > Settings > Video Transcoding > Hardware
+  Acceleration: **Quick Sync**, hardware decoding on. The face and search models
+  need nothing in the UI: the `-openvino` image picks the GPU by itself
+  (`OpenVINOExecutionProvider` in the machine-learning log).
+
 ### Postgres — TLS
 
 Port 5432 is published. On a network you do not control, scram-sha-256 protects
@@ -421,8 +435,8 @@ Generate the certificate as **uid 70** — postgres in the alpine image, not the
 ```bash
 docker run --rm -u 70:70 -v <datadir>:/d -w /d alpine/openssl \
   req -new -x509 -days 3650 -nodes -out server.crt -keyout server.key \
-  -subj "/CN=aboriis-pi" \
-  -addext "subjectAltName=IP:<lan-ip>,IP:<tailscale-ip>,DNS:aboriis-pi"
+  -subj "/CN=aboriis-mini" \
+  -addext "subjectAltName=IP:<lan-ip>,IP:<tailscale-ip>,DNS:aboriis-mini"
 ```
 
 No domain is needed — the SAN carries the addresses, so `verify-full` works.
@@ -572,7 +586,7 @@ It did what it claimed: fifteen services behind real certificates, validated by
 the client trust store with nothing installed anywhere. What sank it was the
 second set of URLs. Every service was suddenly reachable two ways, and which one
 applied depended on where you were standing — and the dashboard could not help,
-because arriving at `aboriis-pi` looks identical whether you came over the LAN or
+because arriving at `aboriis-mini` looks identical whether you came over the LAN or
 the tailnet, so the links had nothing to key off.
 
 Worth being honest about the value too. Tailscale already encrypts the tailnet

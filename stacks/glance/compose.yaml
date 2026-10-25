@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# glance — the dashboard, on port 80, so http://aboriis-pi/ opens it.
+# glance — the dashboard, on port 80, so http://aboriis-mini/ opens it.
 #
 # Why it replaced Homepage: Homepage is groups of equal tiles in rows, and the
 # only way past that is custom.css. Glance is a single Go binary with a YAML

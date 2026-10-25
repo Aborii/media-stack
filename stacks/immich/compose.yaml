@@ -22,6 +22,11 @@ services:
       # root, so the folder can be renamed as long as this points at it.
       - ${FOLDER_FOR_MEDIA:?err}/gallery:/data/library
       - /etc/localtime:/etc/localtime:ro
+    # The Intel iGPU, for Quick Sync video transcoding: the qsv entry of
+    # Immich's hwaccel.transcoding.yml, inlined. Switched on in Administration
+    # > Settings > Video Transcoding > Hardware Acceleration.
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}
@@ -43,10 +48,16 @@ services:
 
   immich-machine-learning:
     container_name: immich_machine_learning
-    # No -cuda / -armnn / -openvino suffix: CPU inference. See header.
-    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}
+    # -openvino: face and smart-search models run on the Intel iGPU. The
+    # device lines are the openvino entry of Immich's hwaccel.ml.yml, inlined.
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?err}-openvino
     restart: unless-stopped
+    device_cgroup_rules:
+      - 'c 189:* rmw'
+    devices:
+      - /dev/dri:/dev/dri
     volumes:
+      - /dev/bus/usb:/dev/bus/usb
       - ${FOLDER_FOR_DATA:?err}/immich/model-cache:/cache
     environment:
       - PUID=${PUID:?err}
