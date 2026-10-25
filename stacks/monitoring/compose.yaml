@@ -91,7 +91,7 @@ services:
   # What's Up Docker. Watches every container's image for a newer tag or a
   # rebuilt digest and says so. Replaced Diun on 2026-09-03 for one reason: it
   # has a page. Diun could only talk; this lists every container with its
-  # running tag and the newest one at http://aboriis-pi:3002, and the dashboard
+  # running tag and the newest one at http://aboriis-mini:3002, and the dashboard
   # tile counts what is pending.
   #
   # REPORTS ONLY. There is deliberately no docker trigger, so it never pulls or
@@ -260,13 +260,13 @@ services:
   # it would make them carry credentials. A proxy in front changes neither -
   # stop this container and the tiles are completely unaffected.
   #
-  # Published on ALL interfaces, so http://aboriis-pi:61210 works from the LAN
+  # Published on ALL interfaces, so http://aboriis-mini:61210 works from the LAN
   # and the dashboard tiles can link to it. This was a deliberate choice made
   # knowing the trade-off: the wifi here is an open network (see the glances
   # notes above), and the login form posts over plain http, so the password
   # crosses the LAN unencrypted at sign-in. The gate itself still stands; it is
   # only the transport that is open. `tailscale serve` still fronts the same
-  # container with real HTTPS on aboriis-pi.tail54d520.ts.net - prefer that
+  # container with real HTTPS on aboriis-mini.tail54d520.ts.net - prefer that
   # URL when away.
   #
   # To pull it back off the LAN, prefix the binding below with 127.0.0.1: .
@@ -287,8 +287,8 @@ services:
   # The login gate for glances-web. Read login.py for the full story; the
   # short version: every ready-made gate (Tinyauth, Authelia...) scopes its
   # session cookie to a DOMAIN and refuses a bare hostname outright - Tinyauth
-  # will not even start on http://aboriis-pi. This one sets a HOST-ONLY cookie,
-  # so ONE instance covers aboriis-pi, the raw IP and the tailscale name.
+  # will not even start on http://aboriis-mini. This one sets a HOST-ONLY cookie,
+  # so ONE instance covers aboriis-mini, the raw IP and the tailscale name.
   #
   # Standard library only, mounted as a plain file - no image build, no pip,
   # nothing to go stale. No published ports: only Caddy talks to it, by name.

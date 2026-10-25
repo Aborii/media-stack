@@ -39,7 +39,7 @@ services:
       # rather than here because losing or changing it makes every encrypted
       # row unreadable - it is not a value to regenerate casually.
       APP_KEY: ${SPEEDTEST_APP_KEY:?err}
-      APP_URL: http://aboriis-pi:${SPEEDTEST_PORT:-3030}
+      APP_URL: http://aboriis-mini:${SPEEDTEST_PORT:-3030}
       # SQLite, not the shared postgres17. One small table of results with no
       # other consumer does not justify a role and a database, and it keeps the
       # stack removable without leaving an orphan behind.

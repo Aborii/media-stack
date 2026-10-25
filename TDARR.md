@@ -75,7 +75,7 @@ put a shortcut to `Tdarr_Node_Tray.exe` in the folder that opens.
 
 ### 2. Tdarr can see the node
 
-Open Tdarr in a browser: <http://aboriis-pi:8265>
+Open Tdarr in a browser: <http://aboriis-mini:8265>
 
 On the **Home** page, find the **Nodes** section. There should be a row for `aborii-pc`, with
 **Transcode GPU** set to `1`. If there is no row, the node is not connected. Go back to step 1.
@@ -376,7 +376,7 @@ to the big version is to download it again through Sonarr. That is what Part 2 i
 
 | Thing | Value |
 |---|---|
-| Tdarr web page | <http://aboriis-pi:8265> |
+| Tdarr web page | <http://aboriis-mini:8265> |
 | Port the node talks to | `8266` |
 | Node install folder | `C:\Tdarr\Tdarr_Node` |
 | Node settings file | `C:\Tdarr\configs\Tdarr_Node_Config.json` |

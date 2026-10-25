@@ -35,6 +35,11 @@ services:
       - ${FOLDER_FOR_DATA:?err}/jellyfin:/config
       # Library only - Jellyfin has no reason to see the download folder.
       - ${FOLDER_FOR_MEDIA:?err}/library:/data/media
+    # The Intel iGPU, for Quick Sync transcoding and tone mapping. The image
+    # adds its user to the device's group by itself. Turning it on is a setting
+    # inside Jellyfin (Dashboard > Playback > Transcoding), not this line.
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - PUID=${PUID:?err}
       - PGID=${PGID:?err}

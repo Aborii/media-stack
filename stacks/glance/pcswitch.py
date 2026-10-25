@@ -145,14 +145,16 @@ def _targets():
     host, port = _split(DEVICE)
     out = []
 
-    ip = None
-    try:
-        # Ordinary DNS first: if the router ever learns the name, or someone
-        # adds a hosts entry, that should win over a broadcast question.
-        ip = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
-    except OSError:
-        if host.endswith(".local"):
-            ip = mdns_resolve(host)
+    # A .local name is asked over mDNS first. Ubuntu's systemd-resolved takes a
+    # full 5 s to give up on .local, as long as the health check waits, so
+    # asking ordinary DNS first left pcswitch unhealthy on the mini for good.
+    ip = mdns_resolve(host) if host.endswith(".local") else None
+    if not ip:
+        try:
+            # Ordinary DNS: a hosts entry, or a router that learned the name.
+            ip = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+        except OSError:
+            pass
 
     if ip:
         _last_ip, _last_at = ip, time.time()
