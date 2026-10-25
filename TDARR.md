@@ -19,17 +19,24 @@ routine is [Part 3: Convert a season](#part-3-convert-a-season).
 
 ## How the pieces fit together
 
-There are two halves, on two machines.
+There is one server and two nodes.
 
 | Piece | Where it runs | What it does |
 |---|---|---|
-| **Tdarr server** | The Pi, in Docker (`stacks/management/compose.yaml`) | Keeps the list of files, the settings and the queue. It never encodes anything itself. |
-| **Tdarr node** | The Windows desktop, named `aborii-pc` | Does the actual encoding, on the graphics card. |
+| **Tdarr server** | The mini, in Docker (`stacks/management/compose.yaml`) | Keeps the list of files, the settings and the queue. |
+| **Tdarr node** `aboriis-mini` | Inside the same container on the mini | Encodes on the mini's Intel GPU (Quick Sync). Always on. |
+| **Tdarr node** `aborii-pc` | The Windows desktop | Encodes on the Nvidia card, when the desktop is on. |
 
-The node reads and writes the files through the Samba share, which is mapped as `T:` on the
-desktop. So the server and the node see the same folders under different names:
+Both nodes run the same flows. The **Set Video Encoder** step is set to Hardware Type `auto`, so
+each node uses its own GPU. A flow set to `nvenc` fails on the mini's node.
 
-| What Tdarr shows (the Pi) | The same folder on the desktop |
+**Each node gets GPU transcode workers only** (Transcode CPU `0`). On a CPU worker, `auto` falls
+back to software encoding, which is slow and loads every core.
+
+The desktop node reads and writes the files through the Samba share, which is mapped as `T:` on
+the desktop. So the server and that node see the same folders under different names:
+
+| What Tdarr shows (the mini) | The same folder on the desktop |
 |---|---|
 | `/media` | `T:\media\library` |
 | `/temp` | `T:\media\tdarr-cache` |
@@ -37,8 +44,7 @@ desktop. So the server and the node see the same folders under different names:
 When Tdarr shows `/media/tv/Hawaii Five-0/Season 07`, that is
 `T:\media\library\tv\Hawaii Five-0\Season 07` on the desktop.
 
-**The desktop has to be on for anything to happen.** If it is off or asleep, files wait in the
-queue.
+The desktop does not have to be on: the mini's node keeps working without it.
 
 ---
 
@@ -47,8 +53,8 @@ queue.
 - **Library** - a folder Tdarr looks after, plus the settings for what to do with its files.
 - **Flow** - the recipe. A chain of steps such as "is this file H.264?", "encode it to HEVC",
   "replace the original".
-- **Node** - a computer that does the work. Here there is one, `aborii-pc`.
-- **Worker** - one job running on a node. This node runs one job at a time, on the GPU.
+- **Node** - a computer that does the work. Here there are two, `aboriis-mini` and `aborii-pc`.
+- **Worker** - one job running on a node. Each node runs one job at a time, on its GPU.
 - **Scan** - Tdarr looking through a library's folder and adding the files it finds to the
   queue.
 - **Queue** - files waiting their turn.
@@ -145,7 +151,7 @@ Then double-click each of these plugins and set:
 - Enable FFmpeg Quality: on
 - FFmpeg Quality: `28`
 - Hardware Encoding: on
-- Hardware Type: `nvenc`
+- Hardware Type: `auto` (each node picks its own GPU)
 - Hardware Decoding: **off**
 - Force Encoding: on
 
@@ -397,7 +403,7 @@ The node settings file needs these path translators, or the node will not find a
 ]
 ```
 
-It also needs `"nodeType": "mapped"`, `"serverPort": "8266"`, and `serverIP` set to the Pi's
+It also needs `"nodeType": "mapped"`, `"serverPort": "8266"`, and `serverIP` set to the mini's
 address.
 
 The node's version must match the server's. The version is shown at the top of the Tdarr web
