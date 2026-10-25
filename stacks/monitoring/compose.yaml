@@ -40,7 +40,14 @@ services:
       # /dev/sda + /dev/sdb until the Seagate was removed and the WD came back
       # as sda, at which point the missing sdb stopped the container starting.
       # Docker resolves the symlink, so the container always sees /dev/sda.
-      - /dev/disk/by-id/wwn-0x50014ee216baa995:/dev/sda
+      #
+      # On the mini this is the USB enclosure's WWN, not the disk's. Its Realtek
+      # RTL9201 bridge hides the WD's own (0x50014ee216baa995, what the Pi
+      # saw) and reports this one, which belongs to the bridge, so a different
+      # disk in this enclosure keeps it. The by-id name that does carry the
+      # serial ends in ":0:0", which the host:container syntax cannot take.
+      # SMART still passes through the bridge (type: sat in collector.yaml).
+      - /dev/disk/by-id/wwn-0x3001237923792379:/dev/sda
     volumes:
       - ${FOLDER_FOR_DATA:?err}/scrutiny/config:/opt/scrutiny/config
       - ${FOLDER_FOR_DATA:?err}/scrutiny/influxdb:/opt/scrutiny/influxdb
