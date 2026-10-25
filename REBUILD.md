@@ -410,6 +410,20 @@ Automatic dumps land in `UPLOAD_LOCATION/backups`. To restore:
 
 Restoring a 2.x dump straight into 3.x is not worth the gamble.
 
+### The Intel iGPU — Jellyfin and Immich
+
+The compose files hand `/dev/dri` over; using it is a setting in each app.
+
+- **Jellyfin**, Dashboard > Playback > Transcoding: **Intel QuickSync (QSV)**,
+  device `/dev/dri/renderD128`, decoding for H264, HEVC, MPEG2, VC1, VP8, VP9
+  and AV1, both **Intel Low-Power** encoders on. For HDR use **VPP Tone
+  mapping**, not plain **Tone mapping**: that one needs OpenCL, which the
+  linuxserver image does not ship, and every HDR transcode fails with it on.
+- **Immich**, Administration > Settings > Video Transcoding > Hardware
+  Acceleration: **Quick Sync**, hardware decoding on. The face and search models
+  need nothing in the UI: the `-openvino` image picks the GPU by itself
+  (`OpenVINOExecutionProvider` in the machine-learning log).
+
 ### Postgres — TLS
 
 Port 5432 is published. On a network you do not control, scram-sha-256 protects
