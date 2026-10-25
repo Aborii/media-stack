@@ -43,6 +43,16 @@ covers host services; `DOCKER-USER` covers published container ports, which
 never traverse `INPUT` because Docker routes them through `FORWARD`. Doing one
 and not the other is why "SSH works but every web UI times out".
 
+**On a host that is not Raspberry Pi OS** (Ubuntu Server, say), install
+`libnss-mdns`. Raspberry Pi OS ships it; Ubuntu Server does not, and without it
+the host cannot look up `.local` names, so `pcswitch` never reaches
+`pcswitch.local` and its health check fails forever:
+
+```bash
+sudo apt install -y libnss-mdns
+getent hosts pcswitch.local    # must print an address
+```
+
 Tailscale last — see `TAILSCALE.md` in that repo. Two things cannot be set from
 the Pi: **approve the subnet route** and **disable key expiry**, both in the
 admin console. Key expiry is 180 days, and when it fires the Pi silently leaves
