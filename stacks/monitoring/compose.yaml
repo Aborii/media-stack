@@ -257,6 +257,11 @@ services:
       # No docker integration here either - same reasoning as the instance above.
     volumes:
       - /:/rootfs:ro
+      # This is the instance glances-web shows in the browser, so it alone gets
+      # a config that hides the per-container veth rows. Without it the network
+      # list pushed the temperatures off the bottom of the page. Read the
+      # file's header for the one line that differs from the stock config.
+      - ./glances/glances.conf:/etc/glances/glances.conf:ro
 
   # A password gate in front of glances, so its dashboard opens in a browser
   # rather than needing an ssh tunnel every time.
@@ -322,6 +327,93 @@ services:
       start_period: 10s
     networks:
       - mediastack
+
+  # Beszel: the hardware page glances is not. Temperatures per core and per
+  # sensor, CPU, memory, disk and network, and the iGPU's load and power, all
+  # kept as history and charted, on a page that works on a phone. glances
+  # stays, because the dashboard tiles read it; this is the one to open when
+  # the question is "how hot / how hard has the box been working".
+  #
+  # Two parts. The hub (this) is the web page and the database. The agent
+  # (below) reads the host and answers the hub over a unix socket in a shared
+  # folder, so the agent opens no network port at all.
+  #
+  # Its own login: the hub creates the first user from BESZEL_USER_EMAIL and
+  # BESZEL_USER_PASSWORD on its first start and ignores them afterwards.
+  # Change the password in its UI, not here.
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: beszel
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - APP_URL=http://aboriis-mini:${WEBUI_PORT_BESZEL:?err}
+      - USER_EMAIL=${BESZEL_USER_EMAIL:?err}
+      - USER_PASSWORD=${BESZEL_USER_PASSWORD:?err}
+    volumes:
+      # PocketBase database, and the hub's SSH key pair. The PUBLIC half of
+      # that key is BESZEL_AGENT_KEY; losing this folder means a new key, so
+      # the agent's KEY has to be set again.
+      - ${FOLDER_FOR_DATA:?err}/beszel/data:/beszel_data
+      - ${FOLDER_FOR_DATA:?err}/beszel/socket:/beszel_socket
+    ports:
+      - "${WEBUI_PORT_BESZEL:?err}:8090"
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mediastack
+
+  # The Beszel agent, in its Intel build: the same agent plus intel_gpu_top,
+  # which is the only thing that reads the i915 iGPU's load and power.
+  #
+  # Host networking for the same reason as glances - on a bridge it would
+  # count the container's traffic, not the wifi's. It listens on the shared
+  # unix socket only, so host networking publishes nothing.
+  #
+  # NO docker socket, so no per-container charts. The agent wants the raw
+  # socket, this repo never hands that out, and dockerproxy cannot be reached
+  # from host networking - the same wall glances hit. Container use is on
+  # Portainer and Dozzle.
+  #
+  # Two things no tool can show on this box, so do not go looking: fan speed
+  # (the GEEKOM's fan controller has no Linux driver, there is no fan in
+  # /sys/class/hwmon) and iGPU temperature (i915 exposes none for an
+  # integrated GPU; its heat is in the CPU package temperature).
+  beszel-agent:
+    image: henrygd/beszel-agent-intel:latest
+    container_name: beszel-agent
+    restart: unless-stopped
+    network_mode: host
+    # intel_gpu_top reads the GPU through perf counters. Ubuntu sets
+    # perf_event_paranoid to 4, which refuses them to anything without this.
+    cap_add:
+      - PERFMON
+    devices:
+      # card1, not the card0 every example uses: this box has no card0.
+      - /dev/dri/card1:/dev/dri/card1
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/beszel/agent:/var/lib/beszel-agent
+      - ${FOLDER_FOR_DATA:?err}/beszel/socket:/beszel_socket
+      # The media disk, so its free space is charted next to the system disk.
+      # Beszel only needs a folder ON the disk to find which disk it is; an
+      # empty one keeps the library itself out of the container.
+      - /srv/storage/.beszel:/extra-filesystems/sda1__Storage:ro
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - LISTEN=/beszel_socket/beszel.sock
+      - KEY=${BESZEL_AGENT_KEY:?err}
+      # The container plumbing, as in glances.conf: one veth per container.
+      - NICS=-veth*,br-*,docker0,lo
+    healthcheck:
+      test: ["CMD", "/agent", "health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   mediastack:
