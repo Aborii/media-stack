@@ -405,7 +405,10 @@ services:
     environment:
       - TZ=${TIMEZONE:?err}
       - LISTEN=/beszel_socket/beszel.sock
-      - KEY=${BESZEL_AGENT_KEY:?err}
+      # Empty on a fresh box until the hub has made its key; the agent then
+      # just waits unconnected, and the rest of this stack still starts. Fill
+      # it in and `up -d beszel-agent` again.
+      - KEY=${BESZEL_AGENT_KEY:-}
       # The container plumbing, as in glances.conf: one veth per container.
       - NICS=-veth*,br-*,docker0,lo
     healthcheck:
