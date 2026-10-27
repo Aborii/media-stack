@@ -859,6 +859,26 @@ pages:
               - { title: Dozzle,      url: http://aboriis-mini:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
               - { title: What's Up Docker, url: http://aboriis-mini:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
 
+          # The household apps, documents and tools. Same shape as Services:
+          # the check goes to the container, the link opens the browser URL.
+          # Syncthing is on the host network, so its check goes to the host
+          # through the docker gateway.
+          - type: monitor
+            title: Home apps
+            cache: 1m
+            sites:
+              - { title: Paperless,   url: http://aboriis-mini:8000, check-url: http://paperless:8000/,                  icon: di:paperless-ngx }
+              - { title: Actual,      url: https://aboriis-mini:15006, check-url: http://actual:5006/,                   icon: di:actual-budget }
+              - { title: HomeBox,     url: http://aboriis-mini:7745, check-url: http://homebox:7745/api/v1/status,       icon: di:homebox }
+              - { title: Wallos,      url: http://aboriis-mini:8282, check-url: http://wallos:80/,                       icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/wallos.png }
+              - { title: Donetick,    url: http://aboriis-mini:2021, check-url: http://donetick:2021/api/v1/health,      icon: di:donetick }
+              - { title: Karakeep,    url: http://aboriis-mini:3007, check-url: http://karakeep:3000/api/health,         icon: di:karakeep }
+              - { title: Syncthing,   url: http://aboriis-mini:8384, check-url: http://172.28.10.1:8384/rest/noauth/health, icon: di:syncthing }
+              - { title: Stirling-PDF, url: http://aboriis-mini:8090, check-url: http://stirling-pdf:8080/api/v1/info/status, icon: di:stirling-pdf }
+              - { title: ConvertX,    url: http://aboriis-mini:3006, check-url: http://convertx:3000/,                   icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/convertx.png }
+              - { title: SearXNG,     url: http://aboriis-mini:8092, check-url: http://searxng:8080/healthz,             icon: di:searxng }
+              - { title: changedetection, url: http://aboriis-mini:5010, check-url: http://changedetection:5000/,        icon: di:changedetection }
+
           # Homepage's Registry tile: how many repositories the private
           # registry holds. It publishes to 127.0.0.1 only, so the count is
           # read over the docker network and the link goes to registry-ui.
@@ -948,6 +968,21 @@ pages:
                   - { title: qBittorrent, url: http://aboriis-mini:8200 }
                   - { title: Pinchflat,   url: http://aboriis-mini:8945 }
                   - { title: MeTube,      url: http://aboriis-mini:8082 }
+              - title: Home
+                links:
+                  - { title: Paperless,   url: http://aboriis-mini:8000 }
+                  - { title: Actual,      url: https://aboriis-mini:15006 }
+                  - { title: HomeBox,     url: http://aboriis-mini:7745 }
+                  - { title: Wallos,      url: http://aboriis-mini:8282 }
+                  - { title: Donetick,    url: http://aboriis-mini:2021 }
+                  - { title: Karakeep,    url: http://aboriis-mini:3007 }
+                  - { title: Syncthing,   url: http://aboriis-mini:8384 }
+              - title: Tools
+                links:
+                  - { title: Stirling-PDF, url: http://aboriis-mini:8090 }
+                  - { title: ConvertX,    url: http://aboriis-mini:3006 }
+                  - { title: SearXNG,     url: http://aboriis-mini:8092 }
+                  - { title: changedetection, url: http://aboriis-mini:5010 }
 
   # Prices, on a tab of their own.
   #
