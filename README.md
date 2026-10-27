@@ -73,8 +73,6 @@ docker compose down
 | | dawarich | 3004 | location history from the phone; keeps its own PostGIS and Redis |
 | | actual | 5006 | budget; open it on `https://aboriis-mini:15006`, it needs a secure page |
 | | homebox | 7745 | home inventory, receipts and warranties |
-| | mealie | 9925 | recipes, meal plans, shopping list |
-| | memos | 5230 | quick notes |
 | | wallos | 8282 | subscriptions and renewal dates |
 | | donetick | 2021 | chores and recurring tasks |
 | | karakeep | 3007 | saved links with a full copy of each page, searchable |

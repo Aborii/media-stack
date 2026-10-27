@@ -3,8 +3,6 @@
 #
 #   actual    5006  budget; open it on the HTTPS mirror, https://aboriis-mini:15006
 #   homebox   7745  what we own, where it is, receipts and warranties
-#   mealie    9925  recipes from a link, meal plans, shopping list
-#   memos     5230  quick notes
 #   wallos    8282  subscriptions and when they renew
 #   donetick  2021  chores and recurring tasks
 #
@@ -17,8 +15,7 @@
 #   1. Donetick reads a config file that holds its signing secret, so write it
 #      once before the first `up` (see the donetick service below).
 #   2. docker compose up -d   (from this directory)
-#   3. Create an account in each app. Mealie is the exception: it starts with
-#      changeme@example.com / MyPassword, which must be changed at first sign-in.
+#   3. Create an account in each app.
 #   4. Close sign-ups in HomeBox and Donetick once the household's accounts
 #      exist (the two settings are marked below), then `up -d` again.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,54 +69,6 @@ services:
     volumes:
       # The database and every attached photo and receipt.
       - ${FOLDER_FOR_DATA:?err}/homebox:/data
-    logging:
-      driver: 'json-file'
-      options:
-        max-size: '10m'
-        max-file: '3'
-    networks:
-      - mediastack
-
-  mealie:
-    container_name: mealie
-    # Docker Hub's copy of ghcr.io/mealie-recipes/mealie, published by the
-    # project. Pinned, as upstream asks: a release can need a manual step, so
-    # read its notes before bumping.
-    image: hkotel/mealie:v3.29.0
-    restart: unless-stopped
-    ports:
-      - '${MEALIE_PORT:-9925}:9000'
-    environment:
-      PUID: ${PUID:?err}
-      PGID: ${PGID:?err}
-      TZ: ${TIMEZONE:?err}
-      BASE_URL: http://aboriis-mini:${MEALIE_PORT:-9925}
-      # Accounts are made by inviting from the admin page instead.
-      ALLOW_SIGNUP: 'false'
-    # Upstream's own advice: Python grabs memory it does not need on a host
-    # with a lot of it, and idles high without a cap.
-    mem_limit: 1g
-    volumes:
-      - ${FOLDER_FOR_DATA:?err}/mealie:/app/data
-    logging:
-      driver: 'json-file'
-      options:
-        max-size: '10m'
-        max-file: '3'
-    networks:
-      - mediastack
-
-  memos:
-    container_name: memos
-    # "stable" follows the newest stable release; "canary" is development.
-    image: neosmemo/memos:stable
-    restart: unless-stopped
-    ports:
-      - '${MEMOS_PORT:-5230}:5230'
-    # The first account becomes the admin. New sign-ups are then switched off
-    # in Settings → System.
-    volumes:
-      - ${FOLDER_FOR_DATA:?err}/memos:/var/opt/memos
     logging:
       driver: 'json-file'
       options:
