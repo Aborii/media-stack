@@ -1,0 +1,171 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Paperless-ngx — scanned and digital documents, OCR'd, tagged and searchable.
+#
+# Four containers. The app itself; Valkey as its task queue (Paperless will not
+# start without one); and Tika plus Gotenberg, which turn Office files and
+# emails into PDFs it can OCR. Without those two, a .docx or .eml dropped in the
+# inbox is rejected instead of filed.
+#
+# The database is the shared postgres17, not a fifth container: one role and
+# one database, created by hand once (see "First start" below). It is then
+# dumped with everything else by scripts/backup.sh.
+#
+# Every container is named paperless-*, and the app reaches the others by
+# those names. The mediastack bridge is shared by every stack, so a bare
+# service name like "broker" or "tika" would be one other stacks could claim.
+#
+# First start, on the mini:
+#
+#   1. Database and role (the password goes in PAPERLESS_DB_PASSWORD):
+#        docker exec -i postgres17 psql -U postgres -v pw="$PAPERLESS_DB_PASSWORD" <<'SQL'
+#        CREATE ROLE paperless LOGIN PASSWORD :'pw';
+#        CREATE DATABASE paperless OWNER paperless;
+#        SQL
+#   2. docker compose up -d   (from this directory)
+#   3. The first account, typed by you rather than kept in a file:
+#        docker exec -it paperless python3 manage.py createsuperuser
+# ─────────────────────────────────────────────────────────────────────────────
+name: paperless
+
+services:
+  paperless:
+    container_name: paperless
+    # v3. It dropped PAPERLESS_DBSSLMODE for PAPERLESS_DB_OPTIONS and stopped
+    # guessing the engine from PAPERLESS_DBHOST, which is why both are spelled
+    # out below. A v2 example copied from elsewhere will boot on SQLite instead.
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    depends_on:
+      paperless-broker:
+        condition: service_started
+      paperless-gotenberg:
+        condition: service_started
+      paperless-tika:
+        condition: service_started
+    ports:
+      - '${PAPERLESS_PORT:-8000}:8000'
+    environment:
+      # The image starts as root, installs any extra OCR languages, then drops
+      # to this uid. Matching aborii means files it writes - and files it
+      # deletes from the inbox after filing them - belong to the same owner as
+      # everything else on the disk.
+      USERMAP_UID: ${PUID:?err}
+      USERMAP_GID: ${PGID:?err}
+      PAPERLESS_TIME_ZONE: ${TIMEZONE:?err}
+
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:?err}
+
+      PAPERLESS_REDIS: redis://paperless-broker:6379
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBHOST: postgres17
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD:?err}
+      # postgres17 only accepts TLS (hostssl in its pg_hba.conf). "require"
+      # rather than verify-full: this hop never leaves the docker bridge on the
+      # host, which is the same reasoning Malak's connection uses.
+      PAPERLESS_DB_OPTIONS: sslmode=require
+
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_ENDPOINT: http://paperless-tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://paperless-gotenberg:3000
+
+      # The image ships English, German, French, Italian and Spanish. Anything
+      # else is installed with apt on EVERY container start, so a recreate
+      # needs the internet, and a typo here stops the container from booting.
+      PAPERLESS_OCR_LANGUAGES: ${PAPERLESS_OCR_LANGUAGES:-ara}
+      # What a document is read as. Several languages joined with + makes OCR
+      # slower but copes with a page that mixes them.
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng+ara}
+
+      # PAPERLESS_URL is deliberately NOT set. It would also become the only
+      # allowed host, and this is reached as aboriis-mini, by the tailnet name
+      # and by the tailnet address. Plain HTTP on 8000 passes Django's CSRF
+      # check as same-origin on any of them. The HTTPS mirror on 18000 does
+      # not: the browser says https:// and Paperless, behind the proxy, sees
+      # http://, so those origins have to be listed.
+      PAPERLESS_CSRF_TRUSTED_ORIGINS: ${PAPERLESS_CSRF_TRUSTED_ORIGINS:?err}
+
+    volumes:
+      # The search index, the classifier and the logs.
+      - ${FOLDER_FOR_DATA:?err}/paperless/data:/usr/src/paperless/data
+      # The documents themselves: originals, OCR'd archive copies and
+      # thumbnails. Never edit in here by hand - Paperless owns the layout and
+      # its database points at these exact paths.
+      - ${FOLDER_FOR_DATA:?err}/paperless/media:/usr/src/paperless/media
+      # document_exporter writes here. A full export is the portable backup:
+      # it can be imported into a fresh Paperless with no database at all.
+      - ${FOLDER_FOR_DATA:?err}/paperless/export:/usr/src/paperless/export
+      # The inbox. Anything dropped here is filed and then DELETED from here.
+      # It sits on the data disk, under what Samba publishes as [storage], so
+      # a scanner or the PC can drop files straight into it.
+      - ${PAPERLESS_CONSUME_DIR:-/srv/storage/data/paperless-inbox}:/usr/src/paperless/consume
+
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:8000 >/dev/null || exit 1']
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      # Migrations on the first boot, plus the apt install of the OCR
+      # languages on every boot.
+      start_period: 180s
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    networks:
+      - mediastack
+
+  paperless-broker:
+    container_name: paperless-broker
+    image: valkey/valkey:9-alpine
+    restart: unless-stopped
+    volumes:
+      # Only queued tasks. Losing it drops work in flight, not documents.
+      - ${FOLDER_FOR_DATA:?err}/paperless/broker:/data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  paperless-gotenberg:
+    container_name: paperless-gotenberg
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    # Emails are rendered through Chromium. No JavaScript, and nothing loaded
+    # from outside the temp folder, so a tracking pixel in a filed email never
+    # phones home.
+    command:
+      - gotenberg
+      - --chromium-disable-javascript=true
+      - --chromium-allow-list=^file:///tmp/.*
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  paperless-tika:
+    container_name: paperless-tika
+    image: apache/tika:latest
+    restart: unless-stopped
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

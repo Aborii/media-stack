@@ -15,7 +15,7 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management postgres; do
+for s in vpn arr media immich monitoring management postgres paperless; do
   (cd stacks/$s && docker compose up -d)
 done
 ```
@@ -71,6 +71,7 @@ docker compose down
 | | wud | 3002 | image update watcher, Telegram notices, never pulls |
 | **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the prayer tiles |
 | | dawarich | 3004 | location history from the phone; keeps its own PostGIS and Redis |
+| **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network
