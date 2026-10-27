@@ -987,6 +987,7 @@ pages:
                   - { title: ConvertX,    url: http://aboriis-mini:3006 }
                   - { title: SearXNG,     url: http://aboriis-mini:8092 }
                   - { title: changedetection, url: http://aboriis-mini:5010 }
+                  - { title: VS Code,     url: https://aboriis-mini:18448 }
 
   # Prices, on a tab of their own.
   #
