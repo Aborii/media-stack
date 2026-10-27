@@ -75,6 +75,7 @@ docker compose down
 | | homebox | 7745 | home inventory, receipts and warranties |
 | | wallos | 8282 | subscriptions and renewal dates |
 | | donetick | 2021 | chores and recurring tasks |
+| | vikunja | 3456 | to-do lists and projects, like Todoist; phone apps sync to it |
 | | karakeep | 3007 | saved links with a full copy of each page, searchable |
 | | syncthing | 8384 | folder sync with the phone and PC; host network, files in `data/sync` |
 | **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |

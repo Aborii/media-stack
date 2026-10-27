@@ -5,6 +5,7 @@
 #   homebox   7745  what we own, where it is, receipts and warranties
 #   wallos    8282  subscriptions and when they renew
 #   donetick  2021  chores and recurring tasks
+#   vikunja   3456  to-do lists and projects, like Todoist; phone apps sync to it
 #
 # Every one keeps SQLite in its own folder under appdata, so the nightly
 # backup copies it with everything else and none of them needs the shared
@@ -16,8 +17,8 @@
 #      once before the first `up` (see the donetick service below).
 #   2. docker compose up -d   (from this directory)
 #   3. Create an account in each app.
-#   4. Close sign-ups in HomeBox and Donetick once the household's accounts
-#      exist (the two settings are marked below), then `up -d` again.
+#   4. Close sign-ups in HomeBox, Donetick and Vikunja once the household's accounts
+#      exist (the three settings are marked below), then `up -d` again.
 # ─────────────────────────────────────────────────────────────────────────────
 name: household
 
@@ -123,6 +124,38 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  vikunja:
+    container_name: vikunja
+    image: vikunja/vikunja:latest
+    restart: unless-stopped
+    ports:
+      - '${VIKUNJA_PORT:-3456}:3456'
+    environment:
+      # Links in reminder emails and the address the web app calls. Plain
+      # HTTP on purpose: the phone apps would have to trust the home CA to
+      # use the HTTPS mirror on 13456, and over Tailscale this name works
+      # from anywhere.
+      VIKUNJA_SERVICE_PUBLICURL: http://aboriis-mini:${VIKUNJA_PORT:-3456}/
+      VIKUNJA_SERVICE_SECRET: ${VIKUNJA_SECRET:?err}
+      VIKUNJA_SERVICE_TIMEZONE: ${TIMEZONE:?err}
+      # Set to false once everyone has an account.
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: ${VIKUNJA_ALLOW_REGISTRATION:-true}
+      VIKUNJA_DATABASE_TYPE: sqlite
+      VIKUNJA_DATABASE_PATH: /db/vikunja.db
+    # Runs as uid 1000 and never takes ownership of its folders, so both
+    # must be created and owned by 1000 before the first start.
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/vikunja/db:/db
+      # Attachments and project backgrounds.
+      - ${FOLDER_FOR_DATA:?err}/vikunja/files:/app/vikunja/files
     logging:
       driver: 'json-file'
       options:

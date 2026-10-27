@@ -872,6 +872,7 @@ pages:
               - { title: HomeBox,     url: http://aboriis-mini:7745, check-url: http://homebox:7745/api/v1/status,       icon: di:homebox }
               - { title: Wallos,      url: http://aboriis-mini:8282, check-url: http://wallos:80/,                       icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/wallos.png }
               - { title: Donetick,    url: http://aboriis-mini:2021, check-url: http://donetick:2021/api/v1/health,      icon: di:donetick }
+              - { title: Vikunja,     url: http://aboriis-mini:3456, check-url: http://vikunja:3456/health,              icon: di:vikunja }
               - { title: Karakeep,    url: http://aboriis-mini:3007, check-url: http://karakeep:3000/api/health,         icon: di:karakeep }
               - { title: Syncthing,   url: http://aboriis-mini:8384, check-url: http://172.28.10.1:8384/rest/noauth/health, icon: di:syncthing }
               - { title: Stirling-PDF, url: http://aboriis-mini:8090, check-url: http://stirling-pdf:8080/api/v1/info/status, icon: di:stirling-pdf }
@@ -975,6 +976,7 @@ pages:
                   - { title: HomeBox,     url: http://aboriis-mini:7745 }
                   - { title: Wallos,      url: http://aboriis-mini:8282 }
                   - { title: Donetick,    url: http://aboriis-mini:2021 }
+                  - { title: Vikunja,     url: http://aboriis-mini:3456 }
                   - { title: Karakeep,    url: http://aboriis-mini:3007 }
                   - { title: Syncthing,   url: http://aboriis-mini:8384 }
               - title: Tools
