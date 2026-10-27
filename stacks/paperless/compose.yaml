@@ -16,8 +16,11 @@
 #
 # First start, on the mini:
 #
-#   1. Database and role (the password goes in PAPERLESS_DB_PASSWORD):
-#        docker exec -i postgres17 psql -U postgres -v pw="$PAPERLESS_DB_PASSWORD" <<'SQL'
+#   1. Database and role, with the password already in PAPERLESS_DB_PASSWORD.
+#      Read it from the env file: the shell does not have it, and an empty
+#      value would create the role with an empty password.
+#        PW=$(grep '^PAPERLESS_DB_PASSWORD=' ../../docker-compose.env | cut -d= -f2-)
+#        docker exec -i postgres17 psql -U postgres -v pw="$PW" <<'SQL'
 #        CREATE ROLE paperless LOGIN PASSWORD :'pw';
 #        CREATE DATABASE paperless OWNER paperless;
 #        SQL
