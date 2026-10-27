@@ -123,6 +123,8 @@ EXCLUDES=(
   'jellyfin/cache/'
   'jellyfin/log/'
   'tdarr/logs/'
+  'paperless/data/index/'         # search index, rebuilt by document_index reindex
+  'paperless/data/log/'
 )
 
 mkdir -p "$DEST/dumps" "$DEST/appdata"
