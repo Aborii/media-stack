@@ -33,7 +33,10 @@ services:
     # v3. It dropped PAPERLESS_DBSSLMODE for PAPERLESS_DB_OPTIONS and stopped
     # guessing the engine from PAPERLESS_DBHOST, which is why both are spelled
     # out below. A v2 example copied from elsewhere will boot on SQLite instead.
-    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    #
+    # Docker Hub, not ghcr.io: the same image, but ghcr.io's download servers
+    # kept resetting the connection over IPv6 partway through the 400 MB pull.
+    image: paperlessngx/paperless-ngx:latest
     restart: unless-stopped
     depends_on:
       paperless-broker:
@@ -73,6 +76,10 @@ services:
       # The image ships English, German, French, Italian and Spanish. Anything
       # else is installed with apt on EVERY container start, so a recreate
       # needs the internet, and a typo here stops the container from booting.
+      # A NEW container also fails its first start once: the search-index
+      # check runs while the language is still installing, finds it missing,
+      # and the container restarts. The second start is clean, so a
+      # RestartCount of 1 right after a recreate is expected.
       PAPERLESS_OCR_LANGUAGES: ${PAPERLESS_OCR_LANGUAGES:-ara}
       # What a document is read as. Several languages joined with + makes OCR
       # slower but copes with a page that mixes them.
