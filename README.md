@@ -15,7 +15,7 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management postgres paperless; do
+for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing; do
   (cd stacks/$s && docker compose up -d)
 done
 ```
@@ -71,7 +71,19 @@ docker compose down
 | | wud | 3002 | image update watcher, Telegram notices, never pulls |
 | **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the prayer tiles |
 | | dawarich | 3004 | location history from the phone; keeps its own PostGIS and Redis |
+| | actual | 5006 | budget; open it on `https://aboriis-mini:15006`, it needs a secure page |
+| | homebox | 7745 | home inventory, receipts and warranties |
+| | mealie | 9925 | recipes, meal plans, shopping list |
+| | memos | 5230 | quick notes |
+| | wallos | 8282 | subscriptions and renewal dates |
+| | donetick | 2021 | chores and recurring tasks |
+| | karakeep | 3007 | saved links with a full copy of each page, searchable |
+| | syncthing | 8384 | folder sync with the phone and PC; host network, files in `data/sync` |
 | **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
+| **Tools** | stirling-pdf | 8090 | PDF tools: merge, split, compress, OCR, sign |
+| | convertx | 3006 | file format converter; files deleted after a day |
+| | searxng | 8092 | private web search |
+| | changedetection | 5010 | watches pages for changes, with a Chrome for JavaScript sites |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network
