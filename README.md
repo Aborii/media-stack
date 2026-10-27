@@ -15,7 +15,7 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing; do
+for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden; do
   (cd stacks/$s && docker compose up -d)
 done
 ```
@@ -78,6 +78,7 @@ docker compose down
 | | vikunja | 3456 | to-do lists and projects, like Todoist; phone apps sync to it |
 | | karakeep | 3007 | saved links with a full copy of each page, searchable |
 | | syncthing | 8384 | folder sync with the phone and PC; host network, files in `data/sync` |
+| | vaultwarden | 8222 | passwords for the Bitwarden apps; use `https://aboriis-mini.tail54d520.ts.net:8443` |
 | **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
 | **Tools** | stirling-pdf | 8090 | PDF tools: merge, split, compress, OCR, sign |
 | | convertx | 3006 | file format converter; files deleted after a day |

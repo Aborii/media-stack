@@ -19,6 +19,7 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `household` | actual, homebox, wallos, donetick, vikunja - each on SQLite in its own appdata folder |
 | `karakeep` | karakeep, its Meilisearch and its Chrome |
 | `syncthing` | syncthing, on the host network so peers can connect directly |
+| `vaultwarden` | vaultwarden, with HTTPS from `tailscale serve` so the Bitwarden apps trust it |
 | `dockge` | the UI itself |
 
 ## Three things that are load-bearing
