@@ -442,6 +442,10 @@ services:
     restart: unless-stopped
     network_mode: host
     pid: host
+    # Root, not the image's nobody: the RAPL energy counters (the power
+    # chart) are mode 0400 root, and as nobody the collector silently returns
+    # nothing. Every mount stays read-only.
+    user: "0:0"
     command:
       - --path.rootfs=/host
       - --web.listen-address=172.28.10.1:9100
@@ -449,6 +453,9 @@ services:
       - --collector.netdev.device-exclude=^(veth.*|br-.*|docker0|lo)$$
     volumes:
       - /:/host:ro,rslave
+      # Disk model and serial labels; without it the diskstats collector logs
+      # an error on start and drops them.
+      - /run/udev:/run/udev:ro
 
   # The iGPU: engine load, frequency, power, through intel_gpu_top. Its own
   # README runs it privileged; it does not need that - PERFMON and the one
