@@ -418,6 +418,115 @@ services:
       retries: 3
       start_period: 10s
 
+  # --- Grafana hardware dashboard -----------------------------------------
+  #
+  # A page with ONE CHART PER DEVICE for temperatures (CPU, NVMe, wifi card,
+  # board), plus power in watts, the iGPU, CPU, memory, disks and network.
+  # Beszel and Netdata both put every temperature on one chart; Grafana
+  # repeats the panel per sensor chip, so a device added later gets its own
+  # chart with no dashboard edit.
+  #
+  # Four parts: node-exporter and intel-gpu-exporter read the hardware,
+  # Prometheus stores it, Grafana draws it. Only Grafana publishes a port.
+  #
+  # Nothing here phones home. Grafana's usage reporting, update checks, news
+  # feed, feedback links, Gravatar and public snapshots are all off below;
+  # the exporters and Prometheus make no outbound calls at all.
+
+  # Host hardware: hwmon temperatures, RAPL power, CPU, memory, disks,
+  # network. Host networking and pid for the same reason as glances, bound to
+  # the docker gateway for the same reason too - no open metrics on the wifi.
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=172.28.10.1:9100
+      # The container plumbing, as in glances.conf: one veth per container.
+      - --collector.netdev.device-exclude=^(veth.*|br-.*|docker0|lo)$$
+    volumes:
+      - /:/host:ro,rslave
+
+  # The iGPU: engine load, frequency, power, through intel_gpu_top. Its own
+  # README runs it privileged; it does not need that - PERFMON and the one
+  # device node are enough (same as beszel-agent). Pinned, because it is a
+  # one-person project and a new tag should be read before it is run.
+  intel-gpu-exporter:
+    image: ghcr.io/clambin/intel-gpu-exporter:0.7.4
+    container_name: intel-gpu-exporter
+    restart: unless-stopped
+    command: ["--interval=5s", "--device=drm:/dev/dri/card1"]
+    cap_add:
+      - PERFMON
+    devices:
+      # card1, not card0: this box has no card0.
+      - /dev/dri/card1:/dev/dri/card1
+    networks:
+      - mediastack
+
+  # Stores the readings. No published port: Grafana reaches it by name, and
+  # its own page is not needed. 90 days, capped at 10 GB, whichever comes
+  # first - at a 10 s scrape that is a few GB.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --storage.tsdb.retention.size=10GB
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Owned by 65534 (nobody), the user the image runs as.
+      - ${FOLDER_FOR_DATA:?err}/prometheus:/prometheus
+    networks:
+      - mediastack
+
+  # The page. Its own login: the admin account comes from GRAFANA_ADMIN_USER
+  # and GRAFANA_ADMIN_PASSWORD on the FIRST start only - change the password
+  # in Grafana after that, not here. The datasource and the dashboard are
+  # provisioned from this repo, and the dashboard opens as the home page.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - TZ=${TIMEZONE:?err}
+      - GF_SERVER_ROOT_URL=http://aboriis-mini:${WEBUI_PORT_GRAFANA:?err}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:?err}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?err}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/aboriis-mini.json
+      # No outbound calls: usage stats, version and plugin checks, the news
+      # feed, feedback links, avatar lookups, snapshots published to
+      # grafana.com.
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+      - GF_ANALYTICS_FEEDBACK_LINKS_ENABLED=false
+      - GF_NEWS_NEWS_FEED_ENABLED=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_SNAPSHOTS_EXTERNAL_ENABLED=false
+    volumes:
+      # Owned by 472, the user the image runs as.
+      - ${FOLDER_FOR_DATA:?err}/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "${WEBUI_PORT_GRAFANA:?err}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - mediastack
+
 networks:
   mediastack:
     name: mediastack

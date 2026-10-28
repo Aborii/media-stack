@@ -1,0 +1,29 @@
+# Prometheus for the Grafana hardware dashboard. Two sources, both on this
+# box:
+#
+#   node    node-exporter, on host networking and bound to the docker gateway
+#           (same reason as glances: no open metrics on the wifi). Every
+#           temperature, CPU, memory, disk, network and RAPL power figure.
+#   gpu     intel-gpu-exporter on the mediastack network, reached by name.
+#           Engine load, frequency and power of the i915 iGPU.
+#
+# 10s, not the 15s or 60s defaults: a temperature spike from a Tdarr encode
+# lasts seconds, and a minute-wide sample flattens it out. History is kept by
+# the retention flags in compose.yaml, not here.
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 1m
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ["172.28.10.1:9100"]
+        labels:
+          host: aboriis-mini
+
+  - job_name: gpu
+    static_configs:
+      - targets: ["intel-gpu-exporter:9100"]
+        labels:
+          host: aboriis-mini
