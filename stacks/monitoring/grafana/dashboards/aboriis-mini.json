@@ -502,7 +502,7 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 11,
+        "h": 15,
         "w": 12,
         "x": 0,
         "y": 5
@@ -606,7 +606,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 20
       },
       "panels": []
     },
@@ -623,7 +623,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 21
       },
       "targets": [
         {
@@ -655,16 +655,6 @@
           "legendFormat": "GPU and the rest of the chip (uncore)",
           "range": true,
           "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "rate(node_rapl_psys_joules_total[$__rate_interval])",
-          "legendFormat": "Whole system (psys)",
-          "range": true,
-          "refId": "D"
         }
       ],
       "fieldConfig": {
@@ -732,7 +722,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 21
       },
       "targets": [
         {
@@ -812,7 +802,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 30
       },
       "targets": [
         {
@@ -890,7 +880,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 30
       },
       "targets": [
         {
@@ -898,8 +888,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "gpumon_power",
-          "legendFormat": "{{type}}",
+          "expr": "gpumon_power{type=\"gpu\"}",
+          "legendFormat": "GPU",
           "range": true,
           "refId": "A"
         }
@@ -964,7 +954,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 38
       },
       "panels": []
     },
@@ -981,7 +971,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 35
+        "y": 39
       },
       "targets": [
         {
@@ -1072,7 +1062,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 35
+        "y": 39
       },
       "targets": [
         {
@@ -1160,7 +1150,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 47
       },
       "targets": [
         {
@@ -1258,7 +1248,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 47
       },
       "targets": [
         {
@@ -1356,7 +1346,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 55
       },
       "targets": [
         {
@@ -1444,7 +1434,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 55
       },
       "targets": [
         {
@@ -1532,7 +1522,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 59
+        "y": 63
       },
       "targets": [
         {
