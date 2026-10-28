@@ -37,6 +37,21 @@ services:
       # The image phones home for an update check and a survey prompt.
       SYSTEM_SHOWUPDATE: 'false'
       SHOW_SURVEY: 'false'
+      # Analytics off: PostHog (in the page and in the server) and the Scarf
+      # tracking pixel. Left unset, the master switch is "ask on first launch"
+      # and the pixel ran by default in older releases.
+      SYSTEM_ENABLEANALYTICS: 'false'
+      SYSTEM_ENABLEPOSTHOG: 'false'
+      SYSTEM_ENABLESCARF: 'false'
+      DISABLE_PIXEL: 'true'
+    # In case a later release ignores the switches above, the server's own
+    # analytics hosts resolve to nowhere. Browsers are covered by AdGuard.
+    extra_hosts:
+      - 'eu.i.posthog.com:0.0.0.0'
+      - 'us.i.posthog.com:0.0.0.0'
+      - 'app.posthog.com:0.0.0.0'
+      - 'static.scarf.sh:0.0.0.0'
+      - 'pixel.stirlingpdf.com:0.0.0.0'
     volumes:
       # Settings and the small internal database. The OCR languages are NOT
       # mounted: a host folder on /usr/share/tessdata would hide the ones the
