@@ -1,0 +1,170 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Household — small apps for running the home, each with its own sign-in.
+#
+#   actual    5006  budget; open it on the HTTPS mirror, https://aboriis-mini:15006
+#   homebox   7745  what we own, where it is, receipts and warranties
+#   wallos    8282  subscriptions and when they renew
+#   donetick  2021  chores and recurring tasks
+#   vikunja   3456  to-do lists and projects, like Todoist; phone apps sync to it
+#
+# Every one keeps SQLite in its own folder under appdata, so the nightly
+# backup copies it with everything else and none of them needs the shared
+# postgres17. They are tiny and single-household; a database server each would
+# be more to run than the apps themselves.
+#
+# First start, on the mini:
+#   1. Donetick reads a config file that holds its signing secret, so write it
+#      once before the first `up` (see the donetick service below).
+#   2. docker compose up -d   (from this directory)
+#   3. Create an account in each app.
+#   4. Close sign-ups in HomeBox, Donetick and Vikunja once the household's accounts
+#      exist (the three settings are marked below), then `up -d` again.
+# ─────────────────────────────────────────────────────────────────────────────
+name: household
+
+services:
+  actual:
+    container_name: actual
+    image: actualbudget/actual-server:latest
+    restart: unless-stopped
+    ports:
+      - '${ACTUAL_PORT:-5006}:5006'
+    # Plain HTTP on 5006 loads, then stops with "SharedArrayBuffer is not
+    # available": browsers only allow it on a secure page. Use the HTTPS
+    # mirror on 15006. The password is set on the first visit.
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/actual:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'node scripts/health-check.js']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  homebox:
+    container_name: homebox
+    # Docker Hub, not ghcr.io: the same image, and ghcr.io's downloads keep
+    # resetting over IPv6 on this connection.
+    image: sysadminsmedia/homebox:latest
+    restart: unless-stopped
+    ports:
+      - '${HOMEBOX_PORT:-7745}:7745'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      HBOX_LOG_LEVEL: info
+      HBOX_LOG_FORMAT: text
+      HBOX_WEB_MAX_UPLOAD_SIZE: '50'
+      HBOX_OPTIONS_ALLOW_ANALYTICS: 'false'
+      # Set to false once everyone has an account.
+      HBOX_OPTIONS_ALLOW_REGISTRATION: ${HOMEBOX_ALLOW_REGISTRATION:-true}
+      # Required: the binary will not start without 32+ bytes. Changing it
+      # invalidates every API key HomeBox has issued, nothing else.
+      HBOX_AUTH_API_KEY_PEPPER: ${HOMEBOX_API_KEY_PEPPER:?err}
+    volumes:
+      # The database and every attached photo and receipt.
+      - ${FOLDER_FOR_DATA:?err}/homebox:/data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  wallos:
+    container_name: wallos
+    image: bellamy/wallos:latest
+    restart: unless-stopped
+    ports:
+      - '${WALLOS_PORT:-8282}:80'
+    environment:
+      TZ: ${TIMEZONE:?err}
+    # The first account becomes the admin, and Wallos allows no other sign-up
+    # until the admin turns it on.
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/wallos/db:/var/www/html/db
+      - ${FOLDER_FOR_DATA:?err}/wallos/logos:/var/www/html/images/uploads/logos
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  donetick:
+    container_name: donetick
+    image: donetick/donetick:latest
+    restart: unless-stopped
+    ports:
+      - '${DONETICK_PORT:-2021}:2021'
+    environment:
+      DT_ENV: selfhosted
+      DT_SQLITE_PATH: /donetick-data/donetick.db
+      TZ: ${TIMEZONE:?err}
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/donetick/data:/donetick-data
+      # selfhosted.yaml, which Donetick will not start without. Copy
+      # upstream's (github.com/donetick/donetick, config/selfhosted.yaml) into
+      # this folder and set jwt.secret to 32 random characters:
+      #   openssl rand -hex 16
+      # Set is_user_creation_disabled: true there once everyone has an
+      # account. The file holds a secret, so it lives in appdata, not here.
+      - ${FOLDER_FOR_DATA:?err}/donetick/config:/config
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:2021/api/v1/health || exit 1']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  vikunja:
+    container_name: vikunja
+    image: vikunja/vikunja:latest
+    restart: unless-stopped
+    ports:
+      - '${VIKUNJA_PORT:-3456}:3456'
+    environment:
+      # Links in reminder emails and the address the web app calls. Plain
+      # HTTP on purpose: the phone apps would have to trust the home CA to
+      # use the HTTPS mirror on 13456, and over Tailscale this name works
+      # from anywhere.
+      VIKUNJA_SERVICE_PUBLICURL: http://aboriis-mini:${VIKUNJA_PORT:-3456}/
+      VIKUNJA_SERVICE_SECRET: ${VIKUNJA_SECRET:?err}
+      VIKUNJA_SERVICE_TIMEZONE: ${TIMEZONE:?err}
+      # Set to false once everyone has an account.
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: ${VIKUNJA_ALLOW_REGISTRATION:-true}
+      VIKUNJA_DATABASE_TYPE: sqlite
+      VIKUNJA_DATABASE_PATH: /db/vikunja.db
+    # Runs as uid 1000 and never takes ownership of its folders, so both
+    # must be created and owned by 1000 before the first start.
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/vikunja/db:/db
+      # Attachments and project backgrounds.
+      - ${FOLDER_FOR_DATA:?err}/vikunja/files:/app/vikunja/files
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

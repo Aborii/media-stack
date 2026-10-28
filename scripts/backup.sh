@@ -123,6 +123,13 @@ EXCLUDES=(
   'jellyfin/cache/'
   'jellyfin/log/'
   'tdarr/logs/'
+  'paperless/data/index/'         # search index, rebuilt by document_index reindex
+  'paperless/data/log/'
+  'karakeep/meilisearch/'         # search index, rebuilt from Karakeep's admin page
+  'searxng/cache/'                # favicons
+  'stirling-pdf/logs/'
+  'convertx/uploads/'             # files mid-conversion, deleted after a day anyway
+  'convertx/output/'
 )
 
 mkdir -p "$DEST/dumps" "$DEST/appdata"

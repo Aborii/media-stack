@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Syncthing — keeps folders the same on the phone, the PC and the mini, with
+# no cloud in between.
+#
+# HOST NETWORK, unlike every other stack. Syncthing tells the other devices
+# which addresses it can be reached on, and inside a bridge it only knows its
+# 172.x container address. Peers then fail to connect directly and fall back
+# to Syncthing's public relays, which is slow and sends the traffic out of the
+# house. The host firewall already admits the LAN and the tailnet to every
+# host port, so 22000 (sync) and 21027/udp (discovery) need no rule.
+#
+# The web page is on 8384. Set a GUI user and password in Settings → GUI on
+# the first visit: until then the page is open to anyone who can reach it.
+#
+# Folders live on the data disk under data/sync, which the container sees as
+# /var/syncthing/Sync. Add each new folder under that path. The nightly backup
+# covers appdata, not the data disk, so these copies are not backed up here -
+# the other devices hold the same files.
+# ─────────────────────────────────────────────────────────────────────────────
+name: syncthing
+
+services:
+  syncthing:
+    container_name: syncthing
+    image: syncthing/syncthing:latest
+    restart: unless-stopped
+    network_mode: host
+    hostname: aboriis-mini
+    environment:
+      PUID: ${PUID:?err}
+      PGID: ${PGID:?err}
+      TZ: ${TIMEZONE:?err}
+      # Every address, not just localhost, so the page is reachable from the
+      # PC and over Tailscale. The firewall keeps everyone else out.
+      STGUIADDRESS: 0.0.0.0:8384
+    volumes:
+      # Keys, device list and the index database.
+      - ${FOLDER_FOR_DATA:?err}/syncthing:/var/syncthing/config
+      - ${SYNCTHING_FOLDERS_DIR:-/srv/storage/data/sync}:/var/syncthing/Sync
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'

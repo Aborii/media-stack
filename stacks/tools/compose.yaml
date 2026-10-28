@@ -1,0 +1,192 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Tools — web pages that do one job on demand and keep little or nothing.
+#
+#   stirling-pdf     8090  merge, split, rotate, compress, OCR and sign PDFs
+#   convertx         3006  convert files between formats (images, audio,
+#                          video, documents) through ffmpeg, libreoffice & co
+#   searxng          8092  private web search across several engines
+#   changedetection  5010  watches web pages and alerts when they change
+#
+# Grouped because none of them owns data worth a stack of its own: Stirling
+# and ConvertX hold a file only while it is being worked on, SearXNG holds
+# nothing, and changedetection's watch list is small. Each is still its own
+# container, so one can be stopped without touching the rest.
+#
+# First start, on the mini:
+#   docker compose up -d   (from this directory)
+# Then create the ConvertX account in its web page (the first account is
+# always allowed, see ACCOUNT_REGISTRATION below).
+# ─────────────────────────────────────────────────────────────────────────────
+name: tools
+
+services:
+  stirling-pdf:
+    container_name: stirling-pdf
+    image: stirlingtools/stirling-pdf:latest
+    restart: unless-stopped
+    ports:
+      - '${STIRLING_PDF_PORT:-8090}:8080'
+    environment:
+      # No sign-in. It keeps no documents between uses, and the firewall
+      # already limits it to the home network and the tailnet. Turning login
+      # on means managing a second set of users for a PDF tool.
+      SECURITY_ENABLELOGIN: 'false'
+      DISABLE_ADDITIONAL_FEATURES: 'true'
+      SYSTEM_DEFAULTLOCALE: en-GB
+      SYSTEM_MAXFILESIZE: '500'
+      # The image phones home for an update check and a survey prompt.
+      SYSTEM_SHOWUPDATE: 'false'
+      SHOW_SURVEY: 'false'
+      # Analytics off: PostHog (in the page and in the server) and the Scarf
+      # tracking pixel. Left unset, the master switch is "ask on first launch"
+      # and the pixel ran by default in older releases.
+      SYSTEM_ENABLEANALYTICS: 'false'
+      SYSTEM_ENABLEPOSTHOG: 'false'
+      SYSTEM_ENABLESCARF: 'false'
+      DISABLE_PIXEL: 'true'
+    # In case a later release ignores the switches above, the server's own
+    # analytics hosts resolve to nowhere. Browsers are covered by AdGuard.
+    extra_hosts:
+      - 'eu.i.posthog.com:0.0.0.0'
+      - 'us.i.posthog.com:0.0.0.0'
+      - 'app.posthog.com:0.0.0.0'
+      - 'static.scarf.sh:0.0.0.0'
+      - 'pixel.stirlingpdf.com:0.0.0.0'
+    volumes:
+      # Settings and the small internal database. The OCR languages are NOT
+      # mounted: a host folder on /usr/share/tessdata would hide the ones the
+      # image ships. Arabic OCR is Paperless's job.
+      - ${FOLDER_FOR_DATA:?err}/stirling-pdf/configs:/configs
+      - ${FOLDER_FOR_DATA:?err}/stirling-pdf/logs:/logs
+    # Java sizes its heap from the host's memory, and large PDFs push it.
+    mem_limit: 2g
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:8080/api/v1/info/status | grep -q UP']
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  convertx:
+    container_name: convertx
+    # Docker Hub, not ghcr.io: the same image, and ghcr.io's downloads keep
+    # resetting over IPv6 on this connection.
+    image: c4illin/convertx:latest
+    restart: unless-stopped
+    ports:
+      - '${CONVERTX_PORT:-3006}:3000'
+    environment:
+      PUID: ${PUID:?err}
+      PGID: ${PGID:?err}
+      TZ: ${TIMEZONE:?err}
+      # The first account can always be created; this stops anyone else
+      # making one after it.
+      ACCOUNT_REGISTRATION: 'false'
+      # Without this the sign-in cookie is marked Secure and the plain-HTTP
+      # address on 3006 cannot sign in at all. The HTTPS mirror on 13006
+      # works either way.
+      HTTP_ALLOWED: 'true'
+      ALLOW_UNAUTHENTICATED: 'false'
+      JWT_SECRET: ${CONVERTX_JWT_SECRET:?err}
+      # Uploads and results are deleted a day after the conversion.
+      AUTO_DELETE_EVERY_N_HOURS: '24'
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/convertx:/app/data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  searxng:
+    container_name: searxng
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - '${SEARXNG_PORT:-8092}:8080'
+    environment:
+      SEARXNG_BASE_URL: http://aboriis-mini:${SEARXNG_PORT:-8092}/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?err}
+    # No Valkey beside it. Upstream's template adds one for the limiter, the
+    # bot protection a public instance needs. A private one behind the
+    # firewall has no strangers to limit, so it runs without either.
+    volumes:
+      # The image writes a default settings.yml here on first start. Edit
+      # that file to change engines; it survives recreates.
+      - ${FOLDER_FOR_DATA:?err}/searxng/config:/etc/searxng
+      # Favicon cache only.
+      - ${FOLDER_FOR_DATA:?err}/searxng/cache:/var/cache/searxng
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  changedetection:
+    container_name: changedetection
+    # Docker Hub, not ghcr.io, for the same reason as ConvertX.
+    image: dgtlmoon/changedetection.io:latest
+    restart: unless-stopped
+    depends_on:
+      changedetection-browser:
+        condition: service_started
+    ports:
+      - '${CHANGEDETECTION_PORT:-5010}:5000'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      BASE_URL: http://aboriis-mini:${CHANGEDETECTION_PORT:-5010}
+      # A real Chrome for pages that only show their content after
+      # JavaScript runs (most shops). Each watch picks plain or Chrome; plain
+      # is the default and is far cheaper.
+      PLAYWRIGHT_DRIVER_URL: ws://changedetection-browser:3000
+      # The watched sites never see this install's address as a referrer.
+      HIDE_REFERER: 'true'
+      DISABLE_VERSION_CHECK: 'true'
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/changedetection:/datastore
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  changedetection-browser:
+    container_name: changedetection-browser
+    image: dgtlmoon/sockpuppetbrowser:latest
+    restart: unless-stopped
+    # Chrome's own sandbox needs it; upstream's compose file sets the same.
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      SCREEN_WIDTH: '1920'
+      SCREEN_HEIGHT: '1024'
+      SCREEN_DEPTH: '16'
+      # Each check opens its own Chrome. Four at once is plenty for a home
+      # watch list and keeps a burst of checks from eating the memory.
+      MAX_CONCURRENT_CHROME_PROCESSES: '4'
+    mem_limit: 2g
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

@@ -59,7 +59,14 @@ services:
     # The certificate is also generated into the data directory, so a rebuild
     # loses it too. Regenerate as uid 70 (postgres in the alpine image):
     #
-    #   docker run --rm -u 70:70 -v <datadir>:/d -w /d alpine/openssl     #     req -new -x509 -days 3650 -nodes -out server.crt -keyout server.key     #     -subj "/CN=aboriis-mini" -addext "subjectAltName=IP:192.168.0.157,    #     IP:100.127.22.0,IP:127.0.0.1,DNS:aboriis-mini,DNS:aboriis-mini.local"
+    #   docker run --rm -u 70:70 -v <datadir>:/d -w /d alpine/openssl \
+    #     req -new -x509 -days 3650 -nodes -out server.crt -keyout server.key \
+    #     -subj "/CN=aboriis-mini" -addext "subjectAltName=IP:100.127.22.0,\
+    #     IP:127.0.0.1,DNS:aboriis-mini,DNS:aboriis-mini.local,\
+    #     DNS:aboriis-mini.tail54d520.ts.net,DNS:postgres17"
+    #
+    # No LAN address in it: the mini takes its LAN address from the router, so
+    # it can change. Connect by name and verify-full still matches.
     command:
       - -c
       - ssl=on

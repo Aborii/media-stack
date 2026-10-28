@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AdGuard Home — blocks ads and trackers for every device that uses it as its
+# DNS server.
+#
+# Two ways devices reach it:
+#   - At home: the router hands out the mini's LAN address as DNS. That needs
+#     a DHCP reservation for the mini in the router, or the address moves.
+#   - Away: Tailscale's admin console sets the mini's tailnet address
+#     (100.127.22.0) as the tailnet's DNS server, so phones with Tailscale on
+#     are covered on mobile data too.
+#
+# PORT 53 IS HELD BY systemd-resolved's stub listener on Ubuntu, so it must be
+# turned off once on the host before the first `up` (needs sudo):
+#   /etc/systemd/resolved.conf.d/adguardhome.conf  ->  [Resolve] DNSStubListener=no
+#   ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+#   systemctl restart systemd-resolved
+# The mini itself keeps asking the router and 1.1.1.1, not AdGuard, so a
+# stopped AdGuard never takes the host's own DNS down with it.
+#
+# HOST NETWORK, so AdGuard sees each device's real address. Behind Docker's
+# port forwarding every query arrived from the bridge gateway, and the
+# per-device stats and rules were useless.
+#
+# The web page is on 3053, mirrored over HTTPS on 13053 by the tls-proxy. The
+# first visit runs a setup wizard: pick port 3053 for the admin page (not the
+# default 3000, which dev servers on this host use) and 53 for DNS. After
+# that the port lives in AdGuardHome.yaml (http.address), not here.
+#
+# Names on the home network (aboriis-mini, the router's DHCP names) and
+# tailnet names (*.ts.net) are sent on to the router and to Tailscale; those
+# upstreams are set in AdGuard's own settings, which live in appdata.
+# ─────────────────────────────────────────────────────────────────────────────
+name: adguard
+
+services:
+  adguard:
+    container_name: adguard
+    image: adguard/adguardhome:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ${FOLDER_FOR_DATA:?err}/adguard/work:/opt/adguardhome/work
+      - ${FOLDER_FOR_DATA:?err}/adguard/conf:/opt/adguardhome/conf
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
