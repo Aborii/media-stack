@@ -876,6 +876,7 @@ pages:
               - { title: Karakeep,    url: http://aboriis-mini:3007, check-url: http://karakeep:3000/api/health,         icon: di:karakeep }
               - { title: Syncthing,   url: http://aboriis-mini:8384, check-url: http://172.28.10.1:8384/rest/noauth/health, icon: di:syncthing }
               - { title: Vaultwarden, url: https://aboriis-mini.tail54d520.ts.net:8443, check-url: http://vaultwarden:80/alive, icon: di:vaultwarden }
+              - { title: AdGuard,     url: https://aboriis-mini:13053, check-url: http://172.28.10.1:3053/,              icon: di:adguard-home }
               - { title: Stirling-PDF, url: http://aboriis-mini:8090, check-url: http://stirling-pdf:8080/api/v1/info/status, icon: di:stirling-pdf }
               - { title: ConvertX,    url: http://aboriis-mini:3006, check-url: http://convertx:3000/,                   icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/convertx.png }
               - { title: SearXNG,     url: http://aboriis-mini:8092, check-url: http://searxng:8080/healthz,             icon: di:searxng }
@@ -981,6 +982,7 @@ pages:
                   - { title: Karakeep,    url: http://aboriis-mini:3007 }
                   - { title: Syncthing,   url: http://aboriis-mini:8384 }
                   - { title: Vaultwarden, url: https://aboriis-mini.tail54d520.ts.net:8443 }
+                  - { title: AdGuard,     url: https://aboriis-mini:13053 }
               - title: Tools
                 links:
                   - { title: Stirling-PDF, url: http://aboriis-mini:8090 }
