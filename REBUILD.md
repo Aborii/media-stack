@@ -226,6 +226,14 @@ docker network create mediastack --driver bridge \
 # to its own config, and the container crash-loops.
 mkdir -p /srv/appdata/seerr && chown 1000:1000 /srv/appdata/seerr
 
+# Prometheus runs as nobody (65534) and Grafana as uid 472. Skip this and
+# Docker creates both directories as root, and both crash-loop on start.
+mkdir -p /srv/appdata/prometheus /srv/appdata/grafana
+chown 65534:65534 /srv/appdata/prometheus
+chown 472:0 /srv/appdata/grafana
+# Beszel charts the media disk through an empty folder on it.
+mkdir -p /srv/storage/.beszel
+
 for s in vpn arr media immich monitoring management postgres; do
   (cd stacks/$s && docker compose up -d)
 done

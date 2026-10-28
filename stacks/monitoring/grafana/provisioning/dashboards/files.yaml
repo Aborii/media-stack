@@ -1,0 +1,11 @@
+# Loads every dashboard JSON in grafana/dashboards. The files are the source
+# of truth: edits made in the UI can be saved, but the next change to the
+# file replaces them. To keep a UI change, export the JSON into the repo.
+apiVersion: 1
+
+providers:
+  - name: files
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

@@ -1,0 +1,16 @@
+# The one datasource, provisioned so a rebuilt Grafana needs no clicking. The
+# uid is fixed because the dashboard JSON refers to it by uid.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Matches scrape_interval, so $__rate_interval is never shorter than two
+      # samples.
+      timeInterval: 10s

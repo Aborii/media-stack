@@ -68,6 +68,8 @@ docker compose down
 | | scrutiny | 8081 | drive SMART health |
 | | dozzle | 8888 | live container logs |
 | | glances | - | host metrics, bound to the docker gateway |
+| | beszel | 8091 | hardware history: per-core temperatures, CPU, iGPU load and power, disks, network |
+| | grafana | 3010 | hardware dashboard with a chart per device; fed by prometheus, node-exporter and intel-gpu-exporter, none of them published |
 | | wud | 3002 | image update watcher, Telegram notices, never pulls |
 | **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the prayer tiles |
 | | dawarich | 3004 | location history from the phone; keeps its own PostGIS and Redis |
