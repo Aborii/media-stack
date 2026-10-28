@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Create the media-stack monitors in Uptime Kuma and put them on the status page.
+"""Create the media-stack monitors in Uptime Kuma.
+
+Monitors only. Putting them on the status page is uptime-kuma-status-page.py,
+run straight after this one: it carries the patches the library needs against
+Uptime Kuma v2. This script used to save the page itself through the
+library's unpatched get_status_page, which reads r2["incident"] - a key v2
+omits when there is no incident - so every run crashed after the monitors
+were added.
 
 Every URL was verified with curl FROM INSIDE the uptime-kuma container before
 being added, so none of them 404. Container names are used rather than
@@ -70,26 +77,6 @@ try:
 
     print("")
     print("  %d monitors" % len(ids))
-
-    page = api.get_status_page("home-services")
-    api.save_status_page(
-        slug="home-services",
-        title=page.get("title") or "Home Services",
-        description=page.get("description"),
-        theme=page.get("theme") or "auto",
-        published=True,
-        showTags=page.get("showTags", False),
-        domainNameList=page.get("domainNameList", []),
-        customCSS=page.get("customCSS", ""),
-        footerText=page.get("footerText"),
-        showPoweredBy=page.get("showPoweredBy", True),
-        icon=page.get("icon", "/icon.svg"),
-        publicGroupList=[{
-            "name": "Media Stack",
-            "weight": 1,
-            "monitorList": [{"id": i} for i in ids],
-        }],
-    )
-    print("  status page home-services updated")
+    print("  next: uptime-kuma-status-page.py puts them on the status page")
 finally:
     api.disconnect()
