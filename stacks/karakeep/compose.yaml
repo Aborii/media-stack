@@ -1,0 +1,111 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Karakeep — saves links, notes and images, keeps a full copy of each page,
+# and makes all of it searchable.
+#
+# Three containers. The app; Meilisearch, its search index; and a headless
+# Chrome it uses to load each saved page, take the screenshot and keep the
+# readable copy. Without Chrome a link is saved as a bare URL.
+#
+# Every container is named karakeep-*, and the app reaches the others by those
+# names. The mediastack bridge is shared by every stack, so a bare "chrome" or
+# "meilisearch" would be a name another stack could claim.
+#
+# AI tagging is off. Karakeep can tag bookmarks through OpenAI or Ollama, but
+# the mini's CPU makes a local model slow and a cloud key is a cost to decide
+# on separately. Set OLLAMA_BASE_URL or OPENAI_API_KEY to turn it on.
+#
+# First start, on the mini:
+#   docker compose up -d   (from this directory)
+# Then create the account in the web page. The first one is the admin; set
+# KARAKEEP_DISABLE_SIGNUPS=true and `up -d` again once everyone has one.
+# ─────────────────────────────────────────────────────────────────────────────
+name: karakeep
+
+services:
+  karakeep:
+    container_name: karakeep
+    # Only on ghcr.io. If a pull resets partway, retry it; it resumes.
+    image: ghcr.io/karakeep-app/karakeep:release
+    restart: unless-stopped
+    depends_on:
+      karakeep-meilisearch:
+        condition: service_started
+      karakeep-chrome:
+        condition: service_started
+    ports:
+      - '${KARAKEEP_PORT:-3007}:3000'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      DATA_DIR: /data
+      MEILI_ADDR: http://karakeep-meilisearch:7700
+      MEILI_MASTER_KEY: ${KARAKEEP_MEILI_MASTER_KEY:?err}
+      BROWSER_WEB_URL: http://karakeep-chrome:9222
+      # The address sign-in redirects back to. One name only, so use Karakeep
+      # at http://aboriis-mini:3007; the HTTPS mirror signs in, then lands here.
+      NEXTAUTH_URL: http://aboriis-mini:${KARAKEEP_PORT:-3007}
+      NEXTAUTH_SECRET: ${KARAKEEP_NEXTAUTH_SECRET:?err}
+      DISABLE_SIGNUPS: ${KARAKEEP_DISABLE_SIGNUPS:-false}
+      # A full copy of each page (not just the readable text) so a link still
+      # opens after the site is gone. Videos are not kept: they are large and
+      # Pinchflat and MeTube already cover that.
+      CRAWLER_FULL_PAGE_ARCHIVE: 'true'
+      # A media-heavy page can archive to over a gigabyte that never renders.
+      CRAWLER_FULL_PAGE_ARCHIVE_MAX_SIZE_MB: '200'
+      CRAWLER_VIDEO_DOWNLOAD: 'false'
+    volumes:
+      # The database, the page archives and screenshots.
+      - ${FOLDER_FOR_DATA:?err}/karakeep/data:/data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  karakeep-chrome:
+    container_name: karakeep-chrome
+    image: ghcr.io/karakeep-app/karakeep-chrome:release
+    restart: unless-stopped
+    init: true
+    command:
+      - --disable-gpu
+      - --disable-dev-shm-usage
+      - --hide-scrollbars
+      - --disable-blink-features=AutomationControlled
+      - --window-size=1440,900
+    mem_limit: 2g
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  karakeep-meilisearch:
+    container_name: karakeep-meilisearch
+    # Pinned to the version Karakeep's own compose file uses. Meilisearch
+    # cannot open an index written by a different minor version, so it moves
+    # only when Karakeep's file moves.
+    image: getmeili/meilisearch:v1.41.0
+    restart: unless-stopped
+    environment:
+      MEILI_NO_ANALYTICS: 'true'
+      MEILI_MASTER_KEY: ${KARAKEEP_MEILI_MASTER_KEY:?err}
+    volumes:
+      # Rebuilt from the database by Admin → Background jobs → Reindex, so
+      # the backup leaves it out.
+      - ${FOLDER_FOR_DATA:?err}/karakeep/meilisearch:/meili_data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

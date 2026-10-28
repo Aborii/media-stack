@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Vaultwarden — the password manager. A small server for the official
+# Bitwarden apps, browser extensions and web vault.
+#
+# HTTPS COMES FROM TAILSCALE, not the tls-proxy. The Bitwarden apps refuse a
+# certificate the phone does not already trust, and the proxy's is signed by
+# the home CA. `tailscale serve` hands out a real certificate for the
+# tailnet name, so the address to give every app is
+#   https://aboriis-mini.tail54d520.ts.net:8443
+# That is set up once on the host, outside Compose, and survives reboots:
+#   tailscale serve --bg --https=8443 http://127.0.0.1:8222
+# It is tailnet only: the phone needs Tailscale on, at home as well.
+#
+# Port 8222 is plain HTTP for Glance's health check. The web vault will not
+# work there; browsers only allow its encryption on a secure page.
+#
+# The admin page is off (no ADMIN_TOKEN). Sign-ups are open until the
+# household's accounts exist; then set VAULTWARDEN_SIGNUPS_ALLOWED=false and
+# `up -d` again.
+# ─────────────────────────────────────────────────────────────────────────────
+name: vaultwarden
+
+services:
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:latest
+    restart: unless-stopped
+    ports:
+      - '${VAULTWARDEN_PORT:-8222}:80'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      # Used for links in the web vault and for passkey (WebAuthn) checks, so
+      # it must be the exact address the apps use.
+      DOMAIN: ${VAULTWARDEN_DOMAIN:?err}
+      SIGNUPS_ALLOWED: ${VAULTWARDEN_SIGNUPS_ALLOWED:-true}
+      # Invitations need mail, which is not set up.
+      INVITATIONS_ALLOWED: 'false'
+      SHOW_PASSWORD_HINT: 'false'
+    volumes:
+      # The SQLite database, attachments and the server's signing key.
+      - ${FOLDER_FOR_DATA:?err}/vaultwarden:/data
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

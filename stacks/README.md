@@ -15,6 +15,11 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `glance` | the dashboard, on port 80, configured in `examples/glance/glance.yml` |
 | `youtube` | pinchflat (channels and playlists, imported by Sonarr), metube (one-off downloads) |
 | `dawarich` | location history, with its own PostGIS and Redis - see the compose header for why it is not on the shared cluster |
+| `tools` | stirling-pdf, convertx, searxng, changedetection with its Chrome |
+| `household` | actual, homebox, wallos, donetick, vikunja - each on SQLite in its own appdata folder |
+| `karakeep` | karakeep, its Meilisearch and its Chrome |
+| `syncthing` | syncthing, on the host network so peers can connect directly |
+| `vaultwarden` | vaultwarden, with HTTPS from `tailscale serve` so the Bitwarden apps trust it |
 | `dockge` | the UI itself |
 
 ## Three things that are load-bearing
