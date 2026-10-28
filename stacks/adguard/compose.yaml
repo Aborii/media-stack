@@ -17,10 +17,14 @@
 # The mini itself keeps asking the router and 1.1.1.1, not AdGuard, so a
 # stopped AdGuard never takes the host's own DNS down with it.
 #
-# The web page is on ${ADGUARD_PORT}, mirrored over HTTPS on port + 10000 by
-# the tls-proxy. The first visit runs a setup wizard: keep the admin page on
-# port 3000 and DNS on port 53 inside the container, or the published ports
-# below stop matching.
+# HOST NETWORK, so AdGuard sees each device's real address. Behind Docker's
+# port forwarding every query arrived from the bridge gateway, and the
+# per-device stats and rules were useless.
+#
+# The web page is on 3053, mirrored over HTTPS on 13053 by the tls-proxy. The
+# first visit runs a setup wizard: pick port 3053 for the admin page (not the
+# default 3000, which dev servers on this host use) and 53 for DNS. After
+# that the port lives in AdGuardHome.yaml (http.address), not here.
 #
 # Names on the home network (aboriis-mini, the router's DHCP names) and
 # tailnet names (*.ts.net) are sent on to the router and to Tailscale; those
@@ -33,10 +37,7 @@ services:
     container_name: adguard
     image: adguard/adguardhome:latest
     restart: unless-stopped
-    ports:
-      - '53:53/udp'
-      - '53:53/tcp'
-      - '${ADGUARD_PORT:-3053}:3000/tcp'
+    network_mode: host
     volumes:
       - ${FOLDER_FOR_DATA:?err}/adguard/work:/opt/adguardhome/work
       - ${FOLDER_FOR_DATA:?err}/adguard/conf:/opt/adguardhome/conf
@@ -45,10 +46,3 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
-    networks:
-      - mediastack
-
-networks:
-  mediastack:
-    name: mediastack
-    external: true
