@@ -113,11 +113,15 @@ pages:
 
           # Homepage's Network tile: what the wifi link is carrying right now,
           # from glances on the host, which is the only thing here that can
-          # see the wireless interfaces. Every wlan* interface is summed
+          # see the wireless interfaces. Every wl* interface is summed
           # rather than one named: the Pi carries wlan0 AND wlan1 and the
           # traffic moved to wlan1, which left Homepage's tile - hardcoded to
-          # wlan0 - reporting an idle link. Rates are bytes per second, shown
-          # as Mbit/s, as of the last page load.
+          # wlan0 - reporting an idle link. wl*, not wlan*: the mini names its
+          # wifi the systemd way (wlp132s0f0), and wlan* matched nothing there,
+          # so the tile read 0.0 both ways. The wired enp131s0 is left out on
+          # purpose - it carries no internet traffic.
+          # Rates are bytes per second, shown as Mbit/s, as of the last page
+          # load.
           - type: custom-api
             title: Internet load
             title-url: http://aboriis-mini:61210
@@ -125,7 +129,7 @@ pages:
             url: http://172.28.10.1:61208/api/4/network
             template: |
               {{ $down := 0.0 }}{{ $up := 0.0 }}{{ $names := "" }}
-              {{ range .JSON.Array `#(interface_name%"wlan*")#` }}
+              {{ range .JSON.Array `#(interface_name%"wl*")#` }}
                 {{ $down = add $down (.Float "bytes_recv_rate_per_sec") }}
                 {{ $up = add $up (.Float "bytes_sent_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "interface_name") }}
@@ -858,6 +862,8 @@ pages:
               - { title: SFTPGo,      url: http://aboriis-mini:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
               - { title: Dozzle,      url: http://aboriis-mini:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
               - { title: What's Up Docker, url: http://aboriis-mini:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
+              - { title: Beszel,      url: http://aboriis-mini:8091, check-url: http://beszel:8090/api/health,         icon: di:beszel }
+              - { title: Grafana,     url: http://aboriis-mini:3010, check-url: http://grafana:3000/api/health,        icon: di:grafana }
 
           # The household apps, documents and tools. Same shape as Services:
           # the check goes to the container, the link opens the browser URL.
@@ -952,6 +958,8 @@ pages:
                   - { title: Scrutiny,    url: http://aboriis-mini:8081 }
                   - { title: Dozzle,      url: http://aboriis-mini:8888 }
                   - { title: What's Up Docker, url: http://aboriis-mini:3002 }
+                  - { title: Beszel,      url: http://aboriis-mini:8091 }
+                  - { title: Grafana,     url: http://aboriis-mini:3010 }
               - title: Libraries
                 links:
                   - { title: Jellyfin,    url: http://aboriis-mini:8096 }

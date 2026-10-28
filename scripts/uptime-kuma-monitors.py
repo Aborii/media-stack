@@ -43,6 +43,9 @@ HTTP = [
     ("qBittorrent",    "http://gluetun:8200/",                      OK2XX),
     ("Scrutiny",       "http://scrutiny:8080/",                     OK3XX),
     ("Bazarr",         "http://bazarr:6767/",                       OK4XX),
+    # Hardware monitoring. Both health endpoints answer 200 with no session.
+    ("Beszel",         "http://beszel:8090/api/health",             OK2XX),
+    ("Grafana",        "http://grafana:3000/api/health",            OK2XX),
 ]
 
 api = UptimeKumaApi("http://127.0.0.1:3001", wait_events=0.5)
