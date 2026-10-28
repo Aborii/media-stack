@@ -448,6 +448,11 @@ services:
     user: "0:0"
     command:
       - --path.rootfs=/host
+      # The host's /sys, not the container's: Docker masks
+      # /sys/devices/virtual/powercap in every container (the RAPL power
+      # side-channel, CVE-2020-8694), so through its own /sys the power chart
+      # is empty even as root. The /host bind does not carry that mask.
+      - --path.sysfs=/host/sys
       - --web.listen-address=172.28.10.1:9100
       # The container plumbing, as in glances.conf: one veth per container.
       - --collector.netdev.device-exclude=^(veth.*|br-.*|docker0|lo)$$
