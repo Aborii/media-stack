@@ -6,6 +6,8 @@
 #                          video, documents) through ffmpeg, libreoffice & co
 #   searxng          8092  private web search across several engines
 #   changedetection  5010  watches web pages and alerts when they change
+#   omnitools        8094  small image, video, PDF and text tools that run in
+#                          the browser
 #
 # Grouped because none of them owns data worth a stack of its own: Stirling
 # and ConvertX hold a file only while it is being worked on, SearXNG holds
@@ -155,6 +157,32 @@ services:
       DISABLE_VERSION_CHECK: 'true'
     volumes:
       - ${FOLDER_FOR_DATA:?err}/changedetection:/datastore
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  omnitools:
+    container_name: omnitools
+    # Built here, not pulled: upstream's image has the browser fetch engines,
+    # models and icons from public CDNs. omnitools/Dockerfile says what it
+    # changes. The image is about 1.3 GB because every engine, model, font and
+    # OCR language is inside it.
+    build:
+      context: ./omnitools
+    image: media-stack/omnitools:local
+    restart: unless-stopped
+    labels:
+      # Built here, so there is no registry for wud to check for updates.
+      # A new release means changing OMNITOOLS_REF in the Dockerfile.
+      - wud.watch=false
+    ports:
+      - '${OMNITOOLS_PORT:-8094}:80'
+    # A static site: every tool runs in the browser, so files never reach the
+    # mini and nothing is kept.
     logging:
       driver: 'json-file'
       options:
