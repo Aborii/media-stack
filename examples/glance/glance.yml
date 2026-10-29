@@ -887,7 +887,7 @@ pages:
               - { title: ConvertX,    url: http://aboriis-mini:3006, check-url: http://convertx:3000/,                   icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/convertx.png }
               - { title: SearXNG,     url: http://aboriis-mini:8092, check-url: http://searxng:8080/healthz,             icon: di:searxng }
               - { title: changedetection, url: http://aboriis-mini:5010, check-url: http://changedetection:5000/,        icon: di:changedetection }
-              - { title: OmniTools,   url: http://aboriis-mini:8094, check-url: http://omnitools:80/,                    icon: di:omni-tools }
+              - { title: OmniTools,   url: http://aboriis-mini:8094, check-url: http://omnitools:80/healthz,             icon: di:omni-tools }
 
           # Homepage's Registry tile: how many repositories the private
           # registry holds. It publishes to 127.0.0.1 only, so the count is

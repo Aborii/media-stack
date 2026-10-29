@@ -38,9 +38,9 @@ FROM nginx:alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Same two tweaks as upstream's own Dockerfile: serve .mjs as JavaScript, and
-# send unknown paths to the single-page app.
-RUN sed -i 's/application\/javascript.*js;/application\/javascript                js mjs;/' /etc/nginx/mime.types \
- && sed -i 's|index  index.html index.htm;|index  index.html index.htm;\n        try_files $uri $uri/ /index.html;|' /etc/nginx/conf.d/default.conf
+# Serve .mjs as JavaScript, as upstream's own Dockerfile does. nginx.conf
+# replaces the default site: the same single-page fallback, plus a password.
+RUN sed -i 's/application\/javascript.*js;/application\/javascript                js mjs;/' /etc/nginx/mime.types
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

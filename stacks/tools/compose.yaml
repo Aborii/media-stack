@@ -18,6 +18,12 @@
 #   docker compose up -d   (from this directory)
 # Then create the ConvertX account in its web page (the first account is
 # always allowed, see ACCOUNT_REGISTRATION below).
+#
+# OmniTools asks for a password, kept in an htpasswd file. Make it once
+# (openssl is on the host; nginx accepts this apr1 hash):
+#   mkdir -p /srv/appdata/omnitools
+#   printf '%s:%s\n' aborii "$(openssl passwd -apr1)" > /srv/appdata/omnitools/htpasswd
+# Run the printf line again to change the password; no restart is needed.
 # ─────────────────────────────────────────────────────────────────────────────
 name: tools
 
@@ -182,7 +188,16 @@ services:
     ports:
       - '${OMNITOOLS_PORT:-8094}:80'
     # A static site: every tool runs in the browser, so files never reach the
-    # mini and nothing is kept.
+    # mini and nothing is kept. The password file is the only thing mounted.
+    volumes:
+      # Long form so a missing file stops `compose up` with an error, rather
+      # than Docker making an empty directory there and nginx answering 500.
+      - type: bind
+        source: ${FOLDER_FOR_DATA:?err}/omnitools/htpasswd
+        target: /etc/nginx/auth/htpasswd
+        read_only: true
+        bind:
+          create_host_path: false
     logging:
       driver: 'json-file'
       options:
