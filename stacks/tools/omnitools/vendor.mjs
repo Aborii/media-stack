@@ -121,11 +121,16 @@ for (const { chunks } of Object.values(JSON.parse(resources))) {
 }
 console.log(`vendored: staticimgly/@imgly/background-removal-data/${imgly}/dist`);
 
-// PDF compress and protect (Ghostscript). Not on npm; only on this CDN.
+// PDF compress and protect (Ghostscript). Not on npm; only on this CDN, so the
+// file is checked against the one that was tested. A new release that changes
+// it needs this hash updated after testing.
+const GS_SHA256 = '2d093d358b088dfa678ad3edc1ccaddfbd5d42addecb452b4d16e5bd13db0232';
 const gs = await fetch('https://cdn-wasm.b-cdn.net/gs-worker.wasm');
 if (!gs.ok) throw new Error(`gs-worker.wasm: HTTP ${gs.status}`);
+const gsBody = Buffer.from(await gs.arrayBuffer());
+if (createHash('sha256').update(gsBody).digest('hex') !== GS_SHA256) throw new Error('gs-worker.wasm: hash changed');
 mkdirSync(join(VENDOR, 'bcdn'), { recursive: true });
-writeFileSync(join(VENDOR, 'bcdn/gs-worker.wasm'), Buffer.from(await gs.arrayBuffer()));
+writeFileSync(join(VENDOR, 'bcdn/gs-worker.wasm'), gsBody);
 console.log('vendored: bcdn/gs-worker.wasm');
 
 // PDF form filler: pdf.js's worker, from the copy react-pdf was built with.

@@ -15,14 +15,18 @@
 #                     language file into dist/vendor/, points the app at those
 #                     copies, and fails the build if any CDN address is left.
 #
-# To move to a newer release, change OMNITOOLS_REF. If upstream moved one of the
+# To move to a newer release, change OMNITOOLS_REF and OMNITOOLS_COMMIT
+# (`git ls-remote https://github.com/iib0011/omni-tools.git refs/tags/<tag>`).
+# The commit is checked because a tag can be moved. If upstream moved one of the
 # patched spots, the build stops with the name of the patch that no longer fits.
 FROM node:20 AS build
 
 ARG OMNITOOLS_REF=v0.7.0
+ARG OMNITOOLS_COMMIT=5f8f4c7b92060f904b40fafb0649701921fe7746
 
 WORKDIR /app
 RUN git clone --depth 1 --branch "${OMNITOOLS_REF}" https://github.com/iib0011/omni-tools.git . \
+ && test "$(git rev-parse HEAD)" = "${OMNITOOLS_COMMIT}" \
  && npm ci --no-audit --no-fund
 
 COPY patch-source.mjs vendor.mjs /offline/
