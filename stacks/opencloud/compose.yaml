@@ -67,9 +67,9 @@ services:
     # and fails harmlessly on every start after.
     entrypoint: ['/bin/sh']
     command: ['-c', 'opencloud init || true; opencloud server']
-    # The WOPI service reads Euro-Office's list of editors once, at start. If
-    # Euro-Office is still booting (it takes a minute or two) that read fails
-    # and documents will not open until OpenCloud restarts, so wait for it.
+    # The WOPI service re-reads Euro-Office's list of editors every 30s, so
+    # documents open again by themselves once Euro-Office is up. Waiting for it
+    # only saves the first half minute of "cannot open" after a compose up.
     depends_on:
       euro-office:
         condition: service_healthy
