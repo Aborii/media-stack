@@ -287,7 +287,9 @@ services:
     container_name: glances-web
     restart: unless-stopped
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/glances-web/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Kept in the repo (glances-web/ next to this file) so a rebuilt host
+      # gets it back with the checkout. Only the data below lives in appdata.
+      - ./glances-web/Caddyfile:/etc/caddy/Caddyfile:ro
       # Caddy writes nothing important here - no certs, tailscale does TLS - but
       # without it Caddy warns about a non-persistent data directory on boot.
       - ${FOLDER_FOR_DATA:?err}/glances-web/data:/data
@@ -302,8 +304,10 @@ services:
   # will not even start on http://aboriis-mini. This one sets a HOST-ONLY cookie,
   # so ONE instance covers aboriis-mini, the raw IP and the tailscale name.
   #
-  # Standard library only, mounted as a plain file - no image build, no pip,
-  # nothing to go stale. No published ports: only Caddy talks to it, by name.
+  # Standard library only, mounted as a plain file from the repo - no image
+  # build, no pip, nothing to go stale. No published ports: only Caddy talks to
+  # it, by name. stacks/tools runs a second copy for OmniTools from the same
+  # file, so a change here reaches both.
   #
   # To change the password:  printf %s 'newpass' | docker exec -i glances-login
   #   python /app/login.py hash     then put  aborii:<output>  in auth/users.
@@ -313,7 +317,7 @@ services:
     restart: unless-stopped
     command: ["python", "/app/login.py", "serve"]
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/glances-web/login.py:/app/login.py:ro
+      - ./glances-web/login.py:/app/login.py:ro
       # users file + the signing secret (auto-created on first start). Losing
       # this dir only logs everyone out and needs the users line recreated.
       - ${FOLDER_FOR_DATA:?err}/glances-web/auth:/data
