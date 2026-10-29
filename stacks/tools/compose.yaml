@@ -19,11 +19,12 @@
 # Then create the ConvertX account in its web page (the first account is
 # always allowed, see ACCOUNT_REGISTRATION below).
 #
-# OmniTools asks for a password, kept in an htpasswd file. Make it once
-# (openssl is on the host; nginx accepts this apr1 hash):
-#   mkdir -p /srv/appdata/omnitools
-#   printf '%s:%s\n' aborii "$(openssl passwd -apr1)" > /srv/appdata/omnitools/htpasswd
-# Run the printf line again to change the password; no restart is needed.
+# OmniTools has a sign-in page (omnitools-login). Make its user once, typing
+# the password when asked (login.py is glances-login's, in its appdata):
+#   mkdir -p /srv/appdata/omnitools/auth
+#   printf 'aborii:%s\n' "$(read -rsp 'Password: ' p; printf %s "$p" | python3 \
+#     /srv/appdata/glances-web/login.py hash)" > /srv/appdata/omnitools/auth/users
+# Run it again to change the password; no restart is needed.
 # ─────────────────────────────────────────────────────────────────────────────
 name: tools
 
@@ -188,16 +189,52 @@ services:
     ports:
       - '${OMNITOOLS_PORT:-8094}:80'
     # A static site: every tool runs in the browser, so files never reach the
-    # mini and nothing is kept. The password file is the only thing mounted.
+    # mini and nothing is kept. Sign-in is omnitools-login, below; nginx looks
+    # it up by name when it starts, so it has to be running first.
+    depends_on:
+      omnitools-login:
+        condition: service_started
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  # OmniTools' sign-in page and session check. The same login.py as
+  # glances-login in stacks/monitoring, run a second time with its own users,
+  # signing secret and cookie name, so signing in to one does not sign in to
+  # the other. Why a hand-made gate at all is at the top of login.py: the
+  # ready-made ones need a domain and refuse a bare hostname like aboriis-mini.
+  # No published port: only the omnitools container talks to it.
+  omnitools-login:
+    image: python:3.12-alpine
+    container_name: omnitools-login
+    restart: unless-stopped
+    command: ['python', '/app/login.py', 'serve']
+    environment:
+      TZ: ${TIMEZONE:?err}
+      LOGIN_TITLE: OmniTools
+      LOGIN_COOKIE: omnitools_session
     volumes:
       # Long form so a missing file stops `compose up` with an error, rather
-      # than Docker making an empty directory there and nginx answering 500.
+      # than Docker making an empty directory in its place.
       - type: bind
-        source: ${FOLDER_FOR_DATA:?err}/omnitools/htpasswd
-        target: /etc/nginx/auth/htpasswd
+        source: ${FOLDER_FOR_DATA:?err}/glances-web/login.py
+        target: /app/login.py
         read_only: true
         bind:
           create_host_path: false
+      # The users file and the signing secret (made on first start). Losing
+      # this folder only signs everyone out and needs the users line again.
+      - ${FOLDER_FOR_DATA:?err}/omnitools/auth:/data
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: 'json-file'
       options:
