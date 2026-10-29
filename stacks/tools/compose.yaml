@@ -20,10 +20,10 @@
 # always allowed, see ACCOUNT_REGISTRATION below).
 #
 # OmniTools has a sign-in page (omnitools-login). Make its user once, typing
-# the password when asked (login.py is glances-login's, in its appdata):
+# the password when asked (from this directory; login.py is glances-login's):
 #   mkdir -p /srv/appdata/omnitools/auth
 #   printf 'aborii:%s\n' "$(read -rsp 'Password: ' p; printf %s "$p" | python3 \
-#     /srv/appdata/glances-web/login.py hash)" > /srv/appdata/omnitools/auth/users
+#     ../monitoring/glances-web/login.py hash)" > /srv/appdata/omnitools/auth/users
 # Run it again to change the password; no restart is needed.
 # ─────────────────────────────────────────────────────────────────────────────
 name: tools
@@ -218,14 +218,9 @@ services:
       LOGIN_TITLE: OmniTools
       LOGIN_COOKIE: omnitools_session
     volumes:
-      # Long form so a missing file stops `compose up` with an error, rather
-      # than Docker making an empty directory in its place.
-      - type: bind
-        source: ${FOLDER_FOR_DATA:?err}/glances-web/login.py
-        target: /app/login.py
-        read_only: true
-        bind:
-          create_host_path: false
+      # The script comes from the repo, from the monitoring stack's folder,
+      # so both gates run the same file.
+      - ../monitoring/glances-web/login.py:/app/login.py:ro
       # The users file and the signing secret (made on first start). Losing
       # this folder only signs everyone out and needs the users line again.
       - ${FOLDER_FOR_DATA:?err}/omnitools/auth:/data

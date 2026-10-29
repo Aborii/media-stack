@@ -1,0 +1,40 @@
+# glances-web: Caddy in front of the CPU-sorted glances, behind a login FORM.
+#
+# The form and the session check come from glances-login (login.py, next to
+# this file). For everything except the login/logout pages, Caddy first asks
+# it "is this request signed in?" via forward_auth. A 401 from it carries an
+# X-Login-Redirect header, which becomes a 302 to the form with ?next= set to
+# wherever the user was going.
+#
+# The session cookie is HOST-ONLY (no Domain attribute). That is the entire
+# reason this is custom rather than Tinyauth or Authelia: those scope cookies
+# to a domain and will not run on a bare hostname like aboriis-mini at all.
+#
+# glances itself stays bound to 172.28.10.1 and unauthenticated - that binding
+# keeps an open process list off the wifi, and both Homepage tiles read it
+# there. Stop this container and the tiles carry on working.
+#
+# Reachable as http://aboriis-mini:61210 on the LAN (plain http, by the owner's
+# choice) and as https://aboriis-mini.tail54d520.ts.net via tailscale serve.
+:80 {
+	handle /login* {
+		reverse_proxy glances-login:8000
+	}
+	handle /logout {
+		reverse_proxy glances-login:8000
+	}
+	handle {
+		forward_auth glances-login:8000 {
+			uri /auth
+			copy_headers Remote-User
+			@denied status 401
+			handle_response @denied {
+				redir {http.reverse_proxy.header.X-Login-Redirect}
+			}
+		}
+		# 172.28.10.1 is the docker bridge gateway - the same address the
+		# Homepage tiles use. 61209 is the CPU-sorted instance; 61208 is the
+		# memory-sorted one.
+		reverse_proxy 172.28.10.1:61209
+	}
+}
