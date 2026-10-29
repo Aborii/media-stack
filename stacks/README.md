@@ -20,6 +20,7 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `karakeep` | karakeep, its Meilisearch and its Chrome |
 | `syncthing` | syncthing, on the host network so peers can connect directly |
 | `vaultwarden` | vaultwarden, with HTTPS from `tailscale serve` so the Bitwarden apps trust it |
+| `opencloud` | OpenCloud and Euro-Office, HTTPS only through tls-proxy - see its compose header |
 | `adguard` | AdGuard Home, DNS on port 53 - systemd-resolved must free the port first, see its compose header |
 | `dockge` | the UI itself |
 

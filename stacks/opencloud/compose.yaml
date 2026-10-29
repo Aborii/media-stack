@@ -1,0 +1,172 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenCloud — files in the browser, with Euro-Office to edit Word, Excel and
+# PowerPoint files in place.
+#
+#   opencloud     https://aboriis-mini:19200   files, shares, sign-in
+#   euro-office   https://aboriis-mini:18095   the editor; opened from OpenCloud
+#
+# Based on opencloud-eu/opencloud-compose (docker-compose.yml plus
+# weboffice/euro-office.yml), without its Traefik: tls-proxy already gives
+# every app on the mini HTTPS with the home CA, so it does the same here.
+#
+# HTTPS ONLY, on purpose. Unlike the other stacks there is no plain-HTTP
+# address on the LAN. OpenCloud signs people in with OpenID Connect, which
+# ties every token to the one address in OC_URL; a second address would show
+# the sign-in page and then fail. So both containers publish to 127.0.0.1 only,
+# and tls-proxy's 19200 and 18095 are the way in.
+#
+# Signing in. OpenCloud has its own accounts (its built-in IdP). The first
+# start creates "admin" with OPENCLOUD_ADMIN_PASSWORD; make your own account in
+# the admin settings after that. Euro-Office has no accounts: it only opens a
+# document when OpenCloud hands it a request signed with EURO_OFFICE_JWT_SECRET,
+# so its address alone gives nobody anything.
+#
+# Nothing phones home. FRONTEND_CHECK_FOR_UPDATES is off (it sent the version
+# and a hash of the server address to update.opencloud.eu), and config/csp.yaml
+# lets the page reach only this server and Euro-Office: the app store list on
+# GitHub, map tiles, diagrams.net and the docs site are all left out.
+# Euro-Office's crash reporter only runs with SENTRY_DSN set, and it is not.
+#
+# The two talk to each other over HTTPS too: OpenCloud asks Euro-Office what it
+# can open, and Euro-Office loads and saves files through OpenCloud's WOPI
+# routes. Each reaches the other through tls-proxy, by the same names the
+# browser uses, so the addresses match the certificate. extra_hosts points
+# aboriis-mini at the mediastack gateway, and both trust the home CA.
+#
+# First start, on the mini:
+#   1. In ../../docker-compose.env, set OPENCLOUD_ADMIN_PASSWORD and
+#      EURO_OFFICE_JWT_SECRET (openssl rand -hex 32 for the secret).
+#   2. mkdir -p /srv/appdata/opencloud/config /srv/storage/data/opencloud
+#   3. ln -s ../../docker-compose.env .env   (from this directory)
+#   4. docker compose up -d
+#   5. Add 19200 -> 9200 and 18095 -> 8095 to ~/tls-proxy/Caddyfile.
+# The admin password only counts on the very first start; after that it lives
+# in OpenCloud and is changed there.
+# ─────────────────────────────────────────────────────────────────────────────
+name: opencloud
+
+x-home-ca: &home-ca
+  # The home CA that signed tls-proxy's certificate, so each container trusts
+  # the other's HTTPS address without turning certificate checks off.
+  type: bind
+  source: /home/aborii/localca/rootCA.crt
+  target: /etc/ssl/home-ca/rootCA.crt
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  opencloud:
+    container_name: opencloud
+    # Pinned like upstream's compose, which moves this tag on purpose with
+    # each release it has tested against its config files.
+    image: opencloudeu/opencloud-rolling:9.0.0
+    restart: unless-stopped
+    user: ${PUID:?err}:${PGID:?err}
+    # `opencloud init` writes the config with fresh secrets on the first start
+    # and fails harmlessly on every start after.
+    entrypoint: ['/bin/sh']
+    command: ['-c', 'opencloud init || true; opencloud server']
+    # The WOPI service re-reads Euro-Office's list of editors every 30s, so
+    # documents open again by themselves once Euro-Office is up. Waiting for it
+    # only saves the first half minute of "cannot open" after a compose up.
+    depends_on:
+      euro-office:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${OPENCLOUD_PORT:-9200}:9200'
+    extra_hosts:
+      - 'aboriis-mini:172.28.10.1'
+    environment:
+      OC_URL: https://aboriis-mini:${OPENCLOUD_HTTPS_PORT:-19200}
+      OC_LOG_LEVEL: info
+      # tls-proxy ends TLS; OpenCloud itself serves plain HTTP behind it.
+      PROXY_TLS: 'false'
+      OC_INSECURE: 'false'
+      # Go reads extra CA certificates from these folders.
+      SSL_CERT_DIR: /etc/ssl/certs:/etc/ssl/home-ca
+      PROXY_ENABLE_BASIC_AUTH: 'false'
+      IDM_CREATE_DEMO_USERS: 'false'
+      IDM_ADMIN_PASSWORD: ${OPENCLOUD_ADMIN_PASSWORD:?err}
+      FRONTEND_CHECK_FOR_UPDATES: 'false'
+      FRONTEND_ARCHIVER_MAX_SIZE: '10000000000'
+      # OVERRIDE, not PROXY_CSP_CONFIG_FILE_LOCATION: that one is merged into
+      # the built-in policy, which allows update.opencloud.eu, GitHub and
+      # diagrams.net. The override replaces it whole.
+      PROXY_CSP_CONFIG_FILE_OVERRIDE_LOCATION: /etc/opencloud/csp.yaml
+      OC_PASSWORD_POLICY_BANNED_PASSWORDS_LIST: banned-password-list.txt
+      OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD: 'true'
+      OC_ENABLE_GUEST_LINKS: 'false'
+      OC_DEFAULT_LANGUAGE: en
+      # Read by config/csp.yaml.
+      EURO_OFFICE_ADDR: https://aboriis-mini:${EURO_OFFICE_HTTPS_PORT:-18095}
+      # The WOPI service, run inside the main process as upstream does.
+      OC_ADD_RUN_SERVICES: collaboration
+      COLLABORATION_WOPI_SRC: https://aboriis-mini:${OPENCLOUD_HTTPS_PORT:-19200}
+      COLLABORATION_APP_NAME: Euro-Office
+      COLLABORATION_APP_PRODUCT: OnlyOffice
+      COLLABORATION_APP_ADDR: https://aboriis-mini:${EURO_OFFICE_HTTPS_PORT:-18095}
+      COLLABORATION_APP_ICON: https://aboriis-mini:${EURO_OFFICE_HTTPS_PORT:-18095}/web-apps/apps/documenteditor/main/resources/img/favicon.ico
+      COLLABORATION_APP_INSECURE: 'false'
+      COLLABORATION_CS3API_DATAGATEWAY_INSECURE: 'true'
+      COLLABORATION_APP_PROOF_DISABLE: 'true'
+    volumes:
+      - ./config/csp.yaml:/etc/opencloud/csp.yaml:ro
+      - ./config/app-registry.yaml:/etc/opencloud/app-registry.yaml:ro
+      - ./config/banned-password-list.txt:/etc/opencloud/banned-password-list.txt:ro
+      # Settings and the generated secrets: small, in appdata with the rest.
+      - ${FOLDER_FOR_DATA:?err}/opencloud/config:/etc/opencloud
+      # The files themselves, on the big disk.
+      - /srv/storage/data/opencloud:/var/lib/opencloud
+      - *home-ca
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  euro-office:
+    container_name: euro-office
+    # ghcr.io only. Pinned to the release whose source was checked for
+    # phoning home; wud reports newer ones.
+    image: ghcr.io/euro-office/documentserver:v9.3.7
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${EURO_OFFICE_PORT:-8095}:80'
+    extra_hosts:
+      - 'aboriis-mini:172.28.10.1'
+    environment:
+      WOPI_ENABLED: 'true'
+      JWT_SECRET: ${EURO_OFFICE_JWT_SECRET:?err}
+      # Node trusts the home CA in addition to its own list, so loading and
+      # saving through OpenCloud's HTTPS address keeps its certificate check.
+      NODE_EXTRA_CA_CERTS: /etc/ssl/home-ca/rootCA.crt
+      USE_UNAUTHORIZED_STORAGE: 'false'
+    volumes:
+      - *home-ca
+    # The editors and converters together; upstream's guidance is 2-4 GB.
+    mem_limit: 4g
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - "exec 3<>/dev/tcp/127.0.0.1/80 && printf 'GET /hosting/discovery HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q '200 OK'"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

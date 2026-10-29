@@ -1,0 +1,48 @@
+# The page's Content Security Policy: the only places the browser may load
+# from or connect to while OpenCloud is open.
+#
+# Loaded as the OVERRIDE, so it replaces OpenCloud's built-in policy instead
+# of being merged into it. The built-in one and upstream's compose file also
+# allow the app store list on raw.githubusercontent.com, update.opencloud.eu,
+# OpenStreetMap tiles, diagrams.net and docs.opencloud.eu. All of those are
+# left out, so nothing on the page can reach them: this server and
+# Euro-Office only. ${EURO_OFFICE_ADDR} is filled in by OpenCloud from its
+# environment (see ../compose.yaml).
+directives:
+  child-src:
+    - '''self'''
+  connect-src:
+    - '''self'''
+    - 'blob:'
+  default-src:
+    - '''none'''
+  font-src:
+    - '''self'''
+  frame-ancestors:
+    - '''self'''
+  frame-src:
+    - '''self'''
+    - 'blob:'
+    - '${EURO_OFFICE_ADDR}/'
+  img-src:
+    - '''self'''
+    - 'data:'
+    - 'blob:'
+    - '${EURO_OFFICE_ADDR}/'
+  manifest-src:
+    - '''self'''
+  media-src:
+    - '''self'''
+  object-src:
+    - '''self'''
+    - 'blob:'
+  script-src:
+    - '''self'''
+    - '''unsafe-inline'''
+  style-src:
+    - '''self'''
+    - '''unsafe-inline'''
+    - 'blob:'
+  worker-src:
+    - '''self'''
+    - 'blob:'

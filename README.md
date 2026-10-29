@@ -15,7 +15,7 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden adguard; do
+for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden adguard opencloud; do
   (cd stacks/$s && docker compose up -d)
 done
 ```
@@ -83,6 +83,8 @@ docker compose down
 | | vaultwarden | 8222 | passwords for the Bitwarden apps; use `https://aboriis-mini.tail54d520.ts.net:8443` |
 | **Network** | adguard | 3053 | ad and tracker blocking DNS on port 53; HTTPS mirror on 13053 |
 | **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
+| | opencloud | 19200 | files in the browser, with its own sign-in; HTTPS only, at `https://aboriis-mini:19200`; files in `data/opencloud` |
+| | euro-office | 18095 | edits Word, Excel and PowerPoint files inside OpenCloud; opened from there |
 | **Tools** | stirling-pdf | 8090 | PDF tools: merge, split, compress, OCR, sign |
 | | convertx | 3006 | file format converter; files deleted after a day |
 | | searxng | 8092 | private web search |
