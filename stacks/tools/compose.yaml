@@ -190,7 +190,14 @@ services:
     # A static site: every tool runs in the browser, so files never reach the
     # mini and nothing is kept. The password file is the only thing mounted.
     volumes:
-      - ${FOLDER_FOR_DATA:?err}/omnitools/htpasswd:/etc/nginx/auth/htpasswd:ro
+      # Long form so a missing file stops `compose up` with an error, rather
+      # than Docker making an empty directory there and nginx answering 500.
+      - type: bind
+        source: ${FOLDER_FOR_DATA:?err}/omnitools/htpasswd
+        target: /etc/nginx/auth/htpasswd
+        read_only: true
+        bind:
+          create_host_path: false
     logging:
       driver: 'json-file'
       options:
