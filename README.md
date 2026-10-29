@@ -87,6 +87,7 @@ docker compose down
 | | convertx | 3006 | file format converter; files deleted after a day |
 | | searxng | 8092 | private web search |
 | | changedetection | 5010 | watches pages for changes, with a Chrome for JavaScript sites |
+| | omnitools | 8094 | image, video, PDF and text tools that run in the browser; built with every engine inside, so nothing is fetched from outside |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
 
 ## Network
