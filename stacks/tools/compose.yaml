@@ -189,8 +189,8 @@ services:
     ports:
       - '${OMNITOOLS_PORT:-8094}:80'
     # A static site: every tool runs in the browser, so files never reach the
-    # mini and nothing is kept. Sign-in is omnitools-login, below; nginx looks
-    # it up by name when it starts, so it has to be running first.
+    # mini and nothing is kept. Sign-in is omnitools-login, below. Started
+    # first so the page does not answer 500 for the few seconds it is missing.
     depends_on:
       omnitools-login:
         condition: service_started
