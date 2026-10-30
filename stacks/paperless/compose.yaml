@@ -33,14 +33,19 @@
 # (far better than Tesseract on photos, tables and messy scans), writes that
 # text back as the document's content, then names it and fills in tags,
 # correspondent, document type and date. All through the ollama stack, so
-# nothing leaves the mini. On this CPU a page takes a minute or two; it works
-# through new documents in the background, one at a time.
+# nothing leaves the mini. On this CPU a page takes about four minutes; it
+# works through new documents in the background, one at a time.
 #
 # Which documents: a paperless-gpt workflow (paperless-gpt/workflows/) runs on
 # every document tagged "ai-new", doing OCR first and the naming after, so
 # the names come from the good text. A Paperless workflow puts that tag on
 # every new document. Turn that workflow off to stop it; tag an old document
 # "ai-new" by hand to run it on that one.
+#
+# The workflow has its own OCR prompt (ocr_prompt.tmpl beside it). The
+# built-in one pastes the whole document's existing text into every page's
+# request: on a long document that overflows the context window, and the
+# model can copy another page's text into this one.
 #
 #   4. The models, once:
 #        docker exec ollama ollama pull qwen2.5vl:7b
@@ -50,7 +55,8 @@
 #   6. Its workflow, copied into its prompts folder:
 #        mkdir -p "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows"
 #        cp -r paperless-gpt/workflows/. "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows/"
-#      then docker compose up -d again.
+#      then docker compose up -d again. Run the cp again whenever a file in
+#      paperless-gpt/workflows/ changes; it picks changes up without a restart.
 #   7. In Paperless, Workflows > Create: trigger "Document Added", action
 #      "Assignment", assign tag "ai-new" (paperless-gpt creates the tag).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -252,6 +258,18 @@ services:
       # pass the default 300 s. A request that keeps failing gets the
       # document tagged paperless-gpt-failed, left as Paperless read it.
       OLLAMA_TIMEOUT_SECONDS: '900'
+      # The page is rendered at up to this many pixels, about an A4 page at
+      # 150 DPI. Every pixel the model sees is a prompt token it has to read
+      # on the CPU; the default of 40 million made one page about 4,000
+      # tokens. At this size a page is about 2,900 tokens and 4 minutes.
+      IMAGE_MAX_TOTAL_PIXELS: '2200000'
+      # Ollama's default window is 4,096 tokens, and a page image alone nearly
+      # fills it: the first page tried failed with 4,416. 8,192 holds a page,
+      # the prompt and a full page of text back. Applies to OCR and naming.
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      # Naming reads at most this much of a document's text, so a long one
+      # still fits the window above. The start of a document is what names it.
+      TOKEN_LIMIT: '4000'
 
     volumes:
       # Prompts and its workflows (prompts/workflows/, seeded from
