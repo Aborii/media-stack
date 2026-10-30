@@ -241,7 +241,7 @@ services:
 
       # Names, tags, correspondent and type.
       LLM_PROVIDER: ollama
-      LLM_MODEL: ${PAPERLESS_GPT_LLM_MODEL:-qwen2.5:7b}
+      LLM_MODEL: ${PAPERLESS_GPT_LLM_MODEL:-qwen2.5:14b}
       # The language names and tags are written in. Documents can be in
       # Arabic; the model reads them either way.
       LLM_LANGUAGE: English

@@ -17,7 +17,7 @@ param(
   [string]$Base = 'I:\AI\ollama',
   [string]$Listen = '10.10.10.1:11434',
   [string]$MiniAddress = '10.10.10.3',
-  [string[]]$Models = @('qwen2.5vl:7b', 'qwen2.5:7b')
+  [string[]]$Models = @('qwen2.5vl:7b', 'qwen2.5:14b')
 )
 
 $ErrorActionPreference = 'Stop'

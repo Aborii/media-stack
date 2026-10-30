@@ -57,7 +57,7 @@ powershell -ExecutionPolicy Bypass -File I:\Projects\media-stack\pc\ollama\insta
 
 It downloads Ollama into `I:\AI\ollama`, registers task `ollama` (as you, at
 boot, signed in or not), adds the firewall rule and the shortcuts, and pulls
-`qwen2.5vl:7b` and `qwen2.5:7b` (about 11 GB, in `I:\AI\ollama\models`).
+`qwen2.5vl:7b` and `qwen2.5:14b` (about 15 GB, in `I:\AI\ollama\models`).
 
 `uninstall.ps1` removes the task, the rule and the shortcuts, and keeps the
 download and the models.
