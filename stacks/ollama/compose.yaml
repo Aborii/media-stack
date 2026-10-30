@@ -1,18 +1,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Ollama — embedding model server.
+# Ollama — local model server, CPU only.
 #
-# Its own stack rather than part of the application that uses it, for one
+# Its own stack rather than part of the applications that use it, for one
 # practical reason: this is the most memory-hungry optional thing on the box,
-# and a separate stack means it can be stopped without touching that app.
+# and a separate stack means it can be stopped without touching them.
 #
-# Its only consumer today is an application stack kept outside this repo,
-# which reaches it at http://ollama:11434/v1 over mediastack. Without the
-# embedding variables set there, its "Similar meaning (AI)" tag matching
-# reports unavailable and matching stays lexical - a supported state, so
-# stopping this stack degrades that app rather than breaking it.
+# Two consumers, both over mediastack:
+#   - an application stack kept outside this repo, at http://ollama:11434/v1,
+#     for embeddings. Without them its "Similar meaning (AI)" tag matching
+#     reports unavailable and stays lexical - a supported state.
+#   - subfill (stacks/subfill), which translates subtitles with
+#     translategemma:12b. It holds about 8 GB while it works, and asks for
+#     the model to stay loaded 5 minutes past each request, longer than the
+#     30s default below. Stopping this stack pauses subfill; nothing is lost.
 #
-# NOTE: starting the container is not enough. The model has to be pulled once:
+# NOTE: starting the container is not enough. Each model is pulled once:
 #   docker exec ollama ollama pull nomic-embed-text
+#   docker exec ollama ollama pull translategemma:12b
 # ─────────────────────────────────────────────────────────────────────────────
 name: ollama
 
@@ -32,6 +36,10 @@ services:
       # which is wasteful here: embedding runs in bursts during tag
       # regeneration, not continuously.
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30s}
+      # Local only. Without this the server offers ollama.com's cloud models
+      # and web search, and signs in to ollama.com for them. Pulling a model
+      # still contacts ollama.com, which is the one time it should.
+      OLLAMA_NO_CLOUD: '1'
     volumes:
       # Pulled models persist here; without it every restart re-downloads them.
       - ${FOLDER_FOR_DATA:?err}/ollama:/root/.ollama
