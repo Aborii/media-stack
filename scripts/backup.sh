@@ -112,7 +112,7 @@ EXCLUDES=(
   'immich/server/encoded-video/'  # 19G  video transcodes
   'jellyfin/data/data/trickplay/' # 1.0G scrub-bar preview images, rebuilt by Jellyfin's scheduled task
   'jellyfin/data/data/subtitles/' # 840M subtitles pulled out of the video files, re-extracted on demand
-  'ollama/models/'                # 11G  embedding + paperless-gpt models, re-pulled by ollama
+  'ollama/models/'                # 274M embedding model, re-pulled by ollama
   'jellyfin/data/metadata/'       # 12G  posters, fanart, backdrops
   'registry/'                     # 2.1G pull-through cache of Docker Hub, re-pulled on demand
   'radarr/MediaCover/'            # 2.1G movie posters

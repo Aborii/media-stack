@@ -1,0 +1,13 @@
+# A user unit (aborii, which lingers), not a system one: it only needs
+# docker, which aborii can already use, so it needs no sudo to install.
+# Installed by scripts/install-paperless-gpt-gate.sh.
+[Unit]
+Description=Run paperless-gpt only while the PC's Ollama answers
+
+[Service]
+ExecStart=/home/aborii/media-stack/scripts/paperless-gpt-gate.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

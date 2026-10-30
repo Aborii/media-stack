@@ -32,9 +32,15 @@
 # paperless-gpt, the AI part. It reads each new document with a vision model
 # (far better than Tesseract on photos, tables and messy scans), writes that
 # text back as the document's content, then names it and fills in tags,
-# correspondent and document type. All through the ollama stack, so
-# nothing leaves the mini. On this CPU a page takes about four minutes; it
-# works through new documents in the background, one at a time.
+# correspondent and document type. The models run on the PC's GPU
+# (pc/ollama), reached over the direct cable, so nothing leaves the house; a
+# page takes seconds there against four minutes on this CPU.
+#
+# Only while the PC answers. The gate (scripts/paperless-gpt-gate.sh, a user
+# service on the mini) stops this container while the PC is off, asleep or
+# paused for a game, and starts it again when Ollama is back. Documents that
+# arrive meanwhile keep their "ai-new" tag and Paperless's own OCR, and are
+# read once it is back. Nothing here wakes the PC or keeps it awake.
 #
 # Which documents: a paperless-gpt workflow (paperless-gpt/workflows/) runs on
 # every document tagged "ai-new", doing OCR first and the naming after, so
@@ -47,9 +53,9 @@
 # request: on a long document that overflows the context window, and the
 # model can copy another page's text into this one.
 #
-#   4. The models, once:
-#        docker exec ollama ollama pull qwen2.5vl:7b
-#        docker exec ollama ollama pull qwen2.5:7b
+#   4. Ollama and the models on the PC: pc/ollama/README.md (one elevated
+#      install.ps1), then the gate here, as aborii:
+#        ../../scripts/install-paperless-gpt-gate.sh
 #   5. A token for it: in Paperless, your profile (top right) > API Auth
 #      Token > generate, into PAPERLESS_GPT_API_TOKEN in docker-compose.env.
 #   6. Its workflow, copied into its prompts folder:
@@ -255,18 +261,17 @@ services:
       # Qwen 2.5 VL rather than minicpm-v, which most guides use: Qwen's
       # vision models list Arabic among the languages they read in images.
       VISION_LLM_MODEL: ${PAPERLESS_GPT_VISION_MODEL:-qwen2.5vl:7b}
-      OLLAMA_HOST: http://ollama:11434
+      # The PC, over the direct cable (pc/ollama). The ollama stack on this box
+      # only serves the small embedding model now.
+      OLLAMA_HOST: ${PAPERLESS_GPT_OLLAMA_URL:-http://10.10.10.1:11434}
       # Every page. The default of 5 replaces a long document's content with
       # its first five pages, and search then misses the rest.
       OCR_LIMIT_PAGES: '0'
-      # One request is one page or one naming step. On CPU a dense page can
-      # pass the default 300 s. A request that keeps failing gets the
-      # document tagged paperless-gpt-failed, left as Paperless read it.
-      OLLAMA_TIMEOUT_SECONDS: '900'
       # The page is rendered at up to this many pixels, about an A4 page at
-      # 150 DPI. Every pixel the model sees is a prompt token it has to read
-      # on the CPU; the default of 40 million made one page about 4,000
-      # tokens. At this size a page is about 2,900 tokens and 4 minutes.
+      # 150 DPI. Every pixel the model sees is a prompt token; the default of
+      # 40 million made one page about 4,000 tokens, which with the prompt
+      # overflowed the window below. At this size a page is about 2,900 tokens,
+      # and the first test page came back word for word, Arabic included.
       IMAGE_MAX_TOTAL_PIXELS: '2200000'
       # Ollama's default window is 4,096 tokens, and a page image alone nearly
       # fills it: the first page tried failed with 4,416. 8,192 holds a page,
