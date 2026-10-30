@@ -7,5 +7,5 @@
   "generate_tags": true,
   "generate_correspondents": true,
   "generate_document_types": true,
-  "generate_created_date": true
+  "generate_created_date": false
 }

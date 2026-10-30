@@ -32,7 +32,7 @@
 # paperless-gpt, the AI part. It reads each new document with a vision model
 # (far better than Tesseract on photos, tables and messy scans), writes that
 # text back as the document's content, then names it and fills in tags,
-# correspondent, document type and date. All through the ollama stack, so
+# correspondent and document type. All through the ollama stack, so
 # nothing leaves the mini. On this CPU a page takes about four minutes; it
 # works through new documents in the background, one at a time.
 #
@@ -233,7 +233,7 @@ services:
       # fresh install. Until it is set this one container exits and retries.
       PAPERLESS_API_TOKEN: ${PAPERLESS_GPT_API_TOKEN:-}
 
-      # Names, tags, correspondent, type and date.
+      # Names, tags, correspondent and type.
       LLM_PROVIDER: ollama
       LLM_MODEL: ${PAPERLESS_GPT_LLM_MODEL:-qwen2.5:7b}
       # The language names and tags are written in. Documents can be in
@@ -243,6 +243,11 @@ services:
       # pick from existing ones, so nothing would ever be tagged. Document
       # types are never created by it: add the few you want in Paperless.
       CREATE_NEW_TAGS: 'true'
+      # Paperless reads the date itself, from the text, and gets it right more
+      # often: on the first test invoice, dated 12 October, the model wrote
+      # 1 October. Off here for the plain paperless-gpt-auto tag too; the
+      # workflow turns it off in its own file.
+      AUTO_GENERATE_CREATED_DATE: 'false'
 
       # Reading the page.
       OCR_PROVIDER: llm
