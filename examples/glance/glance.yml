@@ -859,6 +859,7 @@ pages:
               - { title: Audiobookshelf, url: http://aboriis-mini:13378, check-url: http://audiobookshelf:80/healthcheck, icon: di:audiobookshelf }
               - { title: Pinchflat,   url: http://aboriis-mini:8945, check-url: http://pinchflat:8945/healthcheck,    icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/pinchflat.png }
               - { title: MeTube,      url: http://aboriis-mini:8082, check-url: http://metube:8081/,                    icon: di:metube }
+              - { title: subfill,     url: http://aboriis-mini:8097, check-url: http://subfill:8080/healthz,            icon: di:bazarr }
               - { title: SFTPGo,      url: http://aboriis-mini:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
               - { title: Dozzle,      url: http://aboriis-mini:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
               - { title: What's Up Docker, url: http://aboriis-mini:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
@@ -974,6 +975,7 @@ pages:
                   - { title: Sonarr,      url: http://aboriis-mini:8989 }
                   - { title: Radarr,      url: http://aboriis-mini:7878 }
                   - { title: Bazarr,      url: http://aboriis-mini:6767 }
+                  - { title: subfill,     url: http://aboriis-mini:8097 }
                   - { title: Tdarr,       url: http://aboriis-mini:8265 }
               - title: Acquisition
                 links:

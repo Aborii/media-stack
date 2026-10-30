@@ -1,0 +1,19 @@
+{
+  "name": "subfill",
+  "private": true,
+  "description": "Arabic subtitles from a local model when Bazarr finds none",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/main.ts",
+    "typecheck": "tsc",
+    "test": "node --disable-warning=ExperimentalWarning --import ./test/no-network.ts --test --experimental-test-coverage --test-coverage-include=src/** --test-coverage-exclude=src/main.ts --test-coverage-lines=80 test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
