@@ -47,7 +47,7 @@
 #        docker exec ollama ollama pull qwen2.5:7b
 #   5. A token for it: in Paperless, your profile (top right) > API Auth
 #      Token > generate, into PAPERLESS_GPT_API_TOKEN in docker-compose.env.
-#   6. Its workflow, before its first start:
+#   6. Its workflow, copied into its prompts folder:
 #        mkdir -p "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows"
 #        cp -r paperless-gpt/workflows/. "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows/"
 #      then docker compose up -d again.
