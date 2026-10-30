@@ -2,34 +2,10 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { Bazarr } from '../src/bazarr.ts';
 import { parseSrt } from '../src/srt.ts';
-import { Store } from '../src/store.ts';
 import { ARABIC } from '../src/translate.ts';
-import { decode, outPathFor, Worker, type Config } from '../src/worker.ts';
-import { arabicModel, episodeOnDisk, fakeBazarr, mediaDir, SRT, type FakeMedia } from './helpers.ts';
-
-function setup(items: FakeMedia[], over: Partial<Config> = {}, generate = arabicModel, fail?: () => boolean) {
-  const root = path.dirname(path.dirname(path.dirname(items[0]?.path ?? path.join(mediaDir(), 'tv', 'x', 'x'))));
-  const store = new Store(':memory:');
-  const bazarr = new Bazarr({ url: 'http://bazarr:6767', apiKey: 'key', fetcher: fakeBazarr(items, { fail }) });
-  const config: Config = {
-    target: ARABIC,
-    sourceLanguages: ['en'],
-    waitMs: 0,
-    batchSize: 10,
-    maxAttempts: 2,
-    retryDelayMs: 0,
-    mediaRoot: root,
-    ...over,
-  };
-  return { store, worker: new Worker({ store, bazarr, generate, config }) };
-}
-
-function episode(root: string, id: number, name: string, extra: Partial<FakeMedia> = {}): FakeMedia {
-  const { video, en } = episodeOnDisk(root, name);
-  return { kind: 'episode', id, title: name, path: video, subtitles: [{ code2: 'en', path: en }], missing: ['ar'], ...extra };
-}
+import { decode, outPathFor } from '../src/worker.ts';
+import { arabicModel, episode, episodeOnDisk, mediaDir, setup, SRT, type FakeMedia } from './helpers.ts';
 
 test('an episode Bazarr has no Arabic for is translated beside the video, timing intact', async () => {
   const root = mediaDir();

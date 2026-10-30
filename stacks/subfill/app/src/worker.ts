@@ -9,6 +9,7 @@
 import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Bazarr, Media, Wanted } from './bazarr.ts';
+import { Unavailable } from './errors.ts';
 import { checkAligned, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
 import type { Item, State, Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
@@ -104,19 +105,13 @@ export class Worker {
     const details = await this.bazarr.details([...wanted, ...done.map((r) => ({ kind: r.kind, id: r.bazarr_id }))]);
 
     for (const row of done) {
-      const media = details.get(row.key);
-      if (media && !media.missing.includes(target)) {
-        await this.deleteOurs(row);
-        this.store.move(row.key, ['done'], 'replaced', { note: 'Bazarr found an Arabic subtitle; ours was deleted' });
-        this.store.log(row.key, 'Bazarr now has Arabic, deleted the machine translation');
-      } else if (media && media.path !== row.video_path) {
-        await this.deleteOurs(row);
-        this.store.move(row.key, ['done'], 'gone', { note: 'the video was replaced; it will be looked at again' });
-        this.store.log(row.key, `video replaced by ${path.basename(media.path)}, deleted the old machine translation`);
-      } else if (!(await this.exists(row.video_path))) {
-        await this.deleteOurs(row);
-        this.store.move(row.key, ['done'], 'gone', { note: 'the video is no longer there' });
-        this.store.log(row.key, 'video removed, deleted the machine translation');
+      // One row that cannot be cleaned up (a read-only folder) is logged on
+      // that row and skipped, so it never stops the rest of the sync.
+      try {
+        await this.settleDone(row, details.get(row.key));
+      } catch (err) {
+        this.store.update(row.key, { note: `could not clean up: ${(err as Error).message}` });
+        this.store.log(row.key, `could not clean up: ${(err as Error).message}`);
       }
     }
 
@@ -132,7 +127,7 @@ export class Worker {
         // ctime, not mtime: moving or hard-linking the file into the library
         // sets it, so it is when the video arrived, whatever date the release
         // itself carries.
-        eligibleAt = (await stat(media.path)).ctimeMs + this.cfg.waitMs;
+        eligibleAt = Math.floor((await stat(media.path)).ctimeMs) + this.cfg.waitMs;
       } catch {
         note = 'video file not found';
       }
@@ -152,18 +147,49 @@ export class Worker {
         this.store.log(w.key, `Arabic missing in Bazarr; ${state.replace('_', ' ')}`);
       } else {
         const next: State = row.state === 'eligible' && state === 'waiting' ? 'eligible' : state;
-        if (next !== row.state) this.store.log(w.key, `now ${next.replace('_', ' ')}`);
-        this.store.update(w.key, { ...fields, state: next });
+        // Only if the row is still as read: the worker may have claimed it, or
+        // the owner skipped it, while this sync was looking at the disk.
+        if (this.store.move(w.key, [row.state], next, fields) && next !== row.state) {
+          this.store.log(w.key, `now ${next.replace('_', ' ')}`);
+        }
       }
     }
 
     for (const row of this.store.all()) {
-      if (DROP_WHEN_FOUND.includes(row.state) && !wantedKeys.has(row.key)) this.store.remove(row.key);
+      if (DROP_WHEN_FOUND.includes(row.state) && !wantedKeys.has(row.key)) await this.drop(row);
     }
     return { wanted: wanted.length, tracked: this.store.all().length };
   }
 
-  // Translates the next eligible item, if any. Returns false when there was none.
+  // A row whose machine subtitle is in use: is it still needed?
+  private async settleDone(row: Item, media: Media | undefined): Promise<void> {
+    const target = this.cfg.target.code;
+    if (media && !media.missing.includes(target)) {
+      await this.deleteOurs(row);
+      const human = media.subtitles.some((s) => s.code2 === target && !s.forced && s.path !== row.out_path);
+      const note = human ? 'Bazarr found an Arabic subtitle; ours was deleted' : 'Bazarr no longer wants Arabic for this; ours was deleted';
+      this.store.move(row.key, ['done'], human ? 'replaced' : 'gone', { note });
+      this.store.log(row.key, note);
+    } else if (media && media.path !== row.video_path) {
+      await this.deleteOurs(row);
+      this.store.move(row.key, ['done'], 'gone', { note: 'the video was replaced; it will be looked at again' });
+      this.store.log(row.key, `video replaced by ${path.basename(media.path)}, deleted the old machine translation`);
+    } else if (!(await this.exists(row.video_path))) {
+      await this.deleteOurs(row);
+      this.store.move(row.key, ['done'], 'gone', { note: 'the video is no longer there' });
+      this.store.log(row.key, 'video removed, deleted the machine translation');
+    }
+  }
+
+  // Forgets an item, and the file of a translation that was cut off after
+  // writing it, if there is one.
+  private async drop(row: Item): Promise<void> {
+    if (row.out_path && this.store.sharing(row.out_path, row.key).length === 0) await this.deleteOurs(row);
+    this.store.remove(row.key);
+  }
+
+  // Translates the next eligible item, if any. Returns false when there was
+  // none, or when Bazarr or Ollama is down, so the caller waits before trying.
   async translateNext(): Promise<boolean> {
     const item = this.store.next(this.now());
     if (!item) return false;
@@ -177,6 +203,12 @@ export class Worker {
     } catch (err) {
       await unlink(part).catch(() => undefined);
       const message = (err as Error).message;
+      if (err instanceof Unavailable) {
+        // Not this item's fault: back in the queue as it was, attempt not counted.
+        this.store.move(item.key, ['translating'], 'eligible', { attempts: item.attempts, note: `paused: ${message}` });
+        this.store.log(item.key, `paused, will start again: ${message}`);
+        return false;
+      }
       const attempts = item.attempts + 1;
       const final = attempts >= this.cfg.maxAttempts;
       this.store.move(item.key, ['translating'], final ? 'failed' : 'eligible', {
@@ -197,11 +229,19 @@ export class Worker {
     const out = outPathFor(item.video_path, target);
     const human = `${out.slice(0, out.length - `.${MARKER}.srt`.length)}.srt`;
     if (!media || !media.missing.includes(target.code) || (await this.exists(human))) {
-      this.store.remove(item.key);
+      await this.drop(item);
       return;
     }
     if (!item.source_path || !this.inMedia(item.source_path) || !this.inMedia(out)) {
       throw new Error('the subtitle or video is outside the media folder');
+    }
+    // A file holding several episodes: the first one translated serves them all.
+    const sibling = this.store.sharing(out, item.key).find((r) => r.state === 'done');
+    if (sibling) {
+      const note = `same video as ${sibling.title}, which has the machine subtitle`;
+      this.store.move(item.key, ['translating'], 'done', { out_path: out, started_at: null, finished_at: this.now(), note });
+      this.store.log(item.key, note);
+      return;
     }
     if ((await this.exists(out)) && item.out_path !== out) {
       throw new Error(`${path.basename(out)} already exists and subfill did not write it`);
@@ -211,7 +251,7 @@ export class Worker {
     if (!source.cues.length) throw new Error('the source subtitle has no cues');
     const segments = segmentsOf(source.cues);
     this.current = { key: item.key, title: item.title, done: 0, total: segments.length, startedAt: this.now() };
-    const translations = await translateAll(
+    const { texts: translations, kept } = await translateAll(
       segments.map((s) => s.body),
       this.generate,
       {
@@ -234,11 +274,15 @@ export class Worker {
     await writeFile(part, serializeSrt(result), 'utf8');
     await rename(part, out);
     const minutes = Math.round((this.now() - (this.current?.startedAt ?? this.now())) / 60_000);
-    this.store.move(item.key, ['translating'], 'done', {
-      finished_at: this.now(),
-      note: `${source.cues.length} cues in ${minutes} min`,
-    });
-    this.store.log(item.key, `wrote ${path.basename(out)} (${source.cues.length} cues, ${minutes} min)`);
+    const untranslated = kept ? `, ${kept} left in ${languageOf(item.source_lang ?? 'en').name}` : '';
+    const note = `${source.cues.length} cues in ${minutes} min${untranslated}`;
+    if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note })) {
+      // The row changed under us, so nothing would ever clean this file up.
+      await this.deleteOurs({ ...item, out_path: out });
+      this.store.log(item.key, 'the item changed while it was being translated; the result was discarded');
+      return;
+    }
+    this.store.log(item.key, `wrote ${path.basename(out)} (${note})`);
   }
 
   // Owner actions from the page.

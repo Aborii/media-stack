@@ -84,6 +84,48 @@ test('dialogue lines are translated one by one and keep their dashes', () => {
   assert.deepEqual(out.cues[4].lines, ['- عربي 8', '- <i>عربي 8</i>']);
 });
 
+test('a tag around part of a line is dropped, never left unpaired', () => {
+  const cues = parseSrt(
+    "1\n00:00:01,000 --> 00:00:02,000\nHe's <i>here</i>\n\n2\n00:00:03,000 --> 00:00:04,000\n<i>Previously on</i> Lost\n\n3\n00:00:05,000 --> 00:00:06,000\n<i>All of it</i>\n",
+  );
+  const segs = segmentsOf(cues.cues);
+  assert.deepEqual(
+    segs.map((s) => [s.lead, s.body, s.trail]),
+    [
+      ['', "He's here", ''],
+      ['', 'Previously on Lost', ''],
+      ['<i>', 'All of it', '</i>'],
+    ],
+  );
+  const out = rebuild(cues, segs, ['أ', 'ب', 'ج']);
+  assert.deepEqual(
+    out.cues.map((c) => c.lines.join('|')),
+    ['أ', 'ب', '<i>ج</i>'],
+  );
+});
+
+test('a dialogue cue whose speaker wraps onto a second line keeps the speakers apart', () => {
+  const p = parseSrt('1\n00:00:01,000 --> 00:00:03,000\n- Hi.\n- Hello there, how\nare you?\n');
+  const segs = segmentsOf(p.cues);
+  assert.deepEqual(
+    segs.map((s) => [s.first, s.count, s.body]),
+    [
+      [0, 1, 'Hi.'],
+      [1, 2, 'Hello there, how are you?'],
+    ],
+  );
+  const out = rebuild(p, segs, ['مرحبا.', 'أهلا بك، كيف حالك؟']);
+  assert.deepEqual(out.cues[0].lines, ['- مرحبا.', '- أهلا بك،', 'كيف حالك؟']);
+  assert.equal(checkAligned(p, out), null);
+});
+
+test('a speaker line with no letters goes out untouched beside a translated one', () => {
+  const p = parseSrt('1\n00:00:01,000 --> 00:00:03,000\n- ♪ ♪\n- Stop singing.\n');
+  const segs = segmentsOf(p.cues);
+  assert.equal(segs.length, 1);
+  assert.deepEqual(rebuild(p, segs, ['توقف عن الغناء.']).cues[0].lines, ['- ♪ ♪', '- توقف عن الغناء.']);
+});
+
 test('only the words change: index and timing lines come back byte for byte', () => {
   const p = parseSrt(SAMPLE);
   const segs = segmentsOf(p.cues);

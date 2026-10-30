@@ -5,7 +5,7 @@
 // separate so a translation that takes most of an hour does not hold up the
 // sync that notices a human subtitle arrived.
 import path from 'node:path';
-import { Bazarr } from './bazarr.ts';
+import { Bazarr, BazarrError } from './bazarr.ts';
 import { readSettings } from './config.ts';
 import { inHours } from './hours.ts';
 import { Ollama } from './ollama.ts';
@@ -52,8 +52,12 @@ async function syncLoop(): Promise<void> {
       store.setMeta('last_sync', String(status.lastSync));
       console.log(`sync: ${r.wanted} items want Arabic, ${r.tracked} tracked`);
     } catch (err) {
-      status.bazarrError = `Could not read Bazarr: ${(err as Error).message}. Nothing was changed; trying again in ${settings.syncMinutes} min.`;
-      console.error('sync failed:', (err as Error).message);
+      const message = (err as Error).message;
+      status.bazarrError =
+        err instanceof BazarrError
+          ? `Could not read Bazarr: ${message}. Nothing was changed; trying again in ${settings.syncMinutes} min.`
+          : `The sync stopped partway: ${message}. Trying again in ${settings.syncMinutes} min.`;
+      console.error('sync failed:', message);
     }
     await sleep(settings.syncMinutes * 60_000);
   }

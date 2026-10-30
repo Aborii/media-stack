@@ -3,6 +3,10 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Bazarr } from '../src/bazarr.ts';
+import { Store } from '../src/store.ts';
+import { ARABIC, type Generate } from '../src/translate.ts';
+import { Worker, type Config } from '../src/worker.ts';
 
 export type FakeMedia = {
   kind: 'episode' | 'movie';
@@ -77,4 +81,31 @@ export function episodeOnDisk(root: string, name: string, srt: string | null = S
   const en = path.join(dir, `${name} - S01E01.en.srt`);
   if (srt !== null) writeFileSync(en, srt);
   return { video, en };
+}
+
+export function episode(root: string, id: number, name: string, extra: Partial<FakeMedia> = {}): FakeMedia {
+  const { video, en } = episodeOnDisk(root, name);
+  return { kind: 'episode', id, title: name, path: video, subtitles: [{ code2: 'en', path: en }], missing: ['ar'], ...extra };
+}
+
+// A worker over a fake Bazarr that answers from `items` (which tests change
+// between syncs), with the media folder taken from the first item's path.
+export function setup(items: FakeMedia[], over: Partial<Config> = {}, generate: Generate = arabicModel, fail?: () => boolean) {
+  const root = path.dirname(path.dirname(path.dirname(items[0]?.path ?? path.join(mediaDir(), 'tv', 'x', 'x'))));
+  const store = new Store(':memory:');
+  const bazarr = new Bazarr({ url: 'http://bazarr:6767', apiKey: 'key', fetcher: fakeBazarr(items, { fail }) });
+  const config: Config = {
+    target: ARABIC,
+    sourceLanguages: ['en'],
+    waitMs: 0,
+    batchSize: 10,
+    maxAttempts: 2,
+    retryDelayMs: 0,
+    mediaRoot: root,
+    ...over,
+  };
+  // A second ahead of the wall clock: a file's ctime can read a few ms past
+  // Date.now(), and with waitMs 0 a new video must already count as old enough.
+  const now = () => Date.now() + 1000;
+  return { store, worker: new Worker({ store, bazarr, generate, config, now }) };
 }

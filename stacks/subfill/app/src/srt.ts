@@ -18,8 +18,9 @@ export type Parsed = {
 // A piece of text the model translates, and how to put it back.
 export type Segment = {
   cue: number;
-  // Which line of a dialogue cue this is; null when the whole cue is one segment.
-  line: number | null;
+  // The source lines it came from: the whole cue, or one speaker of a dialogue cue.
+  first: number;
+  count: number;
   lead: string;
   body: string;
   trail: string;
@@ -61,16 +62,45 @@ const INNER_TAG = /<\/?(?:i|b|u|font\b[^>]*)>|\{\\[^}]*\}/gi;
 const DASH = /^(\s*(?:\{\\[^}]*\}|<(?:i|b|u|font\b[^>]*)>)*\s*-+\s*)/i;
 const LETTER = /\p{L}/u;
 
+const TAGS = [
+  { open: /<i>/gi, close: /<\/i>/gi },
+  { open: /<b>/gi, close: /<\/b>/gi },
+  { open: /<u>/gi, close: /<\/u>/gi },
+  { open: /<font\b[^>]*>/gi, close: /<\/font>/gi },
+];
+
+// A tag only stays in the lead or trail when its partner is on the other side.
+// "<i>Previously on</i> Lost" and "He's <i>here</i>" italicise part of a line,
+// which cannot be placed in a translated sentence, so those tags are dropped
+// like inner ones rather than italicising the whole cue or leaving a stray </i>.
+function balance(lead: string, trail: string): { lead: string; trail: string } {
+  for (const { open, close } of TAGS) {
+    if ((lead.match(open) ?? []).length !== (trail.match(close) ?? []).length) {
+      lead = lead.replace(open, '');
+      trail = trail.replace(close, '');
+    }
+  }
+  return { lead, trail };
+}
+
 function split(text: string): { lead: string; body: string; trail: string } {
   const lead = text.match(LEAD)?.[0] ?? '';
   let rest = text.slice(lead.length);
   const trail = rest.match(TRAIL)?.[0] ?? '';
   rest = rest.slice(0, rest.length - trail.length);
-  return { lead, body: rest.replace(INNER_TAG, '').replace(/\s+/g, ' ').trim(), trail };
+  return { ...balance(lead, trail), body: rest.replace(INNER_TAG, '').replace(/\s+/g, ' ').trim() };
 }
 
-function isDialogue(lines: string[]): boolean {
-  return lines.length > 1 && lines.every((l) => DASH.test(l));
+// A dialogue cue starts with a dash and has more than one speaker. A line
+// with no dash continues the speaker above it.
+function speakers(lines: string[]): { first: number; count: number }[] | null {
+  if (lines.length < 2 || !DASH.test(lines[0])) return null;
+  const groups: { first: number; count: number }[] = [];
+  lines.forEach((line, j) => {
+    if (DASH.test(line)) groups.push({ first: j, count: 1 });
+    else groups[groups.length - 1].count++;
+  });
+  return groups.length > 1 ? groups : null;
 }
 
 // The segments to translate, in order. A cue with no letters at all ("♪",
@@ -78,21 +108,18 @@ function isDialogue(lines: string[]): boolean {
 export function segmentsOf(cues: Cue[]): Segment[] {
   const out: Segment[] = [];
   cues.forEach((cue, i) => {
-    if (isDialogue(cue.lines)) {
-      cue.lines.forEach((line, j) => {
-        const dash = line.match(DASH)?.[0] ?? '';
-        const s = split(line.slice(dash.length));
-        if (LETTER.test(s.body)) out.push({ cue: i, line: j, lead: dash + s.lead, body: s.body, trail: s.trail });
-      });
-      return;
+    const groups = speakers(cue.lines);
+    for (const { first, count } of groups ?? [{ first: 0, count: cue.lines.length }]) {
+      const text = cue.lines.slice(first, first + count).join(' ');
+      const dash = groups ? (text.match(DASH)?.[0] ?? '') : '';
+      const s = split(text.slice(dash.length));
+      if (LETTER.test(s.body)) out.push({ cue: i, first, count, lead: dash + s.lead, body: s.body, trail: s.trail });
     }
-    const s = split(cue.lines.join(' '));
-    if (LETTER.test(s.body)) out.push({ cue: i, line: null, ...s });
   });
   return out;
 }
 
-// Breaks a translated sentence back into as many lines as the source cue had,
+// Breaks a translated sentence back into as many lines as its source had,
 // at spaces, keeping the lines close to even.
 export function wrap(text: string, count: number): string[] {
   const words = text.split(/\s+/).filter(Boolean);
@@ -120,19 +147,29 @@ export function rebuild(parsed: Parsed, segments: Segment[], translations: strin
   if (segments.length !== translations.length) {
     throw new Error(`have ${translations.length} translations for ${segments.length} segments`);
   }
-  const cues = parsed.cues.map((c) => ({ ...c, lines: [...c.lines] }));
-  const whole = new Map<number, { seg: Segment; text: string }>();
+  const byCue = new Map<number, { seg: Segment; text: string }[]>();
   segments.forEach((seg, k) => {
-    const text = translations[k];
-    if (seg.line === null) whole.set(seg.cue, { seg, text });
-    else cues[seg.cue].lines[seg.line] = seg.lead + text + seg.trail.trimEnd();
+    const list = byCue.get(seg.cue) ?? [];
+    list.push({ seg, text: translations[k] });
+    byCue.set(seg.cue, list);
   });
-  for (const [i, { seg, text }] of whole) {
-    const lines = wrap(text, parsed.cues[i].lines.length);
-    lines[0] = seg.lead + lines[0];
-    lines[lines.length - 1] = lines[lines.length - 1] + seg.trail.trimEnd();
-    cues[i].lines = lines;
-  }
+  const cues = parsed.cues.map((c, i) => {
+    const parts = byCue.get(i);
+    if (!parts) return { ...c, lines: [...c.lines] };
+    // Lines no segment covers (a speaker who only sings "♪") go out as they came.
+    const lines: string[] = [];
+    let at = 0;
+    for (const { seg, text } of parts.sort((a, b) => a.seg.first - b.seg.first)) {
+      lines.push(...c.lines.slice(at, seg.first));
+      const wrapped = wrap(text, seg.count);
+      wrapped[0] = seg.lead + wrapped[0];
+      wrapped[wrapped.length - 1] += seg.trail.trimEnd();
+      lines.push(...wrapped);
+      at = seg.first + seg.count;
+    }
+    lines.push(...c.lines.slice(at));
+    return { ...c, lines };
+  });
   return { cues, newline: parsed.newline };
 }
 

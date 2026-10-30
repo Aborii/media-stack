@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ARABIC, believable, languageOf, parseNumbered, promptFor, translateAll } from '../src/translate.ts';
+import { ARABIC, believable, keepLimit, languageOf, parseNumbered, promptFor, translateAll } from '../src/translate.ts';
 
 const EN = languageOf('en');
 
@@ -43,7 +43,7 @@ test('batches go out numbered and come back in order', async () => {
     to: ARABIC,
     batchSize: 2,
   });
-  assert.deepEqual(out, ['ترجمة a', 'ترجمة b', 'ترجمة c', 'ترجمة d', 'ترجمة e']);
+  assert.deepEqual(out, { texts: ['ترجمة a', 'ترجمة b', 'ترجمة c', 'ترجمة d', 'ترجمة e'], kept: 0 });
   assert.equal(calls.length, 3);
 });
 
@@ -58,19 +58,32 @@ test('a misnumbered batch is split and retried, and only that batch', async () =
     return good(p);
   };
   const out = await translateAll(['a', 'b', 'c', 'd'], merging, { from: EN, to: ARABIC, batchSize: 4, onProgress: (d) => progress.push(d) });
-  assert.deepEqual(out, ['ترجمة a', 'ترجمة b', 'ترجمة c', 'ترجمة d']);
+  assert.deepEqual(out.texts, ['ترجمة a', 'ترجمة b', 'ترجمة c', 'ترجمة d']);
   assert.equal(calls, 3);
   assert.deepEqual(progress, [2, 4]);
 });
 
-test('a single line the model will not translate fails the episode', async () => {
-  const echo = async (p: string) => numberedLines(p).map(({ n, body }) => `${n}. ${body}`).join('\n');
-  await assert.rejects(translateAll(['Hello there'], echo, { from: EN, to: ARABIC, batchSize: 5 }), /no usable Arabic for: Hello there/);
+test('a line that fairly stays in Latin script ("FBI!") is kept as it was, not fatal', async () => {
+  const bodies = ['Freeze!', 'FBI!', 'Hands up.', 'Now.'];
+  const model = async (p: string) =>
+    numberedLines(p)
+      .map(({ n, body }) => `${n}. ${body === 'FBI!' ? 'FBI!' : `ترجمة ${body}`}`)
+      .join('\n');
+  const out = await translateAll(bodies, model, { from: EN, to: ARABIC, batchSize: 4 });
+  assert.deepEqual(out.texts, ['ترجمة Freeze!', 'FBI!', 'ترجمة Hands up.', 'ترجمة Now.']);
+  assert.equal(out.kept, 1);
 });
 
-test('a single line answered without its number is still used', async () => {
-  const bare = async () => 'مرحبا';
-  assert.deepEqual(await translateAll(['Hello'], bare, { from: EN, to: ARABIC, batchSize: 5 }), ['مرحبا']);
+test('a model that translates nothing still fails the episode', async () => {
+  const echo = async (p: string) => numberedLines(p).map(({ n, body }) => `${n}. ${body}`).join('\n');
+  const bodies = Array.from({ length: 40 }, (_, i) => `Line ${i}`);
+  assert.equal(keepLimit(40), 2);
+  await assert.rejects(translateAll(bodies, echo, { from: EN, to: ARABIC, batchSize: 10 }), /no usable Arabic for 3 lines, the last: Line 2/);
+});
+
+test('a single line answered without its number is still used, on one line', async () => {
+  const bare = async () => 'مرحبا\n\nبكم';
+  assert.deepEqual((await translateAll(['Hello'], bare, { from: EN, to: ARABIC, batchSize: 5 })).texts, ['مرحبا بكم']);
 });
 
 test('languageOf names the common ones and falls back to the code', () => {

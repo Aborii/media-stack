@@ -3,8 +3,12 @@
 // Temperature 0 because a subtitle wants the most likely translation, not a
 // creative one. The deadline is long on purpose: a 12B model on the mini's CPU
 // takes a minute or two per batch, and a slow answer is still a good one.
+import { Unavailable } from './errors.ts';
 
+// An answer from Ollama that is an error: counted against the item.
 export class OllamaError extends Error {}
+// No answer at all (stopped, restarting, or past the deadline): an outage.
+export class OllamaDown extends Unavailable {}
 
 export class Ollama {
   private readonly base: string;
@@ -49,7 +53,7 @@ export class Ollama {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
-      throw new OllamaError(`Ollama call failed: ${(err as Error).message}`);
+      throw new OllamaDown(`Ollama call failed: ${(err as Error).message}`);
     }
     if (!res.ok) throw new OllamaError(`Ollama answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const body = (await res.json()) as { response?: string };

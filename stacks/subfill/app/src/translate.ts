@@ -83,23 +83,35 @@ export function believable(source: string, translation: string, to: Language): b
 
 export type Progress = (done: number, total: number) => void;
 
+// How many lines may stay in the source language. A name, an acronym or a URL
+// can fairly come back without a single Arabic letter, and one such line must
+// not sink the episode; many of them mean the model is not translating at all.
+export function keepLimit(total: number): number {
+  return Math.max(2, Math.ceil(total * 0.05));
+}
+
 export async function translateAll(
   bodies: string[],
   generate: Generate,
   opts: { from: Language; to: Language; batchSize: number; onProgress?: Progress },
-): Promise<string[]> {
+): Promise<{ texts: string[]; kept: number }> {
   const out = new Array<string>(bodies.length);
   let done = 0;
+  let kept = 0;
 
   async function run(start: number, end: number): Promise<void> {
     const slice = bodies.slice(start, end);
     if (slice.length === 1) {
       const reply = (await generate(promptFor(opts.from, opts.to, `1. ${slice[0]}`))).trim();
-      const text = (parseNumbered(reply, 1)?.[0] ?? reply.replace(NUMBERED, '$2')).trim();
-      if (!believable(slice[0], text, opts.to)) {
-        throw new Error(`no usable ${opts.to.name} for: ${slice[0].slice(0, 80)}`);
+      // One line in, one line out: a stray blank line would end the cue early.
+      const text = (parseNumbered(reply, 1)?.[0] ?? reply.replace(NUMBERED, '$2')).replace(/\s+/g, ' ').trim();
+      if (believable(slice[0], text, opts.to)) {
+        out[start] = text;
+      } else if (++kept <= keepLimit(bodies.length)) {
+        out[start] = slice[0];
+      } else {
+        throw new Error(`no usable ${opts.to.name} for ${kept} lines, the last: ${slice[0].slice(0, 80)}`);
       }
-      out[start] = text;
     } else {
       const input = slice.map((b, k) => `${k + 1}. ${b}`).join('\n');
       const reply = await generate(promptFor(opts.from, opts.to, input));
@@ -119,5 +131,5 @@ export async function translateAll(
   for (let start = 0; start < bodies.length; start += opts.batchSize) {
     await run(start, Math.min(start + opts.batchSize, bodies.length));
   }
-  return out;
+  return { texts: out, kept };
 }

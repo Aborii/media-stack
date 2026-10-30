@@ -12,7 +12,8 @@
 #   - subfill (stacks/subfill), which translates subtitles with
 #     translategemma:12b. It holds about 8 GB while it works, and asks for
 #     the model to stay loaded 5 minutes past each request, longer than the
-#     30s default below. Stopping this stack pauses subfill; nothing is lost.
+#     30s default below. Stopping this stack pauses subfill: the episode in
+#     progress starts again later, and nothing else is affected.
 #
 # NOTE: starting the container is not enough. Each model is pulled once:
 #   docker exec ollama ollama pull nomic-embed-text

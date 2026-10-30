@@ -93,13 +93,29 @@ export class Store {
     this.db.close();
   }
 
-  // A translation the process was killed in the middle of starts over. Its
+  // A translation the process was killed in the middle of starts over, and the
+  // attempt it was on is given back: a restart is not the item's fault. Its
   // out_path stays, so the retry may overwrite the file it may have written.
   recoverInterrupted(): number {
     const r = this.db
-      .prepare(`UPDATE items SET state = 'eligible', note = 'interrupted, will start again', updated_at = ? WHERE state = 'translating'`)
+      .prepare(
+        `UPDATE items SET state = 'eligible', attempts = MAX(attempts - 1, 0), note = 'interrupted, will start again', updated_at = ?
+         WHERE state = 'translating'`,
+      )
       .run(this.now());
     return Number(r.changes);
+  }
+
+  // Other items that recorded the same subtitle path: episodes sharing one file.
+  sharing(outPath: string, exceptKey: string): Item[] {
+    return this.db.prepare('SELECT * FROM items WHERE out_path = ? AND key != ?').all(outPath, exceptKey) as Item[];
+  }
+
+  // Eligible items whose time has come, as opposed to ones waiting out a retry delay.
+  readyCount(now: number): number {
+    return Number(
+      (this.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE state = 'eligible' AND eligible_at <= ?`).get(now) as { n: number }).n,
+    );
   }
 
   get(key: string): Item | undefined {

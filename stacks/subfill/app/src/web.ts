@@ -113,7 +113,7 @@ export function renderHome(deps: WebDeps, query: URLSearchParams): string {
   const problems = [s.bazarrError, s.ollamaProblem].filter(Boolean).map((p) => `<div class="bad">${esc(p)}</div>`).join('');
   const working = s.current
     ? `<div class="card">Translating <b>${esc(s.current.title)}</b><br><progress max="${s.current.total}" value="${s.current.done}"></progress> <span class="dim">${s.current.done} of ${s.current.total} lines, started ${ago(s.current.startedAt, now)}</span></div>`
-    : `<div class="card dim">${s.outsideHours ? 'Outside the translation hours; waiting.' : counts.eligible ? 'Starting the next one shortly.' : 'Nothing to translate right now.'}</div>`;
+    : `<div class="card dim">${s.outsideHours ? 'Outside the translation hours; waiting.' : deps.store.readyCount(now) ? 'Starting the next one shortly.' : counts.eligible ? 'Nothing ready now; failed items wait an hour before they are tried again.' : 'Nothing to translate right now.'}</div>`;
 
   const stats = [
     ['Machine subtitles in use', counts.done],
@@ -201,9 +201,10 @@ function send(res: ServerResponse, code: number, body: string, headers: Record<s
   res.end(body);
 }
 
-// Only ever send the browser back to a path on this site.
-function safeBack(value: string | null): string {
-  return value && value.startsWith('/') && !value.startsWith('//') ? value : '/';
+// Only ever send the browser back to a path on this site. Browsers read a
+// backslash as a slash, so "/\evil.example" would leave it too.
+export function safeBack(value: string | null): string {
+  return value && value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') ? value : '/';
 }
 
 export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {

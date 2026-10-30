@@ -1,6 +1,7 @@
 // Bazarr's API, read only. subfill never asks Bazarr to download, upload or
 // rescan anything: Bazarr ignores the files subfill writes (see the compose
 // header for why), so it keeps searching for a human subtitle on its own.
+import { Unavailable } from './errors.ts';
 
 export type Subtitle = {
   code2: string;
@@ -22,12 +23,14 @@ export type Media = {
 export type Wanted = { key: string; kind: 'episode' | 'movie'; id: number; title: string; missing: string[] };
 
 type RawSubtitle = { code2?: string; path?: string | null; forced?: boolean; hi?: boolean };
-type RawMissing = { code2?: string };
+type RawMissing = { code2?: string; forced?: boolean };
 
 export const episodeKey = (id: number) => `episode:${id}`;
 export const movieKey = (id: number) => `movie:${id}`;
 
-export class BazarrError extends Error {}
+// Any failure to read Bazarr, a wrong key included, is Bazarr's problem and
+// not the item's.
+export class BazarrError extends Unavailable {}
 
 export class Bazarr {
   private readonly base: string;
@@ -108,8 +111,14 @@ export class Bazarr {
   }
 }
 
+// The languages missing a full subtitle. A missing forced one (signs and
+// foreign lines only) is not what subfill makes, so it does not count.
 function codes(raw: unknown): string[] {
-  return Array.isArray(raw) ? (raw as RawMissing[]).map((m) => String(m.code2 ?? '')).filter(Boolean) : [];
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawMissing[])
+    .filter((m) => !m.forced)
+    .map((m) => String(m.code2 ?? ''))
+    .filter(Boolean);
 }
 
 function subtitles(raw: unknown): Subtitle[] {
