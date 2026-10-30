@@ -83,6 +83,7 @@ docker compose down
 | | vaultwarden | 8222 | passwords for the Bitwarden apps; use `https://aboriis-mini.tail54d520.ts.net:8443` |
 | **Network** | adguard | 3053 | ad and tracker blocking DNS on port 53; HTTPS mirror on 13053 |
 | **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
+| | paperless-gpt | 8001 (this host only) | reads each new document with a local vision model, then names and tags it; see the paperless compose header |
 | | opencloud | 19200 | files in the browser, with its own sign-in; HTTPS only, at `https://aboriis-mini:19200`; files in `data/opencloud` |
 | | euro-office | 18095 | edits Word, Excel and PowerPoint files inside OpenCloud; opened from there |
 | **Tools** | stirling-pdf | 8090 | PDF tools: merge, split, compress, OCR, sign |

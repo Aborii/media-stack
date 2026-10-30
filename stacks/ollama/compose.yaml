@@ -1,18 +1,23 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Ollama — embedding model server.
+# Ollama — local model server.
 #
-# Its own stack rather than part of the application that uses it, for one
+# Its own stack rather than part of the applications that use it, for one
 # practical reason: this is the most memory-hungry optional thing on the box,
-# and a separate stack means it can be stopped without touching that app.
+# and a separate stack means it can be stopped without touching them.
 #
-# Its only consumer today is an application stack kept outside this repo,
-# which reaches it at http://ollama:11434/v1 over mediastack. Without the
-# embedding variables set there, its "Similar meaning (AI)" tag matching
-# reports unavailable and matching stays lexical - a supported state, so
-# stopping this stack degrades that app rather than breaking it.
+# Two consumers, both over mediastack:
+#   - An application stack kept outside this repo, at
+#     http://ollama:11434/v1. Without the embedding variables set there, its
+#     "Similar meaning (AI)" tag matching reports unavailable and matching
+#     stays lexical - a supported state, so stopping this stack degrades that
+#     app rather than breaking it.
+#   - paperless-gpt (stacks/paperless), at http://ollama:11434. Stopped, its
+#     requests fail and new documents keep the text Paperless read itself.
 #
-# NOTE: starting the container is not enough. The model has to be pulled once:
+# NOTE: starting the container is not enough. Each model is pulled once:
 #   docker exec ollama ollama pull nomic-embed-text
+#   docker exec ollama ollama pull qwen2.5vl:7b    (paperless-gpt, reading)
+#   docker exec ollama ollama pull qwen2.5:7b      (paperless-gpt, naming)
 # ─────────────────────────────────────────────────────────────────────────────
 name: ollama
 
