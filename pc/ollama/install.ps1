@@ -9,7 +9,8 @@
 #  2. Registers task "ollama": runs run-ollama.ps1 as you at boot, signed in or
 #     not (no stored password), restarted every 5 min if it died.
 #  3. Lets the mini (10.10.10.3) reach port 11434, and nothing else.
-#  4. Adds "Pause AI" and "Resume AI" to the Start menu and the desktop.
+#  4. Adds "Pause AI" and "Resume AI" to the Start menu and the desktop, and
+#     the tray icon (tray.ps1) to the Startup folder, starting it now.
 #  5. Starts it and pulls the two models paperless-gpt uses.
 param(
   [string]$Version = 'v0.40.13',
@@ -85,6 +86,17 @@ foreach ($s in @(
     $link.Save()
   }
 }
+# The tray icon, at every sign-in. conhost --headless runs PowerShell with no
+# console window at all; -WindowStyle Hidden would still flash one.
+$tray = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Startup')) 'AI tray.lnk'))
+$tray.TargetPath = Join-Path $env:SystemRoot 'System32\conhost.exe'
+$tray.Arguments = "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $here 'tray.ps1')`" -Base `"$Base`" -Url http://$Listen"
+$tray.WorkingDirectory = $Base
+$tray.Description = 'Tray icon: is the AI for Paperless running, paused or off'
+$tray.IconLocation = "$exe,0"
+$tray.Save()
+# Through Explorer, so it runs as you and not elevated like this script.
+Start-Process explorer.exe -ArgumentList "`"$($tray.FullName)`""
 
 Write-Host '5. Starting'
 Start-ScheduledTask -TaskName 'ollama'

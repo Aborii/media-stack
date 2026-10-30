@@ -18,8 +18,27 @@ and nothing else. Ollama has no sign-in, so that rule is its only lock.
   awake or wakes it.
 - **Paused:** Ollama is stopped and the GPU is free. Documents wait the same way.
 
+## Tray icon
+
+An **AI** dot in the notification area shows what it is doing:
+
+| Colour | Means |
+| --- | --- |
+| green | ready, nothing loaded |
+| blue | reading a document |
+| amber | paused by you |
+| purple | paused because storychat has the GPU |
+| red | not answering: starting, or the `ollama` task is stopped |
+
+Right-click it to pause (until you resume, or for 1 or 3 hours), resume, or
+open the log. Double-click toggles pause. It starts at sign-in from the
+Startup folder; "Hide this icon" only closes the icon, the AI keeps running.
+Windows may tuck a new icon under the `^` arrow at first: drag it onto the
+taskbar to keep it in view.
+
 ## Pausing
 
+- The tray icon's menu, or double-click it.
 - **Pause AI** on the desktop or in the Start menu: until **Resume AI**.
 - `pause.ps1 -Hours 3`: for three hours, then it resumes by itself.
 - **storychat** pauses it too while its chat model is loaded, because both
