@@ -10,7 +10,7 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 | `media` | jellyfin, kavita, audiobookshelf |
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, glances, wud |
-| `paperless` | paperless-ngx, valkey, tika, gotenberg (database in `postgres`) |
+| `paperless` | paperless-ngx, valkey, tika, gotenberg (database in `postgres`), paperless-gpt (models in `ollama`) |
 | `prayer` | Dubai prayer times from IACAD, cached a year ahead, for the dashboard tiles |
 | `glance` | the dashboard, on port 80, configured in `examples/glance/glance.yml` |
 | `youtube` | pinchflat (channels and playlists, imported by Sonarr), metube (one-off downloads) |

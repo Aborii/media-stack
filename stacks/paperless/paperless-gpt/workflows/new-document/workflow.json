@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "New document",
+  "trigger_tag": "ai-new",
+  "enable_ocr": true,
+  "generate_titles": true,
+  "generate_tags": true,
+  "generate_correspondents": true,
+  "generate_document_types": true,
+  "generate_created_date": true
+}
