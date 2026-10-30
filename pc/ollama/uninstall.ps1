@@ -8,8 +8,10 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 }
 
 Unregister-ScheduledTask -TaskName 'ollama' -Confirm:$false -ErrorAction SilentlyContinue
-# Unregistering ends run-ollama.ps1 but not the Ollama it started.
-Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue | Stop-Process -Force
+# Unregistering ends run-ollama.ps1 but not the Ollama it started. The whole
+# tree goes: the model runner under it is what holds the GPU.
+Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
+  ForEach-Object { & taskkill.exe /PID $_.Id /T /F 2>&1 | Out-Null }
 Get-NetFirewallRule -DisplayName 'ollama (from the mini)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 foreach ($folder in [Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop')) {
   foreach ($name in 'Pause AI', 'Resume AI') {

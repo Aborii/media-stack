@@ -39,7 +39,9 @@ if ((Test-Path -LiteralPath $exe) -and (Test-Path -LiteralPath $stamp) -and ((Ge
   Write-Host "   Downloading $url (about 1.5 GB)"
   $ProgressPreference = 'SilentlyContinue'
   Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-  Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue | Stop-Process -Force
+  # The whole tree: a model runner left behind keeps files under lib\ locked.
+  Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
+    ForEach-Object { & taskkill.exe /PID $_.Id /T /F 2>&1 | Out-Null }
   Expand-Archive -LiteralPath $zip -DestinationPath $Base -Force
   Remove-Item -LiteralPath $zip -Force
   $Version | Set-Content -LiteralPath $stamp -Encoding ascii
