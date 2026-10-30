@@ -18,4 +18,9 @@ foreach ($folder in [Environment]::GetFolderPath('Programs'), [Environment]::Get
     Remove-Item -LiteralPath (Join-Path $folder "$name.lnk") -Force -ErrorAction SilentlyContinue
   }
 }
+Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('Startup')) 'AI tray.lnk') -Force -ErrorAction SilentlyContinue
+# The tray icon is a powershell.exe running tray.ps1; end just that one.
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+  Where-Object { $_.CommandLine -match 'tray\.ps1' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Write-Host 'Removed. The download and models are still in I:\AI\ollama.'
