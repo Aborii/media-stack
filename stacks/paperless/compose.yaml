@@ -76,7 +76,8 @@
 #   mkdir -p … && chmod 700 …/secrets && chmod 600 …/pdf-passwords.txt).
 # The first that opens it is handed to Paperless's own unlock, which adds an
 # unlocked copy as version 2; content, search and the AI use that one, and the
-# original stays as version 1 in the Versions menu. The document is tagged
+# original stays as version 1 in the Versions menu, labelled "Original
+# (locked, as received)" beside the "Unlocked copy". The document is tagged
 # "unlocked" with a note naming the password's line. If none opens it, it is
 # tagged "locked" with a note and kept from the AI; once the password is in
 # the list, Actions > Remove password with "Update document" unlocks it the
