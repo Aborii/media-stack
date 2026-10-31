@@ -58,6 +58,16 @@
 # workflow names them by their ids in this install (1, 2, 3); on a fresh
 # install, create them in that order or update custom_field_ids.
 #
+# Languages. Titles of translations and of originals that are neither
+# English nor English-with-Arabic end with the language: "(Arabic)", "(Turkish
+# translation)", "(Arabic, with Turkish translation)". The "Languages" field
+# (string, id 4) is filled by after-filing.py from the text, not by the AI.
+# "Related documents" (document link, id 5) links an original to its
+# translation; it is set by hand in the document's custom fields, and
+# Paperless shows the link on both. Letting the AI fill it made the bill
+# fields worse, and an original and its translation rarely share a number it
+# could match on.
+#
 #   4. Ollama and the models on the PC: pc/ollama/README.md (one elevated
 #      install.ps1), then the gate here, as aborii:
 #        ../../scripts/install-paperless-gpt-gate.sh
