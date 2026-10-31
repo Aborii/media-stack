@@ -112,8 +112,10 @@ def main() -> None:
 
     for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG):
         found = title_date(doc.title)
+        if found is None or Note.objects.filter(document=doc, note__startswith=DROPPED_NOTE).exists():
+            continue
         text = text_of(doc)
-        if found is None or not text.strip() or Note.objects.filter(document=doc, note__startswith=DROPPED_NOTE).exists():
+        if not text.strip():
             continue
         title, date, years = found
         missing = sorted(years - years_printed(text))
