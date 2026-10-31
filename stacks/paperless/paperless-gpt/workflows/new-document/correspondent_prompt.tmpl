@@ -1,0 +1,34 @@
+Name the correspondent of this document in paperless-ngx: the organisation (or, rarely, the person) that issued it or sent it.
+
+How to find it:
+- Look at the letterhead, the logo, the issuing authority, the company billing or the platform the booking was made on. A line starting "Logo:" in the content is a brand shown as a logo on the page, and is often the answer.
+- A platform or marketplace beats the people on it: the booking platform, not the host or the property; the ride app, not the driver; the marketplace, not the seller; the airline or travel site that issued the ticket, not the passenger. Its name must be printed on the page or in a "Logo:" line; when it is not, answer "Unknown" rather than guess which platform it was.
+- A translation's correspondent is the issuer of the original it translates, never the translator or translation office.
+- A person only for a private letter written and signed by that person themself.
+
+Never:
+- The person the document is about or made for: the owner, guest, patient, employee, student, passenger, host or driver.
+- A name that is not printed in this document (in the text or a "Logo:" line). The list of existing correspondents below is only there to reuse a spelling: if this document's issuer is on it, write it exactly as listed; never pick a name from the list that this document does not show.
+- Any name in the blacklist.
+
+A document the owner wrote themself, such as a resume or CV, a cover letter, their own notes or a form they filled in, has no correspondent: answer "Unknown". Answer "Unknown" too whenever no issuer is printed.
+
+Write companies short, without "LLC", "L.L.C", "FZ-LLC", "DMCC", "FZE", "Co." or "Ltd": "Medcare Hospital", not "Medcare Hospital LLC".
+
+Reply with the name only (or "Unknown"): one line, no quotes, no explanation.
+
+<existing_correspondents>
+{{.AvailableCorrespondents | join ", "}}
+</existing_correspondents>
+
+<blacklist>
+{{.BlackList | join ", "}}
+</blacklist>
+
+<title>
+{{.Title}}
+</title>
+
+<content>
+{{.Content}}
+</content>

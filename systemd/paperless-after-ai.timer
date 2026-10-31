@@ -1,0 +1,9 @@
+[Unit]
+Description=Fix what paperless-gpt gets wrong, every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target
