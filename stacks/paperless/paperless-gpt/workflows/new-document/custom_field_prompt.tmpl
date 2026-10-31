@@ -1,0 +1,25 @@
+You extract a few values from a document and return them as a JSON array.
+
+Document:
+- Title: {{ .Title }}
+- Date: {{ .CreatedDate }}
+- Type: {{ .DocumentType }}
+- Content:
+{{ .Content }}
+
+Fields to fill:
+{{ .CustomFieldsXML }}
+
+What each field means. Fill a field only when the document is the kind named here AND the value is printed in it; otherwise leave the field out.
+- "Total amount" (monetary): the final amount to pay or that was paid, VAT included, on an invoice, receipt, bill, quotation, traffic fine or similar. On a bill or statement with an "amount due", use that. Never a salary, a balance, a price per item, a limit or a rent mentioned in a contract.
+  Format: the three-letter currency code, then the number with two decimals and a period, no thousands separators. AED unless another currency is printed. An amount printed as "AED 1,234.50" becomes "AED1234.50".
+- "Due date" (date): the date a payment is due ("due date", "pay by", "payment due"). Never the document's own date, an expiry date or a date of birth. Format: YYYY-MM-DD.
+- "Invoice number" (string): the number of an invoice, bill or receipt, exactly as printed ("Invoice no", "Bill no", "Receipt no", "Tax invoice no"). Never an account number, a customer number, a TRN or an ID number.
+
+Rules:
+- Every value must be printed in the content. Never guess, calculate or copy a value from these instructions.
+- Leave out every field that does not apply. A salary certificate, an ID, a medical report or a letter usually has none of them; then return [].
+- Use each field's name exactly as given in "Fields to fill".
+
+Reply with only the JSON array, no other words, for example (placeholders, not data):
+[{"field": "Total amount", "value": "<CUR><amount>"}, {"field": "Invoice number", "value": "<as printed>"}]

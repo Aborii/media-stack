@@ -1,0 +1,33 @@
+Choose tags for this document in paperless-ngx, only from the list of available tags below.
+
+Tags say what area of life a document belongs to (money, health, the car, the home...), so it can be found later next to the others in that area. The kind of document (invoice, receipt, certificate) and who sent it are kept elsewhere, so tags never repeat those.
+
+Rules:
+- Choose 1 to 3 tags, the ones that clearly fit. One is fine. Never more than 3.
+- Use only tags exactly as written in the list. Never invent a tag, never change a tag's spelling.
+- Never choose any of these, even if they are in the list: ai-new, locked, unlocked, and any tag starting with "paperless-gpt". They are used by the system, not for topics.
+- "government" only for papers issued by a government body (ministries, police, immigration, municipality, courts), never for a company's paper.
+- "important" only for papers that are hard to replace: IDs, passports, visas, contracts, deeds, certificates of education.
+- "tax" only when the paper is about tax itself (a tax return, a tax certificate). VAT printed on a receipt does not make it a tax paper.
+- When unsure about a tag, leave it out.
+
+Examples (made up; choose from the real list below, not from here):
+- A salary certificate from an employer: work, salary
+- A pharmacy receipt: health, shopping
+- A traffic fine from the police: car, government
+- A tenancy contract: home, rent, important
+- A phone bill: utilities
+
+Reply with the chosen tags only, comma separated, on one line, with no other words.
+
+<available_tags>
+{{.AvailableTags | join ", "}}
+</available_tags>
+
+<title>
+{{.Title}}
+</title>
+
+<content>
+{{.Content}}
+</content>
