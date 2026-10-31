@@ -17,16 +17,56 @@ here rather than by a Paperless "Document Added" workflow so the locked
 original never reaches the AI, and so the tags this adds are on before
 paperless-gpt saves its own tag list over them.
 
+It also fills the "Languages" custom field from the text: Arabic by its
+script, Latin-script languages with langdetect, main language first, and a
+language that is only a stamp or a few words left out. Code rather than the
+AI: asked to fill it beside the bill fields, the model added Arabic to
+English papers and started inventing due dates.
+
 It always exits 0: a post-consume failure marks the upload as failed in
 Paperless, though the document is already stored. Problems are only logged.
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
 AI_TAG = os.environ.get("AI_TAG", "ai-new")
 PASSWORDS = Path(os.environ.get("PDF_PASSWORDS_FILE", "/usr/src/paperless/secrets/pdf-passwords.txt"))
+LANGUAGES_FIELD = os.environ.get("LANGUAGES_FIELD", "Languages")
+LANGUAGE_NAMES = {
+    "ar": "Arabic", "en": "English", "tr": "Turkish", "fr": "French", "de": "German",
+    "es": "Spanish", "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "ru": "Russian",
+    "fa": "Persian", "ur": "Urdu", "hi": "Hindi", "ms": "Malay", "id": "Indonesian",
+}
+# Fewer letters than this, or under this share of the text, is a stamp or a
+# heading in another language, not a language of the document.
+MIN_LETTERS = 40
+MIN_SHARE = 0.1
+
+
+def detect_languages(text: str) -> list[str]:
+    """The languages a text is written in, most-used first."""
+    arabic = len(re.findall(r"[؀-ۿݐ-ݿ]", text))
+    latin_text = " ".join(re.findall(r"[A-Za-zÀ-ɏ]+", text))
+    latin = sum(len(w) for w in latin_text.split())
+    total = arabic + latin
+    if total < MIN_LETTERS:
+        return []
+    found: list[tuple[int, str]] = []
+    if arabic >= MIN_LETTERS and arabic / total >= MIN_SHARE:
+        found.append((arabic, "Arabic"))
+    if latin >= MIN_LETTERS and latin / total >= MIN_SHARE:
+        from langdetect import DetectorFactory, detect
+
+        DetectorFactory.seed = 0  # the same text always gives the same answer
+        try:
+            code = detect(latin_text)
+        except Exception:
+            code = "en"
+        found.append((latin, LANGUAGE_NAMES.get(code, code)))
+    return [name for _, name in sorted(found, reverse=True)]
 
 
 def passwords() -> list[str]:
@@ -107,6 +147,24 @@ def date_from_text(root, version) -> None:
     print(f"after-filing: dated document {root.pk} {root.created} from its unlocked text.")
 
 
+def set_languages(root, text: str) -> None:
+    """Fills the Languages field from text, unless it already has a value."""
+    from documents.models import CustomField, CustomFieldInstance
+
+    field = CustomField.objects.filter(name=LANGUAGES_FIELD, data_type="string").first()
+    if field is None:
+        return
+    languages = detect_languages(text)
+    if not languages:
+        return
+    instance, made = CustomFieldInstance.objects.get_or_create(document=root, field=field)
+    if instance.value_text and not made:
+        return  # set by hand or by an earlier version: keep it
+    instance.value_text = ", ".join(languages)[:128]
+    instance.save()
+    print(f"after-filing: document {root.pk} languages: {instance.value_text}.")
+
+
 def main() -> None:
     sys.path.insert(0, "/usr/src/paperless/src")
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "paperless.settings")
@@ -131,6 +189,7 @@ def main() -> None:
         and needs_password(os.environ["DOCUMENT_SOURCE_PATH"])
     )
     if not locked:
+        set_languages(root, doc.content or "")
         # A readable new version of a document tagged "locked" is the unlock
         # done by hand later (Actions > Remove password).
         stale = root.tags.filter(name="locked").first()
