@@ -143,6 +143,11 @@ services:
       # slower but copes with a page that mixes them.
       PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng+ara}
 
+      # Dates never taken as a document's date, such as birthdays printed on
+      # every ID and medical report: the first date in the text wins, and a
+      # date of birth is often first. Kept in docker-compose.env, not here.
+      PAPERLESS_IGNORE_DATES: ${PAPERLESS_IGNORE_DATES:-}
+
       # PAPERLESS_URL is deliberately NOT set. It would also become the only
       # allowed host, and this is reached as aboriis-mini, by the tailnet name
       # and by the tailnet address. Plain HTTP on 8000 passes Django's CSRF
