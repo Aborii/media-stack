@@ -7,21 +7,31 @@
 #   purple  paused because storychat has the GPU
 #   red     not answering: the "ollama" task is stopped, starting, or broken
 #
-# It only reads the state and writes the same pause file as pause.ps1;
-# run-ollama.ps1 does the stopping and starting. Started at sign-in by the
-# "AI tray" shortcut in the Startup folder (install.ps1), through
-# conhost --headless so no console window shows.
+# The menu also says when the mini last checked in (its gate asks every 30 s)
+# and when it last sent a document, and "Show requests from the mini" lists
+# them, read from Ollama's request log (see run-ollama.ps1).
 #
-#   tray.ps1 -Status    prints the state once and exits (for checking)
+# It only reads the state and writes the same pause file as pause.ps1;
+# run-ollama.ps1 does the stopping and starting. The state comes from the
+# processes and the listening port, not from asking Ollama, so the icon adds
+# nothing to the request log. Started at sign-in by the "AI tray" shortcut in
+# the Startup folder (install.ps1), through conhost --headless so no console
+# window shows.
+#
+#   tray.ps1 -Status    prints the state and the mini's last requests, then exits
 param(
   [string]$Base = 'I:\AI\ollama',
   [string]$Url = 'http://10.10.10.1:11434',
+  [string]$MiniAddress = '10.10.10.3',
   [switch]$Status
 )
 
 $ErrorActionPreference = 'Stop'
 $pauseDir = Join-Path $Base 'pause'
 $userFile = Join-Path $pauseDir 'user'
+# Oldest first. ollama-serve.log.out is the old name, until Ollama next starts.
+$requestFiles = @('ollama-requests-history.log.1', 'ollama-requests-history.log', 'ollama-serve.log.out', 'ollama-requests.log') |
+  ForEach-Object { Join-Path $Base $_ }
 
 function Get-AiState {
   $files = @(Get-ChildItem -LiteralPath $pauseDir -File -ErrorAction SilentlyContinue)
@@ -40,21 +50,87 @@ function Get-AiState {
   if ($files.Count -gt 0) {
     return @{ Kind = 'chat'; Text = "Paused by $(($files | ForEach-Object Name) -join ', ')" }
   }
-  try {
-    $ps = Invoke-RestMethod -Uri "$Url/api/ps" -TimeoutSec 2
-  } catch {
+  $port = ([uri]$Url).Port
+  $server = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $server) {
     return @{ Kind = 'off'; Text = 'Not running (starting, or the task is stopped)' }
   }
-  $loaded = @($ps.models)
-  if ($loaded.Count -gt 0) {
-    return @{ Kind = 'busy'; Text = "Working: $($loaded[0].name) loaded" }
+  # A loaded model is a llama-server runner under the Ollama that owns the port.
+  $runner = Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$($server.OwningProcess)" -ErrorAction SilentlyContinue
+  if ($runner) {
+    return @{ Kind = 'busy'; Text = 'Working: a model is loaded' }
   }
   return @{ Kind = 'ready'; Text = 'Ready for documents' }
+}
+
+# One [GIN] line from the mini as an object; nothing for anything else.
+function ConvertFrom-Gin([string]$line) {
+  if ($line -notmatch '^\[GIN\] (\d{4}/\d\d/\d\d - \d\d:\d\d:\d\d) \|\s*(\d+) \|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(\w+)\s+"([^"]*)"') { return }
+  if ($Matches[4] -ne $MiniAddress) { return }
+  [pscustomobject]@{
+    When   = [datetime]::ParseExact($Matches[1], 'yyyy/MM/dd - HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)
+    Status = [int]$Matches[2]
+    Took   = $Matches[3]
+    Method = $Matches[5]
+    Path   = $Matches[6]
+  }
+}
+
+# The mini's requests, oldest first. The gate's check-ins are 2,880 lines a
+# day, so they are read from the end of the logs only; everything else (the
+# document work) is matched across the whole logs, so a quiet week does not
+# push the last real request out of view.
+function Get-MiniRequests([int]$CheckTail = 3000) {
+  $files = @($requestFiles | Where-Object { Test-Path -LiteralPath $_ })
+  $notCheck = [regex]::Escape($MiniAddress) + ' \| (?!GET\s+"/api/tags")'
+  @{
+    Work   = @(foreach ($f in $files) {
+        Select-String -LiteralPath $f -Pattern $notCheck -ErrorAction SilentlyContinue |
+          ForEach-Object { ConvertFrom-Gin $_.Line }
+      })
+    Checks = @(foreach ($f in $files) {
+        Get-Content -LiteralPath $f -Tail $CheckTail -ErrorAction SilentlyContinue |
+          ForEach-Object { ConvertFrom-Gin $_ } | Where-Object Path -eq '/api/tags'
+      })
+  }
+}
+
+function Format-Ago([datetime]$when) {
+  $s = ((Get-Date) - $when).TotalSeconds
+  if ($s -lt 90) { return "$([int]$s) s ago" }
+  if ($s -lt 5400) { return "$([int]($s / 60)) min ago" }
+  return $when.ToString('ddd HH:mm')
+}
+
+function Get-RequestSummary {
+  $r = Get-MiniRequests
+  $checks = $r.Checks
+  $work = $r.Work
+  @{
+    Checked = if ($checks) { "Mini last checked in: $(Format-Ago $checks[-1].When)" } else { 'Mini has not checked in recently' }
+    Worked  = if ($work) { "Last document request: $(Format-Ago $work[-1].When) ($($work[-1].Took))" } else { 'No document requests in the request log' }
+    Work    = $work
+    Checks  = $checks
+  }
+}
+
+function Format-Request($r) {
+  $what = switch -Regex ($r.Path) {
+    '^/api/tags$' { 'check-in' }
+    '^/api/(chat|generate)$' { 'document work' }
+    default { "$($r.Method) $($r.Path)" }
+  }
+  $result = if ($r.Status -eq 200) { 'OK' } else { "error $($r.Status)" }
+  '{0}  {1,-14} {2,10}  {3}' -f $r.When.ToString('ddd dd MMM HH:mm:ss'), $what, $r.Took, $result
 }
 
 if ($Status) {
   $s = Get-AiState
   "$($s.Kind): $($s.Text)"
+  $r = Get-RequestSummary
+  $r.Checked
+  $r.Worked
+  $r.Work | Select-Object -Last 5 | ForEach-Object { '  ' + (Format-Request $_) }
   return
 }
 
@@ -106,20 +182,90 @@ $tray = New-Object System.Windows.Forms.NotifyIcon
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $header = $menu.Items.Add('...')
 $header.Enabled = $false
+$checkedItem = $menu.Items.Add('...')
+$checkedItem.Enabled = $false
+$workedItem = $menu.Items.Add('...')
+$workedItem.Enabled = $false
+$requestsItem = $menu.Items.Add('Show requests from the mini...')
 [void]$menu.Items.Add('-')
 $pauseItem = $menu.Items.Add('Pause until I resume')
 $pause1Item = $menu.Items.Add('Pause for 1 hour')
 $pause3Item = $menu.Items.Add('Pause for 3 hours')
 $resumeItem = $menu.Items.Add('Resume')
 [void]$menu.Items.Add('-')
-$logItem = $menu.Items.Add('Open the log')
+$logItem = $menu.Items.Add('Open the start and stop log')
 $exitItem = $menu.Items.Add('Hide this icon')
+
+# A live list of the mini's requests, newest first, refreshed while it is
+# open. One window, made once and hidden on close, so its handlers can use the
+# script's functions and variables directly.
+$req = @{}
+$req.Form = New-Object System.Windows.Forms.Form
+$req.Form.Text = 'Requests from the mini'
+$req.Form.Size = New-Object System.Drawing.Size 640, 520
+$req.Form.StartPosition = 'CenterScreen'
+$req.Form.Icon = $icons.ready
+$req.Summary = New-Object System.Windows.Forms.Label
+$req.Summary.Dock = 'Top'
+$req.Summary.Height = 44
+$req.Summary.Padding = New-Object System.Windows.Forms.Padding 8, 6, 8, 0
+$req.Checks = New-Object System.Windows.Forms.CheckBox
+$req.Checks.Text = 'Include the 30-second check-ins'
+$req.Checks.Dock = 'Top'
+$req.Checks.Padding = New-Object System.Windows.Forms.Padding 8, 0, 0, 0
+$req.List = New-Object System.Windows.Forms.TextBox
+$req.List.Multiline = $true
+$req.List.ReadOnly = $true
+$req.List.ScrollBars = 'Vertical'
+$req.List.WordWrap = $false
+$req.List.Dock = 'Fill'
+$req.List.Font = New-Object System.Drawing.Font 'Consolas', 10
+$req.Form.Controls.AddRange(@($req.List, $req.Checks, $req.Summary))
+$req.Timer = New-Object System.Windows.Forms.Timer
+$req.Timer.Interval = 5000
+
+function Update-Requests {
+  $r = Get-RequestSummary
+  $req.Summary.Text = "$($r.Checked)`r`n$($r.Worked)"
+  $shown = if ($req.Checks.Checked) { @($r.Work + $r.Checks | Sort-Object When) } else { $r.Work }
+  $lines = @($shown | Select-Object -Last 300 | ForEach-Object { Format-Request $_ })
+  [array]::Reverse($lines)
+  $req.List.Text = if ($lines.Count) { $lines -join "`r`n" } else { 'Nothing from the mini yet.' }
+  # Setting Text on a focused box selects all of it; start unselected at the top.
+  $req.List.Select(0, 0)
+}
+
+function Show-Requests {
+  Update-Requests
+  $req.Timer.Start()
+  $req.Form.Show()
+  $req.Form.Activate()
+}
+
+$req.Checks.add_CheckedChanged({ Update-Requests })
+$req.Timer.add_Tick({ try { Update-Requests } catch { } })
+# Closing only hides it, so the next "Show requests" reuses the same window.
+$req.Form.add_FormClosing({
+  param($sender, $e)
+  if ($e.CloseReason -eq 'UserClosing') {
+    $e.Cancel = $true
+    $req.Timer.Stop()
+    $req.Form.Hide()
+  }
+})
 
 $pauseItem.add_Click({ Set-Pause 0 })
 $pause1Item.add_Click({ Set-Pause 1 })
 $pause3Item.add_Click({ Set-Pause 3 })
 $resumeItem.add_Click({ Clear-Pause })
 $logItem.add_Click({ Start-Process notepad.exe (Join-Path $Base 'run-ollama.log') })
+$requestsItem.add_Click({ Show-Requests })
+# Read the request log when the menu opens, not every few seconds.
+$menu.add_Opening({
+  $r = Get-RequestSummary
+  $checkedItem.Text = $r.Checked
+  $workedItem.Text = $r.Worked
+})
 $exitItem.add_Click({
   $tray.Visible = $false
   [System.Windows.Forms.Application]::Exit()
