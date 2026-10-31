@@ -59,6 +59,30 @@ def opening_password(path: str) -> tuple[int, str] | None:
     return None
 
 
+def date_from_text(root, version) -> None:
+    """Dates a document from its unlocked version's text.
+
+    A locked original has no text, so Paperless dated the document with the
+    day it was uploaded, and it reads the date only once, from the original.
+    This reads it from the unlocked copy the way Paperless would (the same
+    parser, so PAPERLESS_IGNORE_DATES and the date order apply). It only
+    replaces the upload-day default: a date changed by hand stays.
+    """
+    from django.utils import timezone
+    from documents.plugins.date_parsing import get_date_parser
+
+    # created is a local date; added is stored in UTC.
+    if (root.content or "").strip() or root.created != timezone.localtime(root.added).date():
+        return
+    with get_date_parser() as parser:
+        found = next(parser.parse(version.original_filename, version.content or ""), None)
+    if found is None:
+        return
+    root.created = found.date()
+    root.save(update_fields=["created"])
+    print(f"after-filing: dated document {root.pk} {root.created} from its unlocked text.")
+
+
 def main() -> None:
     sys.path.insert(0, "/usr/src/paperless/src")
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "paperless.settings")
@@ -94,6 +118,8 @@ def main() -> None:
                 user=root.owner,
                 note="Unlocked by hand. The original locked file is kept as version 1 (Versions menu).",
             )
+        if doc.root_document is not None:
+            date_from_text(root, doc)
         if AI_TAG:
             root.tags.add(tag(AI_TAG))
             print(f"after-filing: tagged document {root.pk} {AI_TAG}.")
