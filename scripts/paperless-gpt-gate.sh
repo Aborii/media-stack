@@ -31,16 +31,21 @@ for i in "${!MODELS[@]}"; do [[ ${MODELS[$i]} == *:* ]] || MODELS[$i]+=":latest"
 # True when Ollama answers and lists every model paperless-gpt needs.
 ready() {
   local tags model
-  tags=$(curl -fsS --max-time 5 "$URL" 2>/dev/null) || return 1
+  # 20 s, not 5: while Ollama loads a model or reads a page it can take
+  # longer than 5 s to list its models, and that is busy, not down.
+  tags=$(curl -fsS --max-time 20 "$URL" 2>/dev/null) || return 1
   for model in "${MODELS[@]}"; do
     grep -qF "\"name\":\"$model\"" <<<"$tags" || return 1
   done
 }
 CONTAINER=${CONTAINER:-paperless-gpt}
 EVERY=${EVERY:-30}
-# Down this many checks in a row before stopping: a dropped packet or an
-# Ollama restarting should not stop a document halfway.
-DOWN_AFTER=${DOWN_AFTER:-2}
+# Down this many checks in a row before stopping: a dropped packet, an
+# Ollama restarting or one busy with a big page should not stop a document
+# halfway. Two was not enough: with multi-page scans the gate stopped
+# paperless-gpt mid-run while the PC was up. Four is about 2 minutes, and a
+# paused or sleeping PC is still noticed well within that.
+DOWN_AFTER=${DOWN_AFTER:-4}
 
 log() { echo "$(date '+%F %T') $*"; }
 
