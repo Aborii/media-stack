@@ -24,7 +24,7 @@ BASE=$(setting PAPERLESS_GPT_OLLAMA_URL)
 URL=${OLLAMA_URL:-${BASE:-http://10.10.10.1:11434}/api/tags}
 VISION=$(setting PAPERLESS_GPT_VISION_MODEL)
 LLM=$(setting PAPERLESS_GPT_LLM_MODEL)
-MODELS=("${VISION:-qwen2.5vl:7b}" "${LLM:-qwen2.5:7b}")
+MODELS=("${VISION:-qwen2.5vl:7b}" "${LLM:-qwen2.5:14b}")
 # Ollama lists every model with a tag; a name given without one means :latest.
 for i in "${!MODELS[@]}"; do [[ ${MODELS[$i]} == *:* ]] || MODELS[$i]+=":latest"; done
 
