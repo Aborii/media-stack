@@ -56,7 +56,9 @@ grep $'^A\t' "$work/all" | cut -f2- | sort -u >"$work/archive" || true
 mirror() {
   local from=$1 to=$2 list=$3
   mkdir -p "$to"
-  rsync -a --files-from="$list" "$from/" "$to/"
+  # --ignore-missing-args: a listed file missing on disk (Paperless renaming it
+  # right now) is skipped, instead of failing every night from then on.
+  rsync -a --ignore-missing-args --files-from="$list" "$from/" "$to/"
   (cd "$to" && find . -type f | sed 's|^\./||' | sort) | comm -23 - "$list" |
     while IFS= read -r stale; do rm -f -- "$to/$stale"; done
   find "$to" -mindepth 1 -type d -empty -delete
