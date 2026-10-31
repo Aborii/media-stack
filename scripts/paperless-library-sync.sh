@@ -58,7 +58,8 @@ mirror() {
   mkdir -p "$to"
   # --ignore-missing-args: a listed file missing on disk (Paperless renaming it
   # right now) is skipped, instead of failing every night from then on.
-  rsync -a --ignore-missing-args --files-from="$list" "$from/" "$to/"
+  # A Paperless that has not made a searchable PDF yet has no archive/ folder.
+  [ -d "$from" ] && rsync -a --ignore-missing-args --files-from="$list" "$from/" "$to/"
   (cd "$to" && find . -type f | sed 's|^\./||' | sort) | comm -23 - "$list" |
     while IFS= read -r stale; do rm -f -- "$to/$stale"; done
   find "$to" -mindepth 1 -type d -empty -delete
