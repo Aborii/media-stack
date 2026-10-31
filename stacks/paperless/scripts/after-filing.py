@@ -6,7 +6,8 @@ A PDF that asks for a password is stored as it came, untouched, so it can be
 sent on exactly as received. If a password in the list opens it, Paperless's
 own unlock adds an unlocked copy as version 2 of the same document. Content,
 search and the AI use the latest version, so they get the readable copy; the
-original stays as version 1 in the document's Versions menu. The document is
+original stays as version 1 in the document's Versions menu. The two are
+labelled "Original (locked, as received)" and "Unlocked copy". The document is
 tagged "unlocked" with a note saying which password worked. If none does, it
 is tagged "locked" with a note, and left out of the AI until it is unlocked.
 
@@ -57,6 +58,29 @@ def opening_password(path: str) -> tuple[int, str] | None:
         except pikepdf.PasswordError:
             continue
     return None
+
+
+ORIGINAL_LABEL = "Original (locked, as received)"
+UNLOCKED_LABEL = "Unlocked copy"
+
+
+def label_versions(root, version) -> None:
+    """Names both versions of an unlocked PDF in the Versions menu.
+
+    Paperless's unlock adds the copy with no label, which leaves two unnamed
+    versions and no way to tell which one to send as received. Only a version
+    that arrives while the document is tagged "unlocked" counts, and a label
+    already given (by hand, or by an upload) is kept.
+    """
+    if not root.tags.filter(name="unlocked").exists():
+        return
+    if not root.version_label:
+        root.version_label = ORIGINAL_LABEL
+        root.save(update_fields=["version_label"])
+    if not version.version_label:
+        version.version_label = UNLOCKED_LABEL
+        version.save(update_fields=["version_label"])
+    print(f"after-filing: labelled the versions of document {root.pk}.")
 
 
 def date_from_text(root, version) -> None:
@@ -120,6 +144,10 @@ def main() -> None:
             )
         if doc.root_document is not None:
             date_from_text(root, doc)
+            # Only the first unlocked copy: a later version of an unlocked
+            # document is not the unlocked copy, and is left unnamed.
+            if not (root.content or "").strip() and doc.version_index == 1:
+                label_versions(root, doc)
         if AI_TAG:
             root.tags.add(tag(AI_TAG))
             print(f"after-filing: tagged document {root.pk} {AI_TAG}.")
