@@ -31,7 +31,14 @@ An **AI** dot in the notification area shows what it is doing:
 | red | not answering: starting, or the `ollama` task is stopped |
 
 Right-click it to pause (until you resume, or for 1 or 3 hours), resume, or
-open the log. Double-click toggles pause. It starts at sign-in from the
+open the log. Double-click toggles pause.
+
+The menu also shows when the mini last checked in (its gate asks every 30 s)
+and when it last sent document work. **Show requests from the mini…** opens
+a window listing each request, newest first, with its time, how long it took
+and whether it worked, refreshed every 5 s; tick the box to include the
+check-ins. If the mini has not checked in for a while, the cable or the mini
+is down. It starts at sign-in from the
 Startup folder; "Hide this icon" only closes the icon, the AI keeps running.
 Windows may tuck a new icon under the `^` arrow at first: drag it onto the
 taskbar to keep it in view.
@@ -66,3 +73,7 @@ download and the models.
 
 - `I:\AI\ollama\run-ollama.log`: when it started, stopped and paused.
 - `I:\AI\ollama\ollama-serve.log`: Ollama's own output for the current run.
+- `I:\AI\ollama\ollama-requests.log`: one line per request for the current
+  run. At each start the last run's lines move to
+  `ollama-requests-history.log`, which rolls over to `.1` past 5 MB. The tray
+  icon reads these.

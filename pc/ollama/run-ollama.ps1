@@ -20,6 +20,11 @@ $exe = Join-Path $Base 'ollama.exe'
 $pauseDir = Join-Path $Base 'pause'
 $log = Join-Path $Base 'run-ollama.log'
 $serveLog = Join-Path $Base 'ollama-serve.log'
+# Ollama writes one [GIN] line per request to stdout: when, status, how long,
+# from where. Start-Process can only overwrite, so before each start the last
+# run's lines are moved into the history, which the tray icon reads.
+$requestLog = Join-Path $Base 'ollama-requests.log'
+$requestHistory = Join-Path $Base 'ollama-requests-history.log'
 New-Item -ItemType Directory -Force -Path $pauseDir, (Join-Path $Base 'models') | Out-Null
 
 function Write-Log([string]$message) {
@@ -44,6 +49,20 @@ function Stop-Ollama {
   # holds the GPU memory, so every ollama process goes, not just the server.
   Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
     ForEach-Object { & taskkill.exe /PID $_.Id /T /F 2>&1 | Out-Null }
+}
+
+function Save-RequestHistory {
+  # ollama-serve.log.out is where requests went before they had their own log.
+  foreach ($file in "$serveLog.out", $requestLog) {
+    if (-not (Test-Path -LiteralPath $file)) { continue }
+    Get-Content -LiteralPath $file -ErrorAction SilentlyContinue |
+      Where-Object { $_.StartsWith('[GIN]') } |
+      Add-Content -LiteralPath $requestHistory -Encoding utf8
+    Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+  }
+  if ((Test-Path -LiteralPath $requestHistory) -and (Get-Item -LiteralPath $requestHistory).Length -gt 5MB) {
+    Move-Item -LiteralPath $requestHistory -Destination "$requestHistory.1" -Force
+  }
 }
 
 function Get-PauseReasons {
@@ -92,8 +111,9 @@ while ($true) {
     # missing, and Ollama exits straight away until it is back.
     if (((Get-Date) - $lastStart).TotalSeconds -ge 30) {
       if (Test-Path -LiteralPath $serveLog) { Move-Item -LiteralPath $serveLog -Destination "$serveLog.1" -Force }
+      Save-RequestHistory
       $proc = Start-Process -FilePath $exe -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
-        -RedirectStandardError $serveLog -RedirectStandardOutput "$serveLog.out"
+        -RedirectStandardError $serveLog -RedirectStandardOutput $requestLog
       $lastStart = Get-Date
       Write-Log "Started Ollama (pid $($proc.Id))."
     }
