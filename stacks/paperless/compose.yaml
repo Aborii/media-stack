@@ -52,7 +52,11 @@
 # The workflow has its own OCR prompt (ocr_prompt.tmpl beside it). The
 # built-in one pastes the whole document's existing text into every page's
 # request: on a long document that overflows the context window, and the
-# model can copy another page's text into this one.
+# model can copy another page's text into this one. It also has its own
+# title, tag and custom field prompts, and fills three Paperless custom
+# fields: Total amount (monetary, AED), Due date and Invoice number. The
+# workflow names them by their ids in this install (1, 2, 3); on a fresh
+# install, create them in that order or update custom_field_ids.
 #
 #   4. Ollama and the models on the PC: pc/ollama/README.md (one elevated
 #      install.ps1), then the gate here, as aborii:
@@ -68,6 +72,13 @@
 #      An older install has a Paperless workflow "AI: read and name new
 #      documents" doing the same; turn it off, or it hands a locked original
 #      to the AI before its unlocked version exists (see after-filing.py).
+#
+# Bills from Gmail. Paperless reads one Gmail label, "Paperless"; Gmail
+# filters decide which senders land there, so the list is changed in Gmail.
+# In Paperless, Mail > Add account: imap.gmail.com, port 993, SSL, your
+# address, and a Google app password (made by you, entered by you). Then one
+# mail rule on that account: folder "Paperless", attachments only, PDFs, mark
+# as read. Mail goes through the same unlock, AI and naming as uploads.
 #
 # Locked PDFs are stored exactly as they came, so they can be sent on as
 # received. after-filing.py tries each password in
@@ -148,6 +159,13 @@ services:
       # every ID and medical report: the first date in the text wins, and a
       # date of birth is often first. Kept in docker-compose.env, not here.
       PAPERLESS_IGNORE_DATES: ${PAPERLESS_IGNORE_DATES:-}
+
+      # Files are stored as Type/Year/Title.pdf rather than by number, so the
+      # library reads well on disk and in its nightly copy on the storage
+      # share (scripts/paperless-library-sync.sh). A missing type or date
+      # leaves its folder out instead of writing "none".
+      PAPERLESS_FILENAME_FORMAT: '{{ document_type }}/{{ created_year }}/{{ title }}'
+      PAPERLESS_FILENAME_FORMAT_REMOVE_NONE: 'true'
 
       # PAPERLESS_URL is deliberately NOT set. It would also become the only
       # allowed host, and this is reached as aboriis-mini, by the tailnet name
@@ -278,10 +296,11 @@ services:
       # The language names and tags are written in. Documents can be in
       # Arabic; the model reads them either way.
       LLM_LANGUAGE: English
-      # Paperless starts with no tags, and without this the model may only
-      # pick from existing ones, so nothing would ever be tagged. Document
-      # types are never created by it: add the few you want in Paperless.
-      CREATE_NEW_TAGS: 'true'
+      # Tags come only from the list in Paperless (the 21 topics added at
+      # setup, and any you add). Left to create its own, the model filled the
+      # list with near-duplicates of the type and the issuer ("laboratory",
+      # "pathology", "report"). Document types are never created by it either.
+      CREATE_NEW_TAGS: 'false'
       # Paperless reads the date itself, from the text, and gets it right more
       # often: on the first test invoice, dated 12 October, the model wrote
       # 1 October. Off here for the plain paperless-gpt-auto tag too; the

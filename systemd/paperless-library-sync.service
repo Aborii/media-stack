@@ -1,0 +1,9 @@
+# A user unit (aborii, which lingers): it only reads Paperless's files, which
+# aborii owns, and writes to the storage share. Installed with its timer by
+# scripts/install-paperless-library-sync.sh.
+[Unit]
+Description=Copy the Paperless library to the storage share
+
+[Service]
+Type=oneshot
+ExecStart=/home/aborii/media-stack/scripts/paperless-library-sync.sh
