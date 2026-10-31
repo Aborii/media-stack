@@ -46,8 +46,10 @@
 # every document tagged "ai-new", doing OCR first and the naming after, so
 # the names come from the good text. scripts/after-filing.py (the
 # post-consume script) puts that tag on every new document; set AI_TAG to ''
-# on the paperless service to stop it. Tag an old document "ai-new" by hand to
-# run it on that one.
+# on the paperless service to stop it. To run it again on old documents (after
+# a prompt changes), use scripts/rerun-ai.py rather than tagging them "ai-new"
+# by hand: the model is shown the current title, and copies an old AI title.
+#   docker exec paperless python3 /usr/src/paperless/scripts/rerun-ai.py 32 36
 #
 # The workflow has its own OCR prompt (ocr_prompt.tmpl beside it). The
 # built-in one pastes the whole document's existing text into every page's

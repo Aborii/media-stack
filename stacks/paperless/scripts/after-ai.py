@@ -12,6 +12,9 @@ Paperless runs after paperless-gpt writes.
   shopping. The tag prompt says so and gets it right on the same text in
   tests, yet an Airbnb receipt still came back "travel, shopping" after a
   re-run.
+- Runs of spaces in a title become one space. The title prompt's examples
+  carry a note after a few spaces, and the model copies the gap
+  ("... – 2016   (Arabic)").
 
 Only documents paperless-gpt has finished (tagged paperless-gpt-auto-complete)
 are looked at. It prints what it changed and exits 0 either way.
@@ -44,6 +47,13 @@ def main() -> None:
         for doc in both:
             doc.tags.remove(drop_tag)
             print(f"after-ai: document {doc.pk}: removed tag {drop} (it is tagged {keep}).")
+
+    spaced = Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG, title__regex=r"\s\s")
+    for doc in spaced:
+        title = re.sub(r"\s+", " ", doc.title).strip()
+        print(f"after-ai: document {doc.pk}: title {doc.title!r} -> {title!r}.")
+        doc.title = title
+        doc.save(update_fields=["title"])
 
     dues = CustomFieldInstance.objects.filter(
         field__name=DUE_FIELD,
