@@ -47,8 +47,9 @@ def main(ids: list[int]) -> None:
         doc.correspondent = None
         doc.document_type = None
         doc.save(update_fields=["title", "correspondent", "document_type"])
-        doc.tags.set([t for t in doc.tags.all() if t.name in KEEP_TAGS] + [ai_tag])
         CustomFieldInstance.objects.filter(document=doc, field__name__in=AI_FIELDS).delete()
+        # Last, since the tag is what hands the document to paperless-gpt.
+        doc.tags.set([t for t in doc.tags.all() if t.name in KEEP_TAGS] + [ai_tag])
         print(f"rerun-ai: document {pk}: {old!r} -> {doc.title!r}, tagged {AI_TAG}.")
 
 
