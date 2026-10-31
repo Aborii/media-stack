@@ -66,7 +66,20 @@
 # translation; it is set by hand in the document's custom fields, and
 # Paperless shows the link on both. Letting the AI fill it made the bill
 # fields worse, and an original and its translation rarely share a number it
-# could match on.
+# could match on. Translations are also tagged "translation".
+#
+# Correspondents. The OCR prompt writes brands shown only as a logo as a
+# "Logo: <name>" line, and the correspondent prompt prefers the platform over
+# the people on it (Airbnb, not the host), takes nothing for papers the owner
+# wrote (a resume), and never picks a name the page does not show: without
+# those, a hotel receipt was filed under its host and a resume under a
+# correspondent copied from the list. The owner's own names go in
+# PAPERLESS_GPT_CORRESPONDENT_BLACK_LIST (docker-compose.env).
+#
+# After the AI. scripts/after-ai.py, run in this container every 10 minutes
+# by aborii's user timer (install-paperless-after-ai.sh), clears a Due date on
+# or before the document's own date unless the page says "due date" or "pay
+# by": the model sometimes copies a fine's own date there.
 #
 #   4. Ollama and the models on the PC: pc/ollama/README.md (one elevated
 #      install.ps1), then the gate here, as aborii:
@@ -311,6 +324,9 @@ services:
       # list with near-duplicates of the type and the issuer ("laboratory",
       # "pathology", "report"). Document types are never created by it either.
       CREATE_NEW_TAGS: 'false'
+      # Names never used as a correspondent: the owner's own, which are on
+      # most of their papers. Kept in docker-compose.env, not here.
+      CORRESPONDENT_BLACK_LIST: ${PAPERLESS_GPT_CORRESPONDENT_BLACK_LIST:-}
       # Paperless reads the date itself, from the text, and gets it right more
       # often: on the first test invoice, dated 12 October, the model wrote
       # 1 October. Off here for the plain paperless-gpt-auto tag too; the

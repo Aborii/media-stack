@@ -1,0 +1,9 @@
+# A user unit (aborii, which lingers): it only runs a script inside the
+# paperless container. Installed with its timer by
+# scripts/install-paperless-after-ai.sh.
+[Unit]
+Description=Fix what paperless-gpt gets wrong in Paperless documents
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec paperless python3 /usr/src/paperless/scripts/after-ai.py
