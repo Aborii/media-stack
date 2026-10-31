@@ -18,6 +18,13 @@
 #   it paperless-gpt-failed; unlock it later from the document's Actions menu.
 #
 # It always exits 0: a non-zero exit would stop Paperless filing the file.
+#
+# Limit: Paperless checks for duplicates by hashing the file as it arrived,
+# before this script runs, and stores the hash of what this script leaves. A
+# PDF this unlocks therefore never matches itself, and uploading the same
+# locked PDF twice files it twice. Nothing here can see the database to stop
+# that; the two copies at least have the same checksum, so they are easy to
+# spot and delete.
 set -uo pipefail
 
 IN=${DOCUMENT_WORKING_PATH:?}
@@ -30,9 +37,10 @@ qpdf --is-encrypted "$IN"
 [ $? -eq 0 ] || exit 0
 
 decrypt() {
-  # --deterministic-id: the same file always unlocks to the same bytes, so
-  # Paperless's duplicate check still works. --warning-exit-0: a PDF qpdf
-  # repairs on the way through still counts as unlocked.
+  # --deterministic-id: the same file always unlocks to the same bytes, so a
+  # duplicate (see "Limit" above) has the same checksum as its twin.
+  # --warning-exit-0: a PDF qpdf repairs on the way through still counts as
+  # unlocked.
   qpdf --password-file=- --decrypt --deterministic-id --warning-exit-0 "$IN" "$OUT" 2>/dev/null &&
     mv -f "$OUT" "$IN"
 }

@@ -77,6 +77,8 @@
 # document's Actions > Remove password with "Delete original" on, which files
 # an unlocked copy as a new document (the AI reads it) and deletes the locked
 # one. backup.sh copies the list with the rest of appdata.
+# One limit: the same locked PDF uploaded twice is filed twice, because
+# Paperless checks for duplicates before the script unlocks it.
 # ─────────────────────────────────────────────────────────────────────────────
 name: paperless
 
