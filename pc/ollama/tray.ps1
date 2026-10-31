@@ -63,22 +63,35 @@ function Get-AiState {
   return @{ Kind = 'ready'; Text = 'Ready for documents' }
 }
 
-# The mini's requests, oldest first, from the [GIN] lines Ollama logs.
-function Get-MiniRequests([int]$Tail = 5000) {
-  $invariant = [Globalization.CultureInfo]::InvariantCulture
-  foreach ($file in $requestFiles) {
-    if (-not (Test-Path -LiteralPath $file)) { continue }
-    foreach ($line in Get-Content -LiteralPath $file -Tail $Tail -ErrorAction SilentlyContinue) {
-      if ($line -notmatch '^\[GIN\] (\d{4}/\d\d/\d\d - \d\d:\d\d:\d\d) \|\s*(\d+) \|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(\w+)\s+"([^"]*)"') { continue }
-      if ($Matches[4] -ne $MiniAddress) { continue }
-      [pscustomobject]@{
-        When   = [datetime]::ParseExact($Matches[1], 'yyyy/MM/dd - HH:mm:ss', $invariant)
-        Status = [int]$Matches[2]
-        Took   = $Matches[3]
-        Method = $Matches[5]
-        Path   = $Matches[6]
-      }
-    }
+# One [GIN] line from the mini as an object; nothing for anything else.
+function ConvertFrom-Gin([string]$line) {
+  if ($line -notmatch '^\[GIN\] (\d{4}/\d\d/\d\d - \d\d:\d\d:\d\d) \|\s*(\d+) \|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(\w+)\s+"([^"]*)"') { return }
+  if ($Matches[4] -ne $MiniAddress) { return }
+  [pscustomobject]@{
+    When   = [datetime]::ParseExact($Matches[1], 'yyyy/MM/dd - HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)
+    Status = [int]$Matches[2]
+    Took   = $Matches[3]
+    Method = $Matches[5]
+    Path   = $Matches[6]
+  }
+}
+
+# The mini's requests, oldest first. The gate's check-ins are 2,880 lines a
+# day, so they are read from the end of the logs only; everything else (the
+# document work) is matched across the whole logs, so a quiet week does not
+# push the last real request out of view.
+function Get-MiniRequests([int]$CheckTail = 3000) {
+  $files = @($requestFiles | Where-Object { Test-Path -LiteralPath $_ })
+  $notCheck = [regex]::Escape($MiniAddress) + ' \| (?!GET\s+"/api/tags")'
+  @{
+    Work   = @(foreach ($f in $files) {
+        Select-String -LiteralPath $f -Pattern $notCheck -ErrorAction SilentlyContinue |
+          ForEach-Object { ConvertFrom-Gin $_.Line }
+      })
+    Checks = @(foreach ($f in $files) {
+        Get-Content -LiteralPath $f -Tail $CheckTail -ErrorAction SilentlyContinue |
+          ForEach-Object { ConvertFrom-Gin $_ } | Where-Object Path -eq '/api/tags'
+      })
   }
 }
 
@@ -90,13 +103,14 @@ function Format-Ago([datetime]$when) {
 }
 
 function Get-RequestSummary {
-  $all = @(Get-MiniRequests)
-  $checks = @($all | Where-Object Path -eq '/api/tags')
-  $work = @($all | Where-Object Path -ne '/api/tags')
+  $r = Get-MiniRequests
+  $checks = $r.Checks
+  $work = $r.Work
   @{
-    Checked = if ($checks) { "Mini last checked in: $(Format-Ago $checks[-1].When)" } else { 'Mini has not checked in yet' }
-    Worked  = if ($work) { "Last document request: $(Format-Ago $work[-1].When) ($($work[-1].Took))" } else { 'No document requests yet' }
-    All     = $all
+    Checked = if ($checks) { "Mini last checked in: $(Format-Ago $checks[-1].When)" } else { 'Mini has not checked in recently' }
+    Worked  = if ($work) { "Last document request: $(Format-Ago $work[-1].When) ($($work[-1].Took))" } else { 'No document requests in the request log' }
+    Work    = $work
+    Checks  = $checks
   }
 }
 
@@ -116,7 +130,7 @@ if ($Status) {
   $r = Get-RequestSummary
   $r.Checked
   $r.Worked
-  @($r.All | Where-Object Path -ne '/api/tags') | Select-Object -Last 5 | ForEach-Object { '  ' + (Format-Request $_) }
+  $r.Work | Select-Object -Last 5 | ForEach-Object { '  ' + (Format-Request $_) }
   return
 }
 
@@ -213,7 +227,7 @@ $req.Timer.Interval = 5000
 function Update-Requests {
   $r = Get-RequestSummary
   $req.Summary.Text = "$($r.Checked)`r`n$($r.Worked)"
-  $shown = if ($req.Checks.Checked) { $r.All } else { @($r.All | Where-Object Path -ne '/api/tags') }
+  $shown = if ($req.Checks.Checked) { @($r.Work + $r.Checks | Sort-Object When) } else { $r.Work }
   $lines = @($shown | Select-Object -Last 300 | ForEach-Object { Format-Request $_ })
   [array]::Reverse($lines)
   $req.List.Text = if ($lines.Count) { $lines -join "`r`n" } else { 'Nothing from the mini yet.' }
