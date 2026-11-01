@@ -90,13 +90,6 @@ function Get-ChatState {
   @{ Loaded = $loaded; Off = $off; Text = $text }
 }
 
-# Whether Ollama has a model loaded: a runner under the server on its port.
-function Test-PaperlessLoaded {
-  $server = Get-NetTCPConnection -LocalPort ([uri]$Url).Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-  if (-not $server) { return $false }
-  [bool](Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$($server.OwningProcess)" -ErrorAction SilentlyContinue)
-}
-
 function Set-Flag([string]$file, [bool]$on) {
   if ($on) {
     New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
@@ -346,7 +339,8 @@ function Update-Tray {
   $chatItem.Text = $c.Text
   # Greyed out while a request is waiting to be picked up, so it is not sent twice.
   $unloadChatItem.Enabled = $c.Loaded -and -not (Test-Path -LiteralPath $unloadFiles.chat)
-  $unloadPaperlessItem.Enabled = (Test-PaperlessLoaded) -and -not (Test-Path -LiteralPath $unloadFiles.paperless)
+  # "busy" is exactly "a runner is loaded and nothing is paused" (Get-AiState).
+  $unloadPaperlessItem.Enabled = $s.Kind -eq 'busy' -and -not (Test-Path -LiteralPath $unloadFiles.paperless)
   $chatAllowedItem.Checked = -not $c.Off
   $paperlessAllowedItem.Checked = -not (Test-Path -LiteralPath $offFiles.paperless)
 }
