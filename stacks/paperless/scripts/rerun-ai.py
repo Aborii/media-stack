@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Hands documents back to paperless-gpt as if they had just arrived, after a
-prompt changes. Run inside the paperless container, with document ids:
+prompt changes. Run inside the paperless container as its paperless user (a
+rename run as root leaves folders Paperless cannot write to), with document ids:
 
-    docker exec paperless python3 /usr/src/paperless/scripts/rerun-ai.py 32 36
+    docker exec -u paperless paperless python3 /usr/src/paperless/scripts/rerun-ai.py 32 36
 
 Tagging a document "ai-new" by hand is not enough. paperless-gpt gives the
 model the current title as a hint, and on a re-run that is the old AI title:
@@ -32,6 +33,8 @@ DROPPED_NOTE = "after-ai: removed the date"
 
 
 def main(ids: list[int]) -> None:
+    if os.geteuid() == 0:
+        sys.exit("rerun-ai: run as the paperless user: docker exec -u paperless paperless python3 ...")
     sys.path.insert(0, "/usr/src/paperless/src")
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "paperless.settings")
     import django
