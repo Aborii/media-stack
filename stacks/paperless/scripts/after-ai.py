@@ -84,23 +84,28 @@ def hand_to_naming() -> None:
         return
     name_tag = Tag.objects.get_or_create(name=NAME_TAG, defaults={"matching_algorithm": 0})[0]
     for doc in Document.objects.filter(root_document__isnull=True, tags=read_tag):
-        # The text sits on the root, or on its latest version for a locked
-        # original (see text_of).
-        latest = Document.global_objects.filter(root_document=doc).order_by("-version_index").first()
-        for holder in [doc] + ([latest] if latest else []):
-            text = holder.content or ""
-            cleaned = without_repeats(text)
-            if cleaned != text:
-                holder.content = cleaned
-                holder.save(update_fields=["content"])
-                print(f"after-ai: document {holder.pk}: cut repeated text, {len(text)} -> {len(cleaned)} characters.")
-                try:
-                    get_backend().add_or_update(doc)
-                except Exception as error:  # noqa: BLE001 - search catches up on its own reindex
-                    print(f"after-ai: document {doc.pk}: search index not updated ({type(error).__name__}: {error}).")
-        doc.tags.remove(read_tag)
-        doc.tags.add(name_tag)
-        print(f"after-ai: document {doc.pk}: read, handed to naming.")
+        try:
+            # The text sits on the root, or on its latest version for a
+            # locked original (see text_of).
+            latest = Document.global_objects.filter(root_document=doc).order_by("-version_index").first()
+            for holder in [doc] + ([latest] if latest else []):
+                text = holder.content or ""
+                cleaned = without_repeats(text)
+                if cleaned != text:
+                    holder.content = cleaned
+                    holder.save(update_fields=["content"])
+                    print(f"after-ai: document {holder.pk}: cut repeated text, {len(text)} -> {len(cleaned)} characters.")
+                    try:
+                        get_backend().add_or_update(doc)
+                    except Exception as error:  # noqa: BLE001 - search catches up on its own reindex
+                        print(f"after-ai: document {doc.pk}: search index not updated ({type(error).__name__}: {error}).")
+            # The new tag first: a run that stops between the two leaves the
+            # document queued for naming, never with neither tag.
+            doc.tags.add(name_tag)
+            doc.tags.remove(read_tag)
+            print(f"after-ai: document {doc.pk}: read, handed to naming.")
+        except Exception as error:  # noqa: BLE001 - one bad document must not hold up the rest
+            print(f"after-ai: document {doc.pk}: not handed to naming ({type(error).__name__}: {error}).")
 
 
 def text_of(doc) -> str:
