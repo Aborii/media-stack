@@ -7,9 +7,15 @@
 #   user       - pause.ps1, for gaming or anything else that wants the GPU.
 #                It may hold an "until" time; past it, the file is removed.
 #   storychat  - storychat-server, while its chat model is loaded.
+# The tray icon's "Paperless models can load" switch, when off, writes
+# off\paperless, which counts as a pause too, until it is switched back on.
 # While paused, Ollama is stopped, which frees the GPU at once. paperless-gpt
 # on the mini sees nothing answering and is stopped there by its gate, so its
 # documents wait with their "ai-new" tag rather than failing.
+#
+# unload\paperless is the tray's "Unload the paperless model now": the model
+# runner is killed mid-work and the file removed. Ollama stays up; the next
+# request loads the model again, and a page cut off is read again.
 param(
   [string]$Base = 'I:\AI\ollama',
   [string]$Listen = '10.10.10.1:11434'
@@ -18,6 +24,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $exe = Join-Path $Base 'ollama.exe'
 $pauseDir = Join-Path $Base 'pause'
+$offFile = Join-Path $Base 'off\paperless'
+$unloadFile = Join-Path $Base 'unload\paperless'
 $log = Join-Path $Base 'run-ollama.log'
 $serveLog = Join-Path $Base 'ollama-serve.log'
 # Ollama writes one [GIN] line per request to stdout: when, status, how long,
@@ -25,7 +33,7 @@ $serveLog = Join-Path $Base 'ollama-serve.log'
 # run's lines are moved into the history, which the tray icon reads.
 $requestLog = Join-Path $Base 'ollama-requests.log'
 $requestHistory = Join-Path $Base 'ollama-requests-history.log'
-New-Item -ItemType Directory -Force -Path $pauseDir, (Join-Path $Base 'models') | Out-Null
+New-Item -ItemType Directory -Force -Path $pauseDir, (Join-Path $Base 'models'), (Split-Path $offFile), (Split-Path $unloadFile) | Out-Null
 
 function Write-Log([string]$message) {
   "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $message" | Out-File -FilePath $log -Append -Encoding utf8
@@ -77,7 +85,15 @@ function Get-PauseReasons {
     }
     $reasons += $file.Name
   }
+  if (Test-Path -LiteralPath $offFile) { $reasons += 'paperless models switched off' }
   return $reasons
+}
+
+# Kills the runner holding the loaded model, not the server itself.
+function Stop-Runner([int]$serverPid) {
+  $runners = @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$serverPid" -ErrorAction SilentlyContinue)
+  foreach ($r in $runners) { & taskkill.exe /PID $r.ProcessId /T /F 2>&1 | Out-Null }
+  return $runners.Count
 }
 
 # An Ollama left from a stopped task (stopping the task ends this script but
@@ -92,6 +108,13 @@ while ($true) {
   $reasons = @(Get-PauseReasons)
   $paused = $reasons.Count -gt 0
   $running = $proc -and -not $proc.HasExited
+
+  if (Test-Path -LiteralPath $unloadFile) {
+    Remove-Item -LiteralPath $unloadFile -Force -ErrorAction SilentlyContinue
+    $killed = if ($running) { Stop-Runner $proc.Id } else { 0 }
+    if ($killed -gt 0) { Write-Log 'Unloaded the paperless model (tray icon).' }
+    else { Write-Log 'Asked to unload the paperless model, but none was loaded.' }
+  }
 
   if ($paused -ne $wasPaused) {
     if ($paused) { Write-Log "Paused by: $($reasons -join ', ')." } else { Write-Log 'Not paused.' }

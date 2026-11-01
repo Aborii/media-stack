@@ -27,11 +27,32 @@ An **AI** dot in the notification area shows what it is doing:
 | green | ready, nothing loaded |
 | blue | reading a document |
 | amber | paused by you |
+| grey | the paperless models are switched off |
 | purple | paused because storychat has the GPU |
 | red | not answering: starting, or the `ollama` task is stopped |
 
 Right-click it to pause (until you resume, or for 1 or 3 hours), resume, or
-open the log. Double-click toggles pause.
+open the log. Double-click toggles pause. Pause covers every model: Ollama
+stops, and storychat-server unloads the chat model and loads nothing until
+you resume.
+
+Per model, the menu also has:
+
+- **Chat model: loaded / not loaded / switched off**, from KoboldCpp's port
+  (5001; pass `-ChatPort` if it differs).
+- **Unload the chat model now** and **Unload the paperless model now**: the
+  model stops at once, even mid-reply or mid-page. The next message or
+  document loads it again; a page cut off is read again.
+- **Chat model can load** and **Paperless models can load**: untick one to
+  keep that model from loading until you tick it again. A loaded model
+  unloads within a few seconds. A chat message then gets "the chat model is
+  switched off on the PC" in SillyTavern; paperless documents wait on the
+  mini with their `ai-new` tag, as when paused.
+
+The tray only writes files in `I:\AI\ollama`: `pause\user`, `off\chat`,
+`off\paperless`, `unload\chat` and `unload\paperless`. `run-ollama.ps1` acts
+on the paperless ones and on the pause; storychat-server (`AI_CONTROL_DIR`
+in its `.env`) on the chat ones and on the pause.
 
 The menu also shows when the mini last checked in (its gate asks every 30 s)
 and when it last sent document work. **Show requests from the mini…** opens

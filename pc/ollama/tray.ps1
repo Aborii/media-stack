@@ -1,9 +1,12 @@
-# A tray icon for the PC's Ollama: a coloured dot saying what the AI is doing,
-# with Pause and Resume on its menu. Double-click toggles pause.
+# A tray icon for the AI on the PC: a coloured dot saying what the paperless
+# models (Ollama) are doing, with Pause and Resume on its menu. Double-click
+# toggles pause. Pause covers every model: Ollama stops, and storychat-server
+# unloads the chat model and loads nothing until resumed.
 #
 #   green   ready, nothing loaded
 #   blue    reading a document (a model is loaded)
 #   amber   paused by you (Pause AI, pause.ps1 or this menu)
+#   grey    the paperless models are switched off (below)
 #   purple  paused because storychat has the GPU
 #   red     not answering: the "ollama" task is stopped, starting, or broken
 #
@@ -11,7 +14,15 @@
 # and when it last sent a document, and "Show requests from the mini" lists
 # them, read from Ollama's request log (see run-ollama.ps1).
 #
-# It only reads the state and writes the same pause file as pause.ps1;
+# Per model, the menu says whether it is loaded, can unload it now (mid-work:
+# a page or a reply cut off is redone), and has a "can load" switch that,
+# when off, keeps it from loading until switched back on.
+#
+# It only reads the state and writes files in $Base, which the programs that
+# run the models act on within a few seconds:
+#   pause\user                         pause.ps1's file: every model
+#   off\paperless, unload\paperless    run-ollama.ps1
+#   off\chat, unload\chat              storychat-server (its controls.ts)
 # run-ollama.ps1 does the stopping and starting. The state comes from the
 # processes and the listening port, not from asking Ollama, so the icon adds
 # nothing to the request log. Started at sign-in by the "AI tray" shortcut in
@@ -23,12 +34,17 @@ param(
   [string]$Base = 'I:\AI\ollama',
   [string]$Url = 'http://10.10.10.1:11434',
   [string]$MiniAddress = '10.10.10.3',
+  # KoboldCpp's port (storychat-server's KOBOLD_PORT): listening means the
+  # chat model is loaded.
+  [int]$ChatPort = 5001,
   [switch]$Status
 )
 
 $ErrorActionPreference = 'Stop'
 $pauseDir = Join-Path $Base 'pause'
 $userFile = Join-Path $pauseDir 'user'
+$offFiles = @{ chat = Join-Path $Base 'off\chat'; paperless = Join-Path $Base 'off\paperless' }
+$unloadFiles = @{ chat = Join-Path $Base 'unload\chat'; paperless = Join-Path $Base 'unload\paperless' }
 # Oldest first. ollama-serve.log.out is the old name, until Ollama next starts.
 $requestFiles = @('ollama-requests-history.log.1', 'ollama-requests-history.log', 'ollama-serve.log.out', 'ollama-requests.log') |
   ForEach-Object { Join-Path $Base $_ }
@@ -43,6 +59,9 @@ function Get-AiState {
       return @{ Kind = 'paused'; Text = "Paused until $($when.ToString('ddd HH:mm'))"; Timed = $true }
     }
     return @{ Kind = 'paused'; Text = 'Paused until you resume it'; Timed = $false }
+  }
+  if (Test-Path -LiteralPath $offFiles.paperless) {
+    return @{ Kind = 'disabled'; Text = 'Paperless models switched off' }
   }
   if ($files | Where-Object Name -eq 'storychat') {
     return @{ Kind = 'chat'; Text = 'Paused while storychat uses the GPU' }
@@ -61,6 +80,30 @@ function Get-AiState {
     return @{ Kind = 'busy'; Text = 'Working: a model is loaded' }
   }
   return @{ Kind = 'ready'; Text = 'Ready for documents' }
+}
+
+# The chat model, from its port and the tray's own switch.
+function Get-ChatState {
+  $loaded = [bool](Get-NetTCPConnection -LocalPort $ChatPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1)
+  $off = Test-Path -LiteralPath $offFiles.chat
+  $text = if ($loaded) { 'Chat model: loaded' } elseif ($off) { 'Chat model: switched off' } else { 'Chat model: not loaded' }
+  @{ Loaded = $loaded; Off = $off; Text = $text }
+}
+
+# Whether Ollama has a model loaded: a runner under the server on its port.
+function Test-PaperlessLoaded {
+  $server = Get-NetTCPConnection -LocalPort ([uri]$Url).Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $server) { return $false }
+  [bool](Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$($server.OwningProcess)" -ErrorAction SilentlyContinue)
+}
+
+function Set-Flag([string]$file, [bool]$on) {
+  if ($on) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+    '' | Set-Content -LiteralPath $file -Encoding ascii
+  } else {
+    Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+  }
 }
 
 # One [GIN] line from the mini as an object; nothing for anything else.
@@ -127,6 +170,7 @@ function Format-Request($r) {
 if ($Status) {
   $s = Get-AiState
   "$($s.Kind): $($s.Text)"
+  (Get-ChatState).Text
   $r = Get-RequestSummary
   $r.Checked
   $r.Worked
@@ -161,6 +205,7 @@ $icons = @{
   ready  = New-DotIcon '#2e7d32'
   busy   = New-DotIcon '#1565c0'
   paused = New-DotIcon '#f9a825'
+  disabled = New-DotIcon '#616161'
   chat   = New-DotIcon '#6a1b9a'
   off    = New-DotIcon '#c62828'
 }
@@ -188,9 +233,16 @@ $workedItem = $menu.Items.Add('...')
 $workedItem.Enabled = $false
 $requestsItem = $menu.Items.Add('Show requests from the mini...')
 [void]$menu.Items.Add('-')
-$pauseItem = $menu.Items.Add('Pause until I resume')
-$pause1Item = $menu.Items.Add('Pause for 1 hour')
-$pause3Item = $menu.Items.Add('Pause for 3 hours')
+$chatItem = $menu.Items.Add('...')
+$chatItem.Enabled = $false
+$unloadChatItem = $menu.Items.Add('Unload the chat model now')
+$unloadPaperlessItem = $menu.Items.Add('Unload the paperless model now')
+$chatAllowedItem = $menu.Items.Add('Chat model can load')
+$paperlessAllowedItem = $menu.Items.Add('Paperless models can load')
+[void]$menu.Items.Add('-')
+$pauseItem = $menu.Items.Add('Pause all AI until I resume')
+$pause1Item = $menu.Items.Add('Pause all AI for 1 hour')
+$pause3Item = $menu.Items.Add('Pause all AI for 3 hours')
 $resumeItem = $menu.Items.Add('Resume')
 [void]$menu.Items.Add('-')
 $logItem = $menu.Items.Add('Open the start and stop log')
@@ -258,6 +310,11 @@ $pauseItem.add_Click({ Set-Pause 0 })
 $pause1Item.add_Click({ Set-Pause 1 })
 $pause3Item.add_Click({ Set-Pause 3 })
 $resumeItem.add_Click({ Clear-Pause })
+$unloadChatItem.add_Click({ Set-Flag $unloadFiles.chat $true; Update-Tray })
+$unloadPaperlessItem.add_Click({ Set-Flag $unloadFiles.paperless $true; Update-Tray })
+# Checked means it may load; unticking writes the "off" file.
+$chatAllowedItem.add_Click({ Set-Flag $offFiles.chat $chatAllowedItem.Checked; Update-Tray })
+$paperlessAllowedItem.add_Click({ Set-Flag $offFiles.paperless $paperlessAllowedItem.Checked; Update-Tray })
 $logItem.add_Click({ Start-Process notepad.exe (Join-Path $Base 'run-ollama.log') })
 $requestsItem.add_Click({ Show-Requests })
 # Read the request log when the menu opens, not every few seconds.
@@ -279,12 +336,19 @@ function Update-Tray {
   $s = Get-AiState
   $tray.Icon = $icons[$s.Kind]
   # The tooltip is cut off past 63 characters.
-  $tip = "AI for Paperless: $($s.Text)"
+  $tip = "AI on this PC: $($s.Text)"
   $tray.Text = if ($tip.Length -gt 63) { $tip.Substring(0, 63) } else { $tip }
-  $header.Text = $s.Text
+  $header.Text = "Paperless: $($s.Text)"
   $userPaused = $s.Kind -eq 'paused'
   $resumeItem.Enabled = $userPaused
   $pauseItem.Enabled = -not ($userPaused -and -not $s.Timed)
+  $c = Get-ChatState
+  $chatItem.Text = $c.Text
+  # Greyed out while a request is waiting to be picked up, so it is not sent twice.
+  $unloadChatItem.Enabled = $c.Loaded -and -not (Test-Path -LiteralPath $unloadFiles.chat)
+  $unloadPaperlessItem.Enabled = (Test-PaperlessLoaded) -and -not (Test-Path -LiteralPath $unloadFiles.paperless)
+  $chatAllowedItem.Checked = -not $c.Off
+  $paperlessAllowedItem.Checked = -not (Test-Path -LiteralPath $offFiles.paperless)
 }
 
 Update-Tray
