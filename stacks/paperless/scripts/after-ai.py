@@ -40,6 +40,10 @@ import re
 import sys
 
 DONE_TAG = "paperless-gpt-auto-complete"
+# Run as root (docker exec's default), a rename made root's folders and a
+# search update wrote root's index files; Paperless, running as paperless,
+# then could not move files into them, and a save failed with a 500.
+ROOT_REFUSED = "after-ai: run as the paperless user: docker exec -u paperless paperless python3 ..."
 # new-document's completion tag, and name-document's trigger.
 READ_TAG = "ai-read"
 NAME_TAG = "ai-name"
@@ -149,6 +153,9 @@ def years_printed(text: str) -> set[str]:
 
 
 def main() -> None:
+    if os.geteuid() == 0:
+        print(ROOT_REFUSED)
+        return
     sys.path.insert(0, "/usr/src/paperless/src")
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "paperless.settings")
     import django

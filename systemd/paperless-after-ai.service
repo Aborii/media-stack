@@ -1,9 +1,12 @@
 # A user unit (aborii, which lingers): it only runs a script inside the
 # paperless container. Installed with its timer by
-# scripts/install-paperless-after-ai.sh.
+# scripts/install-paperless-after-ai.sh. It runs as the container's paperless
+# user, as Paperless does: run as root, the folders a rename made and the
+# search index files it wrote were root's, and Paperless could then neither
+# move files into them nor save a document.
 [Unit]
 Description=Fix what paperless-gpt gets wrong in Paperless documents
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/docker exec paperless python3 /usr/src/paperless/scripts/after-ai.py
+ExecStart=/usr/bin/docker exec -u paperless paperless python3 /usr/src/paperless/scripts/after-ai.py
