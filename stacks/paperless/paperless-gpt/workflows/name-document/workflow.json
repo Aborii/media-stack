@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "Name document",
+  "trigger_tag": "ai-name",
+  "enable_ocr": false,
+  "generate_titles": true,
+  "generate_tags": true,
+  "generate_correspondents": true,
+  "generate_document_types": true,
+  "generate_created_date": false,
+  "generate_custom_fields": true,
+  "custom_field_ids": [1, 2, 3]
+}

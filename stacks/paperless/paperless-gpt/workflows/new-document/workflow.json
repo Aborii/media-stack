@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "name": "New document",
+  "name": "Read new document",
   "trigger_tag": "ai-new",
+  "completion_tag": "ai-read",
   "enable_ocr": true,
-  "generate_titles": true,
-  "generate_tags": true,
-  "generate_correspondents": true,
-  "generate_document_types": true,
+  "generate_titles": false,
+  "generate_tags": false,
+  "generate_correspondents": false,
+  "generate_document_types": false,
   "generate_created_date": false,
-  "generate_custom_fields": true,
-  "custom_field_ids": [1, 2, 3]
+  "generate_custom_fields": false
 }

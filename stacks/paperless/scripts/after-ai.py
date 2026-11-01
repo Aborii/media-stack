@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""Fixes what paperless-gpt gets wrong in a way a rule can catch, once it has
-finished with a document. Run inside the paperless container every 10 minutes
-by aborii's user timer (systemd/paperless-after-ai.*), since nothing in
-Paperless runs after paperless-gpt writes.
+"""Runs between paperless-gpt's two steps and after them, since nothing in
+Paperless runs when paperless-gpt writes. Run inside the paperless container
+every 2 minutes by aborii's user timer (systemd/paperless-after-ai.*).
+
+Between reading and naming: a document paperless-gpt has read (tagged
+"ai-read") has repeated text cut out of it, then is tagged "ai-name" for the
+naming workflow. The vision model sometimes writes a watermark or a security
+pattern over and over: a transcript came back as the university's name 5,681
+times, and was named from that. A line, or a phrase of up to 8 words, written
+10 or more times in a row is kept once. Real text never repeats like that.
+
+After naming, it fixes what the naming gets wrong in a way a rule can catch:
 
 - A "Due date" on or before the document's own date is cleared, unless the
   text says "due date", "pay by", "payment due" or "last date for payment"
@@ -23,8 +31,8 @@ Paperless runs after paperless-gpt writes.
   Gregorian date. Each removal leaves a note on the document, and a document
   with that note is not checked again, so a date the owner types in stays.
 
-Only documents paperless-gpt has finished (tagged paperless-gpt-auto-complete)
-are looked at. It prints what it changed and exits 0 either way.
+Those fixes look only at documents paperless-gpt has finished (tagged
+paperless-gpt-auto-complete). It prints what it changed and exits 0 either way.
 """
 
 import os
@@ -32,6 +40,17 @@ import re
 import sys
 
 DONE_TAG = "paperless-gpt-auto-complete"
+# new-document's completion tag, and name-document's trigger.
+READ_TAG = "ai-read"
+NAME_TAG = "ai-name"
+# 1-4 lines (with the blank lines after each), then a phrase of 1-8 words,
+# that come 10 or more times in a row. A transcript repeated its Arabic and
+# English names as a pair of lines.
+REPEATED_LINES = re.compile(r"(?m)^((?:[^\n]+\n+){1,4}?)\1{9,}")
+REPEATED_PHRASE = re.compile(r"((?:\S+[ \t]+){1,8}?)\1{9,}")
+# Only a phrase with letters in it, or long junk ("/////..."), is cut: a wide
+# table can hold ten "| 0" or "| ---" cells in a row.
+CUTTABLE = re.compile(r"[^\W\d_]|\S{20}")
 DUE_FIELD = "Due date"
 DUE_WORDS = re.compile(r"due\s*date|pay\s*by|payment\s*due|last\s*date\s*(for|of)\s*payment", re.I)
 # A document with the first tag never keeps the second.
@@ -44,6 +63,44 @@ YEAR = re.compile(r"(?:19|20)\d\d")
 # Arabic-Indic and Persian digits, read as 0-9.
 DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "0123456789" * 2)
 DROPPED_NOTE = "after-ai: removed the date"
+
+
+def without_repeats(text: str) -> str:
+    """The text with each run of repeated lines or a repeated phrase kept once."""
+    text = REPEATED_LINES.sub(r"\1", text)
+    text = REPEATED_PHRASE.sub(lambda m: m.group(1) if CUTTABLE.search(m.group(1)) else m.group(0), text)
+    # Cutting a phrase can leave lines that now repeat.
+    return REPEATED_LINES.sub(r"\1", text)
+
+
+def hand_to_naming() -> None:
+    """Cleans the text of every document paperless-gpt has read and tags it
+    for naming."""
+    from documents.models import Document, Tag
+    from documents.search import get_backend
+
+    read_tag = Tag.objects.filter(name=READ_TAG).first()
+    if read_tag is None:
+        return
+    name_tag = Tag.objects.get_or_create(name=NAME_TAG, defaults={"matching_algorithm": 0})[0]
+    for doc in Document.objects.filter(root_document__isnull=True, tags=read_tag):
+        # The text sits on the root, or on its latest version for a locked
+        # original (see text_of).
+        latest = Document.global_objects.filter(root_document=doc).order_by("-version_index").first()
+        for holder in [doc] + ([latest] if latest else []):
+            text = holder.content or ""
+            cleaned = without_repeats(text)
+            if cleaned != text:
+                holder.content = cleaned
+                holder.save(update_fields=["content"])
+                print(f"after-ai: document {holder.pk}: cut repeated text, {len(text)} -> {len(cleaned)} characters.")
+                try:
+                    get_backend().add_or_update(doc)
+                except Exception as error:  # noqa: BLE001 - search catches up on its own reindex
+                    print(f"after-ai: document {doc.pk}: search index not updated ({type(error).__name__}: {error}).")
+        doc.tags.remove(read_tag)
+        doc.tags.add(name_tag)
+        print(f"after-ai: document {doc.pk}: read, handed to naming.")
 
 
 def text_of(doc) -> str:
@@ -93,6 +150,8 @@ def main() -> None:
 
     django.setup()
     from documents.models import CustomFieldInstance, Document, Note, Tag
+
+    hand_to_naming()
 
     for keep, drop in EXCLUSIVE_TAGS:
         drop_tag = Tag.objects.filter(name=drop).first()
