@@ -1,9 +1,11 @@
 [Unit]
-Description=Fix what paperless-gpt gets wrong, every 10 minutes
+Description=Hand read documents to naming and fix what paperless-gpt gets wrong, every 2 minutes
 
+# Every 2 minutes, since a document waits here between being read and being
+# named: at 10 it could sit for 10 minutes with its file name as its title.
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=10min
+OnUnitActiveSec=2min
 
 [Install]
 WantedBy=timers.target

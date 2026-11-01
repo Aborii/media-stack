@@ -42,22 +42,27 @@
 # arrive meanwhile keep their "ai-new" tag and Paperless's own OCR, and are
 # read once it is back. Nothing here wakes the PC or keeps it awake.
 #
-# Which documents: a paperless-gpt workflow (paperless-gpt/workflows/) runs on
-# every document tagged "ai-new", doing OCR first and the naming after, so
-# the names come from the good text. scripts/after-filing.py (the
+# Which documents: two paperless-gpt workflows (paperless-gpt/workflows/) run
+# one after the other, so the names come from the good text. "new-document"
+# reads every document tagged "ai-new" (OCR only) and tags it "ai-read".
+# scripts/after-ai.py then cuts repeated text out of it and tags it "ai-name",
+# which "name-document" names. The vision model sometimes writes a watermark
+# or a security pattern thousands of times, and named straight after OCR, a
+# transcript was named from nothing but its university's name repeated.
+# scripts/after-filing.py (the
 # post-consume script) puts that tag on every new document; set AI_TAG to ''
 # on the paperless service to stop it. To run it again on old documents (after
 # a prompt changes), use scripts/rerun-ai.py rather than tagging them "ai-new"
 # by hand: the model is shown the current title, and copies an old AI title.
 #   docker exec paperless python3 /usr/src/paperless/scripts/rerun-ai.py 32 36
 #
-# The workflow has its own OCR prompt (ocr_prompt.tmpl beside it). The
+# "new-document" has its own OCR prompt (ocr_prompt.tmpl beside it). The
 # built-in one pastes the whole document's existing text into every page's
 # request: on a long document that overflows the context window, and the
-# model can copy another page's text into this one. It also has its own
-# title, tag and custom field prompts, and fills three Paperless custom
-# fields: Total amount (monetary, AED), Due date and Invoice number. The
-# workflow names them by their ids in this install (1, 2, 3); on a fresh
+# model can copy another page's text into this one. "name-document" has its
+# own title, tag, correspondent and custom field prompts, and fills three
+# Paperless custom fields: Total amount (monetary, AED), Due date and Invoice
+# number. It names them by their ids in this install (1, 2, 3); on a fresh
 # install, create them in that order or update custom_field_ids.
 #
 # Languages. Titles of translations and of originals that are neither
@@ -78,21 +83,24 @@
 # correspondent copied from the list. The owner's own names go in
 # PAPERLESS_GPT_CORRESPONDENT_BLACK_LIST (docker-compose.env).
 #
-# After the AI. scripts/after-ai.py, run in this container every 10 minutes
-# by aborii's user timer (install-paperless-after-ai.sh), clears a Due date on
-# or before the document's own date unless the page says "due date" or "pay
-# by": the model sometimes copies a fine's own date there.
+# After the AI. scripts/after-ai.py, run in this container every 2 minutes
+# by aborii's user timer (install-paperless-after-ai.sh), hands read documents
+# on to naming (above), and fixes what the naming gets wrong in a way a rule
+# can catch: a made-up due date or title date, "shopping" on a trip. The list
+# is at the top of the script.
 #
 #   4. Ollama and the models on the PC: pc/ollama/README.md (one elevated
 #      install.ps1), then the gate here, as aborii:
 #        ../../scripts/install-paperless-gpt-gate.sh
 #   5. A token for it: in Paperless, your profile (top right) > API Auth
 #      Token > generate, into PAPERLESS_GPT_API_TOKEN in docker-compose.env.
-#   6. Its workflow, copied into its prompts folder:
+#   6. Its workflows, copied into its prompts folder:
 #        mkdir -p "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows"
-#        cp -r paperless-gpt/workflows/. "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows/"
-#      then docker compose up -d again. Run the cp again whenever a file in
+#        rsync -a --delete paperless-gpt/workflows/ "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows/"
+#      then docker compose up -d again. Run the rsync again whenever a file in
 #      paperless-gpt/workflows/ changes; it picks changes up without a restart.
+#      --delete drops files moved or removed here, so the live folder never
+#      holds a workflow or prompt the repo no longer has.
 #   7. Nothing to set up in Paperless for "ai-new": after-filing.py adds it.
 #      An older install has a Paperless workflow "AI: read and name new
 #      documents" doing the same; turn it off, or it hands a locked original
@@ -357,6 +365,11 @@ services:
       # fills it: the first page tried failed with 4,416. 8,192 holds a page,
       # the prompt and a full page of text back. Applies to OCR and naming.
       OLLAMA_CONTEXT_LENGTH: '8192'
+      # At most this many tokens of text per page. Unset, a page that sends
+      # the model into a loop (a watermark or security pattern written over
+      # and over) runs on past the window: one page came back as 141,000
+      # characters. The densest real page here was about 720 tokens.
+      VISION_LLM_MAX_TOKENS: '3000'
       # Naming reads at most this much of a document's text, so a long one
       # still fits the window above. The start of a document is what names it.
       TOKEN_LIMIT: '4000'
