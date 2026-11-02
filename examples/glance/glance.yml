@@ -323,17 +323,22 @@ pages:
           # Claude Code, run by claude-conductor and followed from the web app
           # and Telegram: what waits on you, what works, the plan's limits and
           # the latest sessions, each linking to its page in the web app.
+          # Marked data-live, so assets/live.js swaps in a fresh copy every few
+          # seconds, and its ↻ asks for one at once. The links go to the web
+          # app's LAN address under the name this dashboard is reached by,
+          # which works at home and over Tailscale alike.
           # claude-web serves this on the docker gateway, read-only, behind
           # WEB_GLANCE_TOKEN in ~/.config/claude-web/web.env, which is the
           # same value as CLAUDE_WEB_GLANCE_TOKEN here.
           - type: custom-api
             title: Claude Code
-            title-url: https://aboriis-mini.tail54d520.ts.net:8445/
-            cache: 15s
+            title-url: https://aboriis-mini:8446/
+            cache: 5s
             url: http://172.28.10.1:8793/api/glance?limit=6
             headers:
               Authorization: Bearer ${CLAUDE_WEB_GLANCE_TOKEN}
             template: |
+              <div data-live="claude">
               {{ $waiting := .JSON.Int "waiting" }}{{ $five := .JSON.Int "fiveHour" }}{{ $week := .JSON.Int "sevenDay" }}
               <div class="flex justify-between text-center">
                 <div><div class="size-h3 {{ if gt $waiting 0 }}color-negative{{ else }}color-highlight{{ end }}">{{ $waiting }}</div><div class="size-h6">WAITING</div></div>
@@ -361,7 +366,12 @@ pages:
               {{ end }}
               </ul>
               {{ end }}
-              <p class="size-h6 margin-top-10">{{ if .JSON.Bool "conductor" }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">CONDUCTOR DOWN</span>{{ end }}</p>
+              <p class="size-h6 margin-top-10 flex items-center gap-10">{{ if .JSON.Bool "conductor" }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">CONDUCTOR DOWN</span>{{ end }}
+                <button title="Refresh now" aria-label="Refresh now"
+                        style="font:inherit;line-height:1;padding:2px 7px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:inherit;cursor:pointer;opacity:.7"
+                        onclick="this.disabled=true;this.style.opacity='.35';glanceLive.refresh(true)">&#8635;</button>
+              </p>
+              </div>
 
           # ── Libraries ──
           - type: split-column
