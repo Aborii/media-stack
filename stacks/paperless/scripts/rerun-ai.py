@@ -15,8 +15,9 @@ rather than replacing them, so old ones would stay beside the new.
 So for each document this puts the title back to the file name, removes every
 tag except "locked" and "unlocked" (which after-filing.py set from the file,
 not the AI), clears the correspondent, document type and the AI's custom
-fields, and tags it "ai-new". It also deletes after-ai.py's note about a
-removed date, so the new title's date is checked again. "Languages" and "Related documents" are kept:
+fields, and tags it "ai-new". It also deletes after-ai.py's notes (a removed
+date, a failed reading), so its one-time fixes apply to the new run again.
+"Languages" and "Related documents" are kept:
 code and the owner fill those, not the AI. Tags the owner added by hand go
 too, so add them back afterwards.
 """
@@ -28,8 +29,8 @@ from pathlib import Path
 AI_TAG = "ai-new"
 KEEP_TAGS = {"locked", "unlocked"}
 AI_FIELDS = ["Total amount", "Due date", "Invoice number"]
-# after-ai.py's DROPPED_NOTE.
-DROPPED_NOTE = "after-ai: removed the date"
+# Every note after-ai.py writes starts with this (DROPPED_NOTE, FAILED_NOTE).
+AFTER_AI_NOTE = "after-ai: "
 
 
 def main(ids: list[int]) -> None:
@@ -54,7 +55,7 @@ def main(ids: list[int]) -> None:
         doc.document_type = None
         doc.save(update_fields=["title", "correspondent", "document_type"])
         CustomFieldInstance.objects.filter(document=doc, field__name__in=AI_FIELDS).delete()
-        Note.objects.filter(document=doc, note__startswith=DROPPED_NOTE).delete()
+        Note.objects.filter(document=doc, note__startswith=AFTER_AI_NOTE).delete()
         # Last, since the tag is what hands the document to paperless-gpt.
         doc.tags.set([t for t in doc.tags.all() if t.name in KEEP_TAGS] + [ai_tag])
         print(f"rerun-ai: document {pk}: {old!r} -> {doc.title!r}, tagged {AI_TAG}.")
