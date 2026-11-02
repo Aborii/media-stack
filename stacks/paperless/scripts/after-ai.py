@@ -10,6 +10,18 @@ pattern over and over: a transcript came back as the university's name 5,681
 times, and was named from that. A line, or a phrase of up to 8 words, written
 10 or more times in a row is kept once. Real text never repeats like that.
 
+A loop also means the page's own text was never written: the model stops at
+VISION_LLM_MAX_TOKENS still repeating. When the cut is that big, Paperless's
+own OCR of every page (Tesseract, the archive PDF's text layer) is added after
+the AI's text under a heading, so search and naming still see those pages.
+qwen2.5vl and qwen3-vl both loop on a transcript with its university's name
+printed over every page, and no prompt or image size stopped them.
+
+A document paperless-gpt failed to read (tagged "paperless-gpt-failed": Ollama
+aborts a page with "token repeat limit reached", and the whole document fails
+after three tries) is handed to naming once all the same, with the text it
+already has, and a note saying so. The note keeps it from going round again.
+
 After naming, it fixes what the naming gets wrong in a way a rule can catch:
 
 - A "Due date" on or before the document's own date is cleared, unless the
@@ -47,6 +59,14 @@ ROOT_REFUSED = "after-ai: run as the paperless user: docker exec -u paperless pa
 # new-document's completion tag, and name-document's trigger.
 READ_TAG = "ai-read"
 NAME_TAG = "ai-name"
+FAILED_TAG = "paperless-gpt-failed"
+FAILED_NOTE = "after-ai: paperless-gpt could not read this document"
+# A cut this big means a page looped to the token cap and lost its own text.
+LOST_PAGE_CHARS = 2000
+OWN_OCR_HEADING = (
+    "\n\n## Paperless's own OCR of every page\n\n"
+    "The AI lost some pages to a repeated watermark; this is how Paperless read them.\n\n"
+)
 # 1-4 lines (with the blank lines after each), then a phrase of 1-8 words,
 # that come 10 or more times in a row. A transcript repeated its Arabic and
 # English names as a pair of lines.
@@ -77,37 +97,92 @@ def without_repeats(text: str) -> str:
     return REPEATED_LINES.sub(r"\1", text)
 
 
-def hand_to_naming() -> None:
-    """Cleans the text of every document paperless-gpt has read and tags it
-    for naming."""
-    from documents.models import Document, Tag
+def own_ocr(holder) -> str:
+    """Paperless's own OCR of the file (its archive PDF's text layer), or ''."""
+    import subprocess
+
+    if not holder.has_archive_version:
+        return ""
+    out = subprocess.run(
+        ["pdftotext", str(holder.archive_path), "-"], capture_output=True, text=True, timeout=120
+    ).stdout
+    lines = [line.strip() for line in out.replace("\f", "\n").splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def clean_text(holder) -> str:
+    """The holder's text without repeats, plus Paperless's own OCR when a
+    page looped."""
+    text = holder.content or ""
+    cleaned = without_repeats(text)
+    if len(text) - len(cleaned) >= LOST_PAGE_CHARS:
+        own = own_ocr(holder)
+        if own:
+            cleaned += OWN_OCR_HEADING + own
+    return cleaned
+
+
+def hand_off(doc, from_tag, name_tag) -> None:
+    """Cleans a document's text and moves it from from_tag to naming."""
+    from documents.models import Document
     from documents.search import get_backend
 
-    read_tag = Tag.objects.filter(name=READ_TAG).first()
-    if read_tag is None:
-        return
-    name_tag = Tag.objects.get_or_create(name=NAME_TAG, defaults={"matching_algorithm": 0})[0]
-    for doc in Document.objects.filter(root_document__isnull=True, tags=read_tag):
+    # The text sits on the root, or on its latest version for a locked
+    # original (see text_of).
+    latest = Document.global_objects.filter(root_document=doc).order_by("-version_index").first()
+    for holder in [doc] + ([latest] if latest else []):
+        text = holder.content or ""
+        cleaned = clean_text(holder)
+        if cleaned == text:
+            continue
+        holder.content = cleaned
+        holder.save(update_fields=["content"])
+        added = " (with Paperless's own OCR added)" if OWN_OCR_HEADING in cleaned else ""
+        print(f"after-ai: document {holder.pk}: cut repeated text, {len(text)} -> {len(cleaned)} characters{added}.")
         try:
-            # The text sits on the root, or on its latest version for a
-            # locked original (see text_of).
-            latest = Document.global_objects.filter(root_document=doc).order_by("-version_index").first()
-            for holder in [doc] + ([latest] if latest else []):
-                text = holder.content or ""
-                cleaned = without_repeats(text)
-                if cleaned != text:
-                    holder.content = cleaned
-                    holder.save(update_fields=["content"])
-                    print(f"after-ai: document {holder.pk}: cut repeated text, {len(text)} -> {len(cleaned)} characters.")
-                    try:
-                        get_backend().add_or_update(doc)
-                    except Exception as error:  # noqa: BLE001 - search catches up on its own reindex
-                        print(f"after-ai: document {doc.pk}: search index not updated ({type(error).__name__}: {error}).")
-            # The new tag first: a run that stops between the two leaves the
-            # document queued for naming, never with neither tag.
-            doc.tags.add(name_tag)
-            doc.tags.remove(read_tag)
+            get_backend().add_or_update(doc)
+        except Exception as error:  # noqa: BLE001 - search catches up on its own reindex
+            print(f"after-ai: document {doc.pk}: search index not updated ({type(error).__name__}: {error}).")
+    # The new tag first: a run that stops between the two leaves the
+    # document queued for naming, never with neither tag.
+    doc.tags.add(name_tag)
+    doc.tags.remove(from_tag)
+
+
+def hand_to_naming() -> None:
+    """Hands every document paperless-gpt has read, and once each one it
+    failed to read, on to naming."""
+    from documents.models import Document, Note, Tag
+
+    name_tag = Tag.objects.get_or_create(name=NAME_TAG, defaults={"matching_algorithm": 0})[0]
+    read_tag = Tag.objects.filter(name=READ_TAG).first()
+    for doc in Document.objects.filter(root_document__isnull=True, tags=read_tag) if read_tag else []:
+        try:
+            hand_off(doc, read_tag, name_tag)
             print(f"after-ai: document {doc.pk}: read, handed to naming.")
+        except Exception as error:  # noqa: BLE001 - one bad document must not hold up the rest
+            print(f"after-ai: document {doc.pk}: not handed to naming ({type(error).__name__}: {error}).")
+
+    failed_tag = Tag.objects.filter(name=FAILED_TAG).first()
+    # Not one that also has DONE_TAG: paperless-gpt named it and Paperless
+    # rejected a field, which a second naming would not fix.
+    failed = Document.objects.filter(root_document__isnull=True, tags=failed_tag).exclude(tags__name=DONE_TAG)
+    for doc in failed if failed_tag else []:
+        if Note.objects.filter(document=doc, note__startswith=FAILED_NOTE).exists():
+            continue
+        try:
+            # The note first: whatever happens next, this document is handed
+            # on once only, and a naming that fails too stays failed.
+            Note.objects.create(
+                document=doc,
+                user=doc.owner,
+                note=(
+                    f"{FAILED_NOTE}, so it was named from the text it already had. "
+                    "If the name is poor, run it again with rerun-ai.py."
+                ),
+            )
+            hand_off(doc, failed_tag, name_tag)
+            print(f"after-ai: document {doc.pk}: reading failed, handed to naming with the text it had.")
         except Exception as error:  # noqa: BLE001 - one bad document must not hold up the rest
             print(f"after-ai: document {doc.pk}: not handed to naming ({type(error).__name__}: {error}).")
 
