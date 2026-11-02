@@ -57,6 +57,8 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   take one word, gets that correspondent and its name in the title: a sworn
   translation printed "Arab International Private University" where every
   other paper of the university says "Arab International University".
+  These two rules change a document once, with a note saying what changed,
+  and leave it alone after that, so the owner's own edits stay.
 
 Those fixes look only at documents paperless-gpt has finished (tagged
 paperless-gpt-auto-complete). It prints what it changed and exits 0 either way.
@@ -103,6 +105,7 @@ YEAR = re.compile(r"(?:19|20)\d\d")
 DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "0123456789" * 2)
 DROPPED_NOTE = "after-ai: removed the date"
 LANGUAGES_FIELD = "Languages"
+LANGUAGE_NOTE = "after-ai: corrected the language"
 TRANSLATION_TAG = "translation"
 # The same words the title and tag prompts treat as a translation's sign.
 TRANSLATION_WORDS = re.compile(r"translat|sworn|ترجم|tercüm|çevir|übersetz|yeminli", re.I)
@@ -325,19 +328,23 @@ def main() -> None:
     translation_tag = Tag.objects.filter(name=TRANSLATION_TAG).first()
     names = list(Correspondent.objects.values_list("name", flat=True))
     for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG):
+        # Once per document, like the date rule: edits made after it stay.
+        if Note.objects.filter(document=doc, note__startswith=LANGUAGE_NOTE).exists():
+            continue
         text = text_of(doc)
         field = CustomFieldInstance.objects.filter(document=doc, field__name=LANGUAGES_FIELD).first()
         languages = [x.strip() for x in (field.value_text or "").split(",") if x.strip()] if field else []
         translated = bool(TRANSLATION_WORDS.search(text))
+        changes = []
         title = fixed_suffix(doc.title, languages, translated) if languages else doc.title
         if doc.correspondent_id is None and (name := known_key(title, names)):
             parts = title.split(" – ")
             title = " – ".join([parts[0], name, *parts[2:]])
             doc.correspondent = Correspondent.objects.get(name=name)
             doc.save(update_fields=["correspondent"])
-            print(f"after-ai: document {doc.pk}: correspondent {name} (named in the title).")
+            changes.append(f"correspondent {name}, which the title named")
         if title != doc.title:
-            print(f"after-ai: document {doc.pk}: title {doc.title!r} -> {title!r} (languages {languages}).")
+            changes.append(f"title {doc.title!r} -> {title!r} (languages found: {', '.join(languages)})")
             doc.title = title
             doc.save(update_fields=["title"])
         if translation_tag is not None:
@@ -345,10 +352,17 @@ def main() -> None:
             has = doc.tags.filter(pk=translation_tag.pk).exists()
             if wanted and not has:
                 doc.tags.add(translation_tag)
-                print(f"after-ai: document {doc.pk}: tagged {TRANSLATION_TAG}.")
+                changes.append(f"tagged {TRANSLATION_TAG}")
             elif has and not translated:
                 doc.tags.remove(translation_tag)
-                print(f"after-ai: document {doc.pk}: removed tag {TRANSLATION_TAG} (no translation words in the text).")
+                changes.append(f"removed tag {TRANSLATION_TAG} (the text never says it is a translation)")
+        if changes:
+            Note.objects.create(
+                document=doc,
+                user=doc.owner,
+                note=f"{LANGUAGE_NOTE} and translation details: {'; '.join(changes)}. Edits made after this are kept.",
+            )
+            print(f"after-ai: document {doc.pk}: {'; '.join(changes)}.")
 
     for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG):
         found = title_date(doc.title)
