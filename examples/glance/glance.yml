@@ -320,6 +320,49 @@ pages:
               <p class="size-h6 margin-top-10">{{ if $ok }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">UNREACHABLE</span>{{ end }} <span class="color-paragraph">&middot; via {{ .JSON.String "via" }}</span></p>
               </div>
 
+          # Claude Code, run by claude-conductor and followed from the web app
+          # and Telegram: what waits on you, what works, the plan's limits and
+          # the latest sessions, each linking to its page in the web app.
+          # claude-web serves this on the docker gateway, read-only, behind
+          # WEB_GLANCE_TOKEN in ~/.config/claude-web/web.env, which is the
+          # same value as CLAUDE_WEB_GLANCE_TOKEN here.
+          - type: custom-api
+            title: Claude Code
+            title-url: https://aboriis-mini.tail54d520.ts.net:8445/
+            cache: 15s
+            url: http://172.28.10.1:8793/api/glance?limit=6
+            headers:
+              Authorization: Bearer ${CLAUDE_WEB_GLANCE_TOKEN}
+            template: |
+              {{ $waiting := .JSON.Int "waiting" }}{{ $five := .JSON.Int "fiveHour" }}{{ $week := .JSON.Int "sevenDay" }}
+              <div class="flex justify-between text-center">
+                <div><div class="size-h3 {{ if gt $waiting 0 }}color-negative{{ else }}color-highlight{{ end }}">{{ $waiting }}</div><div class="size-h6">WAITING</div></div>
+                <div><div class="size-h3 color-highlight">{{ .JSON.Int "running" }}</div><div class="size-h6">WORKING</div></div>
+                <div><div class="size-h3 color-highlight">{{ .JSON.Int "live" }}</div><div class="size-h6">LIVE</div></div>
+                <div><div class="size-h3 {{ if ge $five 80 }}color-negative{{ else }}color-highlight{{ end }}">{{ if ge $five 0 }}{{ $five }}%{{ else }}-{{ end }}</div><div class="size-h6">5-HOUR</div></div>
+                <div><div class="size-h3 {{ if ge $week 80 }}color-negative{{ else }}color-highlight{{ end }}">{{ if ge $week 0 }}{{ $week }}%{{ else }}-{{ end }}</div><div class="size-h6">WEEK</div></div>
+              </div>
+              {{ $sessions := .JSON.Array "sessions" }}
+              {{ if eq (len $sessions) 0 }}
+              <p class="color-paragraph margin-top-10">No sessions yet.</p>
+              {{ else }}
+              <ul class="list list-gap-10 margin-top-15">
+              {{ range $sessions }}
+                {{ $state := .String "state" }}{{ $where := .String "where" }}
+                <li>
+                  <a class="size-h5 color-highlight block text-truncate" href="{{ .String "link" }}" target="_blank" rel="noreferrer">{{ .String "title" }}</a>
+                  <ul class="list-horizontal-text">
+                    <li class="{{ if eq $state "waiting" }}color-negative{{ else if eq $state "running" }}color-positive{{ else }}color-paragraph{{ end }}">{{ if eq $state "waiting" }}waiting on you{{ else if eq $state "running" }}working{{ else }}{{ $state }}{{ end }}</li>
+                    <li>{{ .String "folder" }}</li>
+                    <li>{{ if eq $where "telegram" }}Telegram{{ else if eq $where "web" }}web app{{ else }}elsewhere{{ end }}</li>
+                    <li {{ .String "lastActivity" | parseRelativeTime "rfc3339" }}></li>
+                  </ul>
+                </li>
+              {{ end }}
+              </ul>
+              {{ end }}
+              <p class="size-h6 margin-top-10">{{ if .JSON.Bool "conductor" }}<span class="color-positive">OK</span>{{ else }}<span class="color-negative">CONDUCTOR DOWN</span>{{ end }}</p>
+
           # ── Libraries ──
           - type: split-column
             widgets:
