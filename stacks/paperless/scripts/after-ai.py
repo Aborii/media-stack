@@ -65,8 +65,9 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   one (4 Oct 2026 on a certificate from March 2022), so they were filed under
   the wrong year. The title's date has passed the year check above. A day or
   month the title leaves out is the 1st; a range gives its start; "expires"
-  is never a document's date, and nothing is set in the future. Once per
-  document, with a note.
+  is never a document's date, and nothing is set in the future. A flight,
+  ticket or stay is dated in its title by the trip, so its date is only set
+  when Paperless kept the upload day. Once per document, with a note.
 
 Those fixes look only at documents paperless-gpt has finished (tagged
 paperless-gpt-auto-complete). It prints what it changed and exits 0 either way.
@@ -115,6 +116,8 @@ DROPPED_NOTE = "after-ai: removed the date"
 LANGUAGES_FIELD = "Languages"
 LANGUAGE_NOTE = "after-ai: corrected the language"
 DATE_NOTE = "after-ai: set the document date"
+# title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
+TRAVEL_TYPES = {"Flight", "Ticket", "Hotel"}
 MONTH_NUMBER = {m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 TRANSLATION_TAG = "translation"
 # The same words the title and tag prompts treat as a translation's sign.
@@ -434,6 +437,10 @@ def main() -> None:
         if when is None or when > today or doc.created is None:
             continue
         if str(doc.created.year) in title_date(doc.title)[2]:
+            continue
+        # A trip's title is dated by the trip, its paper by the booking: keep a
+        # booking date Paperless found, and fill in only the upload day.
+        if doc.title.split(" – ")[0] in TRAVEL_TYPES and doc.created != timezone.localtime(doc.added).date():
             continue
         if Note.objects.filter(document=doc, note__startswith=DATE_NOTE).exists():
             continue
