@@ -170,20 +170,22 @@ def hand_to_naming() -> None:
     for doc in failed if failed_tag else []:
         if Note.objects.filter(document=doc, note__startswith=FAILED_NOTE).exists():
             continue
+        # The note first: once handed on, this document is never handed on
+        # again, and a naming that fails too stays failed. A hand-off that
+        # did not happen takes its note back, so the next run tries again.
+        note = Note.objects.create(
+            document=doc,
+            user=doc.owner,
+            note=(
+                f"{FAILED_NOTE}, so it was named from the text it already had. "
+                "If the name is poor, run it again with rerun-ai.py."
+            ),
+        )
         try:
-            # The note first: whatever happens next, this document is handed
-            # on once only, and a naming that fails too stays failed.
-            Note.objects.create(
-                document=doc,
-                user=doc.owner,
-                note=(
-                    f"{FAILED_NOTE}, so it was named from the text it already had. "
-                    "If the name is poor, run it again with rerun-ai.py."
-                ),
-            )
             hand_off(doc, failed_tag, name_tag)
             print(f"after-ai: document {doc.pk}: reading failed, handed to naming with the text it had.")
         except Exception as error:  # noqa: BLE001 - one bad document must not hold up the rest
+            note.delete()
             print(f"after-ai: document {doc.pk}: not handed to naming ({type(error).__name__}: {error}).")
 
 
