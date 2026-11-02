@@ -59,6 +59,15 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   other paper of the university says "Arab International University".
   These two rules change a document once, with a note saying what changed,
   and leave it alone after that, so the owner's own edits stay.
+- The document's own date is set from its title's date when the two disagree
+  on the year. Paperless reads the date from the text when a paper arrives,
+  and on half the papers it found none (the upload day was kept) or the wrong
+  one (4 Oct 2026 on a certificate from March 2022), so they were filed under
+  the wrong year. The title's date has passed the year check above. A day or
+  month the title leaves out is the 1st; a range gives its start; "expires"
+  is never a document's date, and nothing is set in the future. A flight,
+  ticket or stay is dated in its title by the trip, so its date is only set
+  when Paperless kept the upload day. Once per document, with a note.
 
 Those fixes look only at documents paperless-gpt has finished (tagged
 paperless-gpt-auto-complete). It prints what it changed and exits 0 either way.
@@ -106,6 +115,10 @@ DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "0123456789" 
 DROPPED_NOTE = "after-ai: removed the date"
 LANGUAGES_FIELD = "Languages"
 LANGUAGE_NOTE = "after-ai: corrected the language"
+DATE_NOTE = "after-ai: set the document date"
+# title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
+TRAVEL_TYPES = {"Flight", "Ticket", "Hotel"}
+MONTH_NUMBER = {m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 TRANSLATION_TAG = "translation"
 # The same words the title and tag prompts treat as a translation's sign.
 TRANSLATION_WORDS = re.compile(r"translat|sworn|ترجم|tercüm|çevir|übersetz|yeminli", re.I)
@@ -294,6 +307,35 @@ def known_key(title: str, names: list[str]) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
+def date_of_title(title: str):
+    """The date a title's date part stands for (its start, for a range), or
+    None when it has none or it is an expiry."""
+    import datetime
+
+    found = title_date(title)
+    if found is None:
+        return None
+    part = found[1]
+    if part.startswith("expires"):
+        return None
+    iso = re.fullmatch(r"((?:19|20)\d\d)-(\d\d)-(\d\d)", part)
+    tokens = [t for t in re.split(r"[\s–-]+", part) if t and t not in DATE_WORDS]
+    if iso:
+        year, month, day = (int(x) for x in iso.groups())
+    else:
+        year = int(next(t for t in tokens if YEAR.fullmatch(t)))
+        months = [MONTH_NUMBER[t] for t in tokens if t in MONTH_NUMBER]
+        month = months[0] if months else 1
+        # A day counts only when it comes before the first month: "30 Sep–4 Oct 2023".
+        first_month = next((i for i, t in enumerate(tokens) if t in MONTH_NUMBER), None)
+        days = [int(t) for t in tokens[:first_month] if re.fullmatch(r"\d{1,2}", t)] if first_month is not None else []
+        day = days[0] if days else 1
+    try:
+        return datetime.date(year, month, day)
+    except ValueError:
+        return None
+
+
 def main() -> None:
     if os.geteuid() == 0:
         print(ROOT_REFUSED)
@@ -386,6 +428,33 @@ def main() -> None:
         print(f"after-ai: document {doc.pk}: title {doc.title!r} -> {title!r} ({', '.join(missing)} not in the text).")
         doc.title = title
         doc.save(update_fields=["title"])
+
+    from django.utils import timezone
+
+    today = timezone.localdate()
+    for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG):
+        when = date_of_title(doc.title)
+        if when is None or when > today or doc.created is None:
+            continue
+        if str(doc.created.year) in title_date(doc.title)[2]:
+            continue
+        # A trip's title is dated by the trip, its paper by the booking: keep a
+        # booking date Paperless found, and fill in only the upload day.
+        if doc.title.split(" – ")[0] in TRAVEL_TYPES and doc.created != timezone.localtime(doc.added).date():
+            continue
+        if Note.objects.filter(document=doc, note__startswith=DATE_NOTE).exists():
+            continue
+        Note.objects.create(
+            document=doc,
+            user=doc.owner,
+            note=(
+                f"{DATE_NOTE} to {when} from the title (it was {doc.created}). "
+                "A date you set after this is kept."
+            ),
+        )
+        print(f"after-ai: document {doc.pk}: date {doc.created} -> {when} (from the title).")
+        doc.created = when
+        doc.save(update_fields=["created"])
 
     dues = CustomFieldInstance.objects.filter(
         field__name=DUE_FIELD,
