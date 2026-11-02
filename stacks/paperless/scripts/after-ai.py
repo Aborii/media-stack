@@ -53,10 +53,12 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   English-only paper with no translation words goes. "translation" is then
   tagged exactly when the text has translation words and the title says
   "translation".
-- A document with no correspondent whose title names one that exists, give or
-  take one word, gets that correspondent and its name in the title: a sworn
-  translation printed "Arab International Private University" where every
-  other paper of the university says "Arab International University".
+- A document whose title names an existing correspondent, exactly or with one
+  word more, gets that correspondent and its name in the title. The title's
+  Key is the issuer by definition, and the correspondent prompt can still
+  pick a listed name the page never shows: a sworn translation printed "Arab
+  International Private University" and came back under "Ministry of
+  Education Syrian Arab Republic".
   These two rules change a document once, with a note saying what changed,
   and leave it alone after that, so the owner's own edits stay.
 - The document's own date is set from its title's date when the two disagree
@@ -297,13 +299,13 @@ def words(name: str) -> set[str]:
 
 
 def known_key(title: str, names: list[str]) -> str | None:
-    """The one existing correspondent that the title's Key names give or take
-    one word, or None."""
+    """The one existing correspondent that the title's Key names, exactly or
+    with one word more, or None."""
     parts = SUFFIX.sub(r"\1", title).split(" – ")
     if len(parts) < 3:
         return None
     key = words(parts[1])
-    hits = [n for n in names if len(words(n)) >= 2 and words(n) <= key and len(key - words(n)) == 1]
+    hits = [n for n in names if len(words(n)) >= 2 and words(n) <= key and len(key - words(n)) <= 1]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -379,12 +381,17 @@ def main() -> None:
         translated = bool(TRANSLATION_WORDS.search(text))
         changes = []
         title = fixed_suffix(doc.title, languages, translated) if languages else doc.title
-        if doc.correspondent_id is None and (name := known_key(title, names)):
+        name = known_key(title, names)
+        if name and (doc.correspondent is None or doc.correspondent.name != name):
             parts = title.split(" – ")
             title = " – ".join([parts[0], name, *parts[2:]])
+            was = doc.correspondent.name if doc.correspondent else "none"
             doc.correspondent = Correspondent.objects.get(name=name)
             doc.save(update_fields=["correspondent"])
-            changes.append(f"correspondent {name}, which the title named")
+            changes.append(f"correspondent {name}, which the title named (was {was})")
+        elif name and name not in title:
+            parts = title.split(" – ")
+            title = " – ".join([parts[0], name, *parts[2:]])
         if title != doc.title:
             changes.append(f"title {doc.title!r} -> {title!r} (languages found: {', '.join(languages)})")
             doc.title = title
