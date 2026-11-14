@@ -117,13 +117,18 @@ console.log(
 void syncLoop();
 for (const node of nodes) void node.run();
 
-async function stop(): Promise<void> {
-  stopping = true;
-  server.close();
-  // The PC's lease goes back first, so pc-power is free to sleep the PC.
-  await Promise.all(nodes.map((n) => n.stop()));
-  store.close();
-  process.exit(0);
+// Once only: a second signal must not close the store before the first stop
+// has given the PC's lease back.
+let stopped: Promise<void> | null = null;
+function stop(): Promise<void> {
+  stopped ??= (async () => {
+    stopping = true;
+    server.close();
+    await Promise.all(nodes.map((n) => n.stop()));
+    store.close();
+    process.exit(0);
+  })();
+  return stopped;
 }
 process.on('SIGTERM', () => void stop());
 process.on('SIGINT', () => void stop());

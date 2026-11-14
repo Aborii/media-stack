@@ -88,21 +88,98 @@ test('claiming a held item clears the hold and records the node', async () => {
   assert.match(row.note!, /on the pc/);
 });
 
-test('the PC holds its lease only while it has work, and never asks for a wake', async () => {
+test('after Wake PC, the PC holds its lease while it has work, then lets go and the wake is over', async () => {
   const root = mediaDir();
   const calls: string[] = [];
-  const { store, worker } = setup([episode(root, 1, 'A')]);
+  const { store, worker } = setup([episode(root, 1, 'A'), episode(root, 2, 'B')]);
   await worker.sync();
+  worker.markPcWoken(30);
   const lease = new Lease({ url: 'http://pc-power-client:8791/', token: 'tok', fetcher: fakePowerClient(calls) });
   const pc = new NodeRunner({ name: 'pc', label: 'PC', model: up(), worker, store, lease, takesHeld: true, waitMs: FAST });
+  await pc.step();
   await pc.step();
   assert.equal(lease.state.held, true);
   assert.deepEqual(calls, ['PUT /apps/subfill Bearer tok']);
   await pc.step(); // nothing left
   assert.equal(lease.state.held, false);
   assert.deepEqual(calls, ['PUT /apps/subfill Bearer tok', 'DELETE /apps/subfill Bearer tok']);
+  assert.equal(worker.pcWoken(), false);
   await pc.step(); // still nothing: no second release
   assert.equal(calls.length, 2);
+});
+
+test('a PC awake for anything else is used without a lease, so subfill causes no sleep', async () => {
+  const root = mediaDir();
+  const calls: string[] = [];
+  const { store, worker } = setup([episode(root, 1, 'A')]);
+  await worker.sync();
+  const lease = new Lease({ url: 'http://pc', token: 'tok', fetcher: fakePowerClient(calls) });
+  const pc = new NodeRunner({ name: 'pc', label: 'PC', model: up(), worker, store, lease, takesHeld: true, waitMs: FAST });
+  await pc.step();
+  await pc.step();
+  assert.equal(store.get('episode:1')!.state, 'done');
+  assert.deepEqual(calls, []);
+});
+
+test('a repeating outage lets the lease go and backs off, instead of keeping the PC up', async () => {
+  const root = mediaDir();
+  const calls: string[] = [];
+  let bazarrDown = false;
+  const { store, worker } = setup([episode(root, 1, 'A')], {}, arabicModel, () => bazarrDown);
+  await worker.sync();
+  worker.markPcWoken(30);
+  bazarrDown = true;
+  const lease = new Lease({ url: 'http://pc', token: 'tok', fetcher: fakePowerClient(calls) });
+  const pc = new NodeRunner({ name: 'pc', label: 'PC', model: up(), worker, store, lease, takesHeld: true, waitMs: { idle: 1, offline: 1000, paused: 1 } });
+  const waits = [await pc.step(), await pc.step(), await pc.step()];
+  assert.deepEqual(waits, [2000, 4000, 8000]);
+  assert.equal(lease.state.held, false);
+  assert.deepEqual(calls, ['PUT /apps/subfill Bearer tok', 'DELETE /apps/subfill Bearer tok']);
+  assert.equal(store.get('episode:1')!.attempts, 0);
+  // Capped, so a long outage still gets looked at every quarter hour.
+  for (let i = 0; i < 10; i++) await pc.step();
+  assert.equal(await pc.step(), 15 * 60_000);
+});
+
+test('the two episodes of one video file are never translated at once', async () => {
+  const root = mediaDir();
+  const first = episode(root, 1, 'Double');
+  const second = { ...first, id: 2, subtitles: [...first.subtitles], missing: [...first.missing] };
+  let generates = 0;
+  const slow = async (p: string) => (generates++, await new Promise((r) => setTimeout(r, 5)), arabicModel(p));
+  const { store, worker } = setup([first, second]);
+  await worker.sync();
+  const mini = new NodeRunner({ name: 'mini', label: 'Mini', model: up(slow), worker, store, waitMs: FAST });
+  const pc = new NodeRunner({ name: 'pc', label: 'PC', model: up(slow), worker, store, takesHeld: true, waitMs: FAST });
+  await Promise.all([mini.step(), pc.step()]);
+  await Promise.all([mini.step(), pc.step()]);
+  assert.equal(generates, 1);
+  assert.deepEqual(
+    ['episode:1', 'episode:2'].map((k) => store.get(k)!.state),
+    ['done', 'done'],
+  );
+});
+
+test('a stop while a lease renewal is on its way ends with the DELETE, and twice is once', async () => {
+  const order: string[] = [];
+  let finishPut: () => void = () => undefined;
+  const slowPut = (async (_: unknown, init?: RequestInit) => {
+    if (init?.method === 'PUT') await new Promise<void>((r) => (finishPut = r));
+    order.push(String(init?.method));
+    return json({ ok: true });
+  }) as typeof fetch;
+  const lease = new Lease({ url: 'http://pc', token: 't', fetcher: slowPut });
+  const holding = lease.hold();
+  const root = mediaDir();
+  const { store, worker } = setup([episode(root, 1, 'A')]);
+  const pc = new NodeRunner({ name: 'pc', label: 'PC', model: up(), worker, store, lease, waitMs: FAST });
+  const stopping = Promise.all([pc.stop(), pc.stop()]);
+  finishPut();
+  await Promise.all([holding, stopping]);
+  assert.deepEqual(order, ['PUT', 'DELETE']);
+  // A step after the stop takes no lease.
+  assert.equal(await pc.step(), 0);
+  assert.equal(lease.state.held, false);
 });
 
 test('the lease renews itself while held, and a failure is shown, not thrown', async () => {

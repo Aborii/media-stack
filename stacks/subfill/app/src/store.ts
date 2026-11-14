@@ -199,11 +199,14 @@ export class Store {
   // The next item to translate: a "translate now" first, then the newest
   // video. An item that failed waits out its retry delay first. An item held
   // for the PC is the PC's first pick, and the mini's only once the hold ends.
+  // A video another node is already translating is skipped: the episodes of a
+  // two-episode file share one subtitle, which the first to finish writes.
   next(now: number, takesHeld = false): Item | undefined {
     return this.db
       .prepare(
         `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
            AND (held_until IS NULL OR held_until <= ? OR ?)
+           AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
          ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, eligible_at DESC LIMIT 1`,
       )
       .get(now, now, takesHeld ? 1 : 0, now) as Item | undefined;

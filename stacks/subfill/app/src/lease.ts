@@ -21,6 +21,9 @@ export class Lease {
   private readonly fetcher: typeof fetch;
   private readonly renewMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
+  // The last PUT, so a release waits for it: a renewal landing after the
+  // DELETE would register the lease again for another 180 s.
+  private putting: Promise<boolean> | null = null;
   state: LeaseState = { held: false, error: null };
 
   constructor(opts: { url: string; token: string; app?: string; fetcher?: typeof fetch; renewMs?: number }) {
@@ -49,21 +52,29 @@ export class Lease {
     }
   }
 
+  private put(): Promise<boolean> {
+    this.putting = this.call('PUT');
+    return this.putting;
+  }
+
   // Takes the lease if it is not held, and keeps it renewed.
   async hold(): Promise<void> {
     if (this.timer) return;
-    this.timer = setInterval(() => void this.call('PUT'), this.renewMs);
+    this.timer = setInterval(() => {
+      if (this.timer) void this.put();
+    }, this.renewMs);
     this.timer.unref?.();
     this.state = { ...this.state, held: true };
-    await this.call('PUT');
+    await this.put();
   }
 
-  // Gives the lease back if it is held.
+  // Gives the lease back if it is held, after any PUT still on its way.
   async release(): Promise<void> {
     if (!this.timer) return;
     clearInterval(this.timer);
     this.timer = null;
     this.state = { ...this.state, held: false };
+    await this.putting;
     await this.call('DELETE');
   }
 }

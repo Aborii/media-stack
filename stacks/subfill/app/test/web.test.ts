@@ -31,12 +31,14 @@ const status: Status = {
   lastSync: null,
   model: 'translategemma:12b',
   nodes: [
-    { name: 'mini', label: 'Mini (CPU)', state: 'working', problem: null, current: { key: 'episode:9', title: 'Busy <i>one</i>', done: 3, total: 10, startedAt: 0 }, lease: null, lastSeen: 1 },
-    { name: 'pc', label: 'PC (GPU)', state: 'offline', problem: 'model translategemma:12b is not pulled into Ollama', current: null, lease: { held: false, error: null }, lastSeen: null },
+    // Paused by the owner, still finishing its item.
+    { name: 'mini', label: 'Mini (CPU)', state: 'working', paused: true, problem: null, current: { key: 'episode:9', title: 'Busy <i>one</i>', done: 3, total: 10, startedAt: 0 }, lease: null, lastSeen: 1 },
+    { name: 'pc', label: 'PC (GPU)', state: 'offline', paused: false, problem: 'model translategemma:12b is not pulled into Ollama', current: null, lease: { held: false, error: null }, lastSeen: null },
   ],
 };
 const paused: [string, boolean][] = [];
 const holds: number[] = [];
+const woken: number[] = [];
 let released = 0;
 export const API_TOKEN = 'secret-token';
 const server = startWeb(
@@ -46,6 +48,7 @@ const server = startWeb(
       act: (key: string, op: string) => (acted.push([key, op]), key === 'bad' ? 'cannot do that' : null),
       holdForPc: (minutes: number) => (holds.push(minutes), store.get('episode:1')),
       releaseHolds: () => void released++,
+      markPcWoken: (minutes: number) => void woken.push(minutes),
     },
     status: () => status,
     setNodePaused: (name: string, p: boolean) => (paused.push([name, p]), name === 'nope' ? 'no node called nope' : null),
@@ -211,4 +214,25 @@ test('the API holds an item for the PC and lets it go', async () => {
   assert.equal((await call('/api/ask', { method: 'POST', token: API_TOKEN, json: true, body: 'not json' })).status, 400);
   assert.equal((await call('/api/summary', { method: 'POST', token: API_TOKEN, json: true, body: '{}' })).status, 404);
   assert.equal((await call('/api/ask', { token: API_TOKEN })).status, 405);
+});
+
+test('a paused node that is still working says so, and offers Resume', async () => {
+  const r = await call('/', { cookie: 'subfill_session=good' });
+  assert.match(r.body, /pauses after this item/);
+  assert.match(r.body, /value="resume-node"/);
+  assert.match(r.body, /value="pause-node"/);
+});
+
+test('a JSON body that is not an object is refused with 400, not a 500', async () => {
+  for (const body of ['null', '5', '"x"', '[1]']) {
+    const r = await call('/api/ask', { method: 'POST', token: API_TOKEN, json: true, body });
+    assert.equal(r.status, 400, body);
+    assert.match(r.body, /JSON object/);
+  }
+});
+
+test('Wake PC opens the lease window for half an hour', async () => {
+  const before = woken.length;
+  await call('/api/answer', { method: 'POST', token: API_TOKEN, json: true, body: JSON.stringify({ answer: 'wake' }) });
+  assert.deepEqual(woken.slice(before), [30]);
 });

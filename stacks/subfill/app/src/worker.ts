@@ -79,6 +79,20 @@ export class Worker {
     this.store.releaseHolds();
   }
 
+  // The owner chose ▶️ Wake PC: for that long, the PC node may hold a lease
+  // once it comes up (see nodes.ts for why only then).
+  markPcWoken(minutes: number): void {
+    this.store.setMeta('pc_woken_until', String(this.now() + minutes * 60_000));
+  }
+
+  pcWoken(): boolean {
+    return Number(this.store.getMeta('pc_woken_until') ?? 0) > this.now();
+  }
+
+  clearPcWoken(): void {
+    this.store.deleteMeta('pc_woken_until');
+  }
+
   private inMedia(p: string): boolean {
     const root = path.resolve(this.cfg.mediaRoot);
     const full = path.resolve(p);

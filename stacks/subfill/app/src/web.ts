@@ -27,7 +27,7 @@ export type Status = {
 
 export type WebDeps = {
   store: Store;
-  worker: Pick<Worker, 'act' | 'holdForPc' | 'releaseHolds'>;
+  worker: Pick<Worker, 'act' | 'holdForPc' | 'releaseHolds' | 'markPcWoken'>;
   status: () => Status;
   // Pauses or resumes a node by name; returns a problem, or null.
   setNodePaused: (name: string, paused: boolean) => string | null;
@@ -145,8 +145,10 @@ export function renderNodes(nodes: NodeStatus[], held: Item | undefined, now: nu
         n.name !== 'mini' && held ? `${esc(held.title)} is kept for it until ${new Date(held.held_until ?? 0).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : '',
       ].filter(Boolean);
       const problem = n.lease?.error ? `<div class="bad">${esc(n.lease.error)}</div>` : '';
-      const toggle = n.state === 'paused' ? button(n.name, 'resume-node', 'Resume', '/') : button(n.name, 'pause-node', 'Pause', '/');
-      return `<div class="card node"><div class="row" style="justify-content:space-between"><h3><span class="dot ${n.state}"></span>${esc(n.label)}</h3>${toggle}</div><div class="dim">${esc(NODE_LABEL[n.state])}${facts.length ? ` &middot; ${facts.join(' &middot; ')}` : ''}</div>${problem}${doing}</div>`;
+      const toggle = n.paused ? button(n.name, 'resume-node', 'Resume', '/') : button(n.name, 'pause-node', 'Pause', '/');
+      // A paused node still finishes the item it is on.
+      const label = n.paused && n.state === 'working' ? 'pauses after this item' : NODE_LABEL[n.state];
+      return `<div class="card node"><div class="row" style="justify-content:space-between"><h3><span class="dot ${n.state}"></span>${esc(n.label)}</h3>${toggle}</div><div class="dim">${esc(label)}${facts.length ? ` &middot; ${facts.join(' &middot; ')}` : ''}</div>${problem}${doing}</div>`;
     })
     .join('');
 }
@@ -320,12 +322,16 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
     if (!tokenMatches(req.headers.authorization, deps.apiToken)) return sendJson(res, 401, { error: 'wrong or missing token' });
     if (req.method === 'GET' && path === '/api/summary') return sendJson(res, 200, summary(deps));
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
-    let body: Record<string, unknown>;
+    let parsed: unknown;
     try {
-      body = JSON.parse((await readBody(req, 4096)) || '{}') as Record<string, unknown>;
+      parsed = JSON.parse((await readBody(req, 4096)) || '{}');
     } catch {
       return sendJson(res, 400, { error: 'the body is not JSON' });
     }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return sendJson(res, 400, { error: 'the body must be a JSON object' });
+    }
+    const body = parsed as Record<string, unknown>;
     if (path === '/api/ask') {
       const minutes = Number(body.minutes);
       if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 24 * 60) return sendJson(res, 400, { error: 'minutes must be between 0 and 1440' });
@@ -339,7 +345,10 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
       }
       if (body.answer === 'wake') {
         // The PC takes a minute or two to come up: the hold runs on from now.
+        // The wake also lets the PC node hold its lease, for a PC that comes
+        // up within the half hour.
         const minutes = Number(body.minutes ?? 10);
+        deps.worker.markPcWoken(30);
         const held = deps.worker.holdForPc(Number.isFinite(minutes) && minutes > 0 ? Math.min(minutes, 1440) : 10);
         return sendJson(res, 200, { held: held ? { key: held.key, title: held.title, until: held.held_until } : null });
       }

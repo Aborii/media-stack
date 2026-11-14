@@ -26,18 +26,23 @@
 # Two nodes share one queue, newest videos first:
 #   mini  the ollama stack on this CPU: about 45-60 minutes an episode, always
 #         on. ACTIVE_HOURS limits when it may start one; empty is any hour.
-#   pc    the subtitle Ollama on the PC's GPU (pc/ollama), over the direct
-#         cable: a few minutes an episode, whenever the PC is awake and its
-#         tray has not paused or switched off the subtitle model. Empty
-#         SUBFILL_PC_OLLAMA_URL means no PC node.
+#   pc    a second Ollama on the PC's GPU, just for subtitles, over the direct
+#         cable: a few minutes an episode, whenever the PC is awake and that
+#         Ollama answers. It is not part of pc/ollama yet (its own change, with
+#         the tray's switches); until it is installed, leave
+#         SUBFILL_PC_OLLAMA_URL empty, which means no PC node.
 # A PC that sleeps in the middle of an episode hands it back with no attempt
 # used, and the mini or the PC takes it again later.
 #
-# The PC is never woken from here. While the PC node translates, subfill holds
-# a lease at the mini's power client (mini/subfill), so pc-power does not
-# hibernate the PC under an episode, and drops it when the PC has nothing left;
-# it never asks for a wake. Waking is Malak's: it reads /api/summary, asks the
-# owner on Telegram when work is piling up, and on ▶️ Wake PC turns the PC on.
+# The PC is never woken from here. Waking is Malak's: it reads /api/summary,
+# asks the owner on Telegram when work is piling up, and on ▶️ Wake PC turns
+# the PC on and tells subfill (POST /api/answer). Only then, for a PC that
+# comes up within the half hour, does subfill hold a lease at the mini's power
+# client (mini/subfill), so pc-power does not hibernate the PC under an
+# episode, dropping it when the PC has nothing left. A PC that is awake for
+# anything else is used without a lease: pc-power counts a lease ending as an
+# app finishing, and would put a PC the owner is using but not touching (a
+# film) to sleep. subfill never asks the power client for a wake.
 # While it asks, the next item is held for the PC (POST /api/ask); the mini
 # takes it after the hold if nobody answered. /api takes SUBFILL_API_TOKEN and
 # is off without it.
@@ -59,8 +64,10 @@
 #   6. docker compose up -d --build
 #   7. Add 18097 -> 8097 to ~/tls-proxy/Caddyfile.
 # For the PC node, also:
-#   8. On the PC, pc/ollama's install.ps1 sets up the subtitle Ollama and pulls
-#      the model.
+#   8. The subtitle Ollama on the PC, from the pc/ollama change that adds it
+#      (port 11435, translategemma:12b). Do not run today's pc/ollama
+#      install.ps1 with other arguments for this: it would replace paperless's
+#      task and firewall rule.
 #   9. A token for subfill at the power client: add subfill:<token> to
 #      POWER_CLIENT_APPS in ~/pc-power-client/.env, restart it, and put the same
 #      token in SUBFILL_POWER_CLIENT_TOKEN. Not in POWER_CLIENT_CONTROL_APPS:

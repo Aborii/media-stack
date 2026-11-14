@@ -7,9 +7,21 @@
 //   outside its hours     -> nothing (the mini only: the hours protect it)
 //   its Ollama not there  -> offline: asleep, paused on the PC, or no model
 //   no work it may take   -> idle, and the lease goes back
-//   otherwise             -> take the lease (PC), translate one item
+//   otherwise             -> translate one item; the PC takes its lease first
+//                            only if the owner woke it for subtitles
 // A node that drops in the middle of an item hands it back without using an
-// attempt (Worker.translateNext), and the next node to look takes it.
+// attempt (Worker.translateNext), and the next node to look takes it. When
+// that keeps happening (Bazarr down, a GPU too busy to answer in time) the
+// lease goes back and the node waits longer each time, up to MAX_BACKOFF_MS.
+//
+// Why the lease only after a wake. pc-power hibernates the PC when the last
+// thing to happen was an app finishing, not the owner's own input, and a lease
+// ending counts as an app finishing. A PC the owner turned on and is watching a
+// film on would then sleep the moment subfill let go. So when the PC is awake
+// for anything else, the PC node uses it without a lease and can cause no sleep;
+// if pc-power sleeps it anyway, the item in progress simply starts again later.
+// Only after ▶️ Wake PC (Worker.markPcWoken) does it hold the lease, until it
+// runs out of work: then the PC was woken for this, and may sleep after it.
 import { inHours, type Hours } from './hours.ts';
 import type { Lease, LeaseState } from './lease.ts';
 import type { Store } from './store.ts';
@@ -19,10 +31,14 @@ import type { Current, Worker } from './worker.ts';
 export const NODE_STATES = ['working', 'idle', 'offline', 'paused', 'outside_hours'] as const;
 export type NodeState = (typeof NODE_STATES)[number];
 
+export const MAX_BACKOFF_MS = 15 * 60_000;
+
 export type NodeStatus = {
   name: string;
   label: string;
   state: NodeState;
+  // The owner's pause, which a working node obeys after its current item.
+  paused: boolean;
   problem: string | null;
   current: Current | null;
   lease: LeaseState | null;
@@ -46,7 +62,11 @@ export class NodeRunner {
   private state: NodeState = 'idle';
   private problem: string | null = null;
   private lastSeen: number | null = null;
+  // Outages in a row while the model answered: Bazarr down, or a batch
+  // past its deadline. Each doubles the wait.
+  private misses = 0;
   private stopped = false;
+  private stopping: Promise<void> | null = null;
 
   constructor(opts: {
     name: string;
@@ -87,6 +107,7 @@ export class NodeRunner {
       name: this.name,
       label: this.label,
       state: this.state,
+      paused: this.paused,
       problem: this.problem,
       current: this.worker.currentOf(this.name),
       lease: this.lease?.state ?? null,
@@ -94,11 +115,19 @@ export class NodeRunner {
     };
   }
 
+  // Gives the lease back. If it was held, the wake it served is over: the
+  // next stretch of work on the PC runs without one until the next wake.
+  private async letGo(): Promise<void> {
+    if (!this.lease?.state.held) return;
+    await this.lease.release();
+    this.worker.clearPcWoken();
+  }
+
   // One turn of the loop. Returns how long to wait before the next.
   async step(): Promise<number> {
     if (this.paused) {
       this.state = 'paused';
-      await this.lease?.release();
+      await this.letGo();
       return this.waitMs.paused;
     }
     if (!inHours(this.hours, new Date(this.now()))) {
@@ -108,20 +137,29 @@ export class NodeRunner {
     this.problem = await this.model.problem();
     if (this.problem) {
       this.state = 'offline';
-      await this.lease?.release();
+      await this.letGo();
       return this.waitMs.offline;
     }
     this.lastSeen = this.now();
     if (!this.store.next(this.now(), this.takesHeld)) {
       this.state = 'idle';
-      await this.lease?.release();
+      this.misses = 0;
+      await this.letGo();
       return this.waitMs.idle;
     }
-    await this.lease?.hold();
+    if (this.stopped) return 0;
+    if (this.lease && this.worker.pcWoken()) await this.lease.hold();
     this.state = 'working';
     try {
       const worked = await this.worker.translateNext({ name: this.name, generate: this.model.generate, takesHeld: this.takesHeld });
-      return worked ? 0 : this.waitMs.idle;
+      if (worked) {
+        this.misses = 0;
+        return 0;
+      }
+      // An outage while the model looked fine: nothing to keep the PC up for.
+      await this.letGo();
+      this.misses++;
+      return Math.min(this.waitMs.offline * 2 ** this.misses, MAX_BACKOFF_MS);
     } finally {
       this.state = 'idle';
     }
@@ -139,8 +177,10 @@ export class NodeRunner {
     }
   }
 
-  async stop(): Promise<void> {
+  // Once only: a second signal waits for the first stop rather than racing it.
+  stop(): Promise<void> {
     this.stopped = true;
-    await this.lease?.release();
+    this.stopping ??= this.lease ? this.lease.release() : Promise.resolve();
+    return this.stopping;
   }
 }
