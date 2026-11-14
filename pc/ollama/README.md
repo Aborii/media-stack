@@ -21,11 +21,17 @@ switch, logs and request log.
 
 - **PC on, not paused:** paperless-gpt reads new documents as they arrive, and
   subfill's PC node translates subtitles.
-- **The GPU's order: the chat model, then paperless, then subtitles.** The
-  subtitles Ollama stays stopped while the paperless one has a model loaded,
-  and starts again within about half a minute of that model unloading (2
-  minutes after its last page). Both stop while storychat's chat model is
-  loaded.
+- **The GPU's order: the chat model, then paperless, then subtitles.**
+  - The subtitles Ollama stays stopped while the paperless one has a model
+    loaded. It starts again once paperless has had no model loaded for 30 s,
+    which is 2 minutes after paperless's last page, plus that 30 s.
+  - A document that arrives while subtitles hold the GPU loads its model with
+    the GPU nearly full. So when the subtitles Ollama stops for it, it asks
+    paperless to load once more (`unload\paperless`), on the freed GPU. The
+    page cut off is read again.
+  - Both stop while storychat's chat model is loaded.
+- **With subfill's PC node.** It is in `stacks/subfill` from
+  Aborii/media-stack#116 on.
 - **PC off or asleep:** nothing answers.
   - The gate on the mini (`scripts/paperless-gpt-gate.sh`) stops
     paperless-gpt. New documents wait with their `ai-new` tag and Paperless's
@@ -109,10 +115,13 @@ closes the icon; the AI keeps running. Windows may tuck a new icon under the
 - `pause.ps1 -Hours 3`: for three hours, then it resumes by itself.
 - **storychat** pauses them too while its chat model is loaded, because they
   would not fit in the GPU's 12 GB together. The Ollamas come back when the
-  chat model unloads, 30 minutes after the last message. storychat waits for
-  the paperless Ollama to stop before loading. The subtitles one reads the
-  same pause file on the same 2-second loop, so it stops within a few seconds
-  of it.
+  chat model unloads, 30 minutes after the last message.
+  - storychat waits only for the paperless Ollama to stop before loading.
+  - The subtitles one reads the same pause file on the same 2-second loop, so
+    it stops within a few seconds of it, but storychat does not wait for it.
+    When paperless is not running at all, the chat model can start loading
+    while the subtitle model still holds the GPU for those seconds.
+  - Making storychat-server wait for both is its own change.
 
 Pausing takes a few seconds. A page or a batch that was being worked on when
 it paused is done again later.

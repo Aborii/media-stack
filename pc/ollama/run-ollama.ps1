@@ -30,7 +30,10 @@ param(
   [string]$Listen = '10.10.10.1:11434',
   [ValidatePattern('^[a-z]+$')]
   [string]$Name = 'paperless',
-  [int]$YieldPort = 0
+  # The Ollama this one gives the GPU to, by its port and its name.
+  [int]$YieldPort = 0,
+  [ValidatePattern('^[a-z]+$')]
+  [string]$YieldName = 'paperless'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,6 +43,13 @@ $tag = if ($Name -eq 'paperless') { '' } else { "-$Name" }
 $pauseDir = Join-Path $Base 'pause'
 $offFile = Join-Path $Base "off\$Name"
 $unloadFile = Join-Path $Base "unload\$Name"
+$yieldUnloadFile = Join-Path $Base "unload\$YieldName"
+# The yield holds this long after the other Ollama's model last showed, so the
+# moment between its two models (it unloads one before loading the next) does
+# not start this one only for it to be stopped again.
+$yieldHoldSeconds = 30
+$yieldSeen = [datetime]::MinValue
+$yieldReason = "the $YieldName Ollama is working"
 $log = Join-Path $Base "run-ollama$tag.log"
 $serveLog = Join-Path $Base "ollama$tag-serve.log"
 # Ollama writes one [GIN] line per request to stdout: when, status, how long,
@@ -65,6 +75,11 @@ $env:OLLAMA_MODELS = Join-Path $Base 'models'
 $env:OLLAMA_MAX_LOADED_MODELS = '1'
 $env:OLLAMA_NUM_PARALLEL = '1'
 $env:OLLAMA_KEEP_ALIVE = '2m'
+# Every Ollama prunes the models folder's unused files when it starts. The two
+# share that folder, and the second restarts after every pause and yield; a
+# prune landing during a pull through the first could delete a layer not yet
+# in a manifest. Only paperless pulls (install.ps1), so only it prunes.
+if ($Name -ne 'paperless') { $env:OLLAMA_NOPRUNE = '1' }
 
 function Stop-Ollama {
   # This copy only: the other Ollama on the PC keeps running. Its server is
@@ -104,7 +119,14 @@ function Get-PauseReasons {
     $reasons += $file.Name
   }
   if (Test-Path -LiteralPath $offFile) { $reasons += "$Name models switched off" }
-  if ($YieldPort -gt 0 -and (Test-Loaded $YieldPort)) { $reasons += "the Ollama on port $YieldPort is working" }
+  if ($YieldPort -gt 0) {
+    if (Test-Loaded $YieldPort) {
+      $script:yieldSeen = Get-Date
+      $reasons += $yieldReason
+    } elseif (((Get-Date) - $script:yieldSeen).TotalSeconds -lt $yieldHoldSeconds) {
+      $reasons += "the $YieldName Ollama was working moments ago"
+    }
+  }
   return $reasons
 }
 
@@ -142,7 +164,7 @@ while ($true) {
   if (Test-Path -LiteralPath $unloadFile) {
     Remove-Item -LiteralPath $unloadFile -Force -ErrorAction SilentlyContinue
     $killed = if ($running) { Stop-Runner $proc.Id } else { 0 }
-    if ($killed -gt 0) { Write-Log "Unloaded the $Name model (tray icon)." }
+    if ($killed -gt 0) { Write-Log "Unloaded the $Name model, as asked (the tray icon, or an Ollama that yielded to this one)." }
     else { Write-Log "Asked to unload the $Name model, but none was loaded." }
   }
 
@@ -152,9 +174,19 @@ while ($true) {
   }
 
   if ($paused -and $running) {
+    # Yielding with a model loaded means the other Ollama measured the GPU
+    # while this one still filled it, and put most of its model on the CPU.
+    # Once this one is gone, it is asked to load again, on the freed GPU; the
+    # page cut off is read again, as for the tray's unload.
+    $reloadOther = ($reasons -contains $yieldReason) -and (Get-Runners $proc.Id).Count -gt 0
     Stop-Ollama
     $proc = $null
     Write-Log 'Stopped Ollama; the GPU is free.'
+    if ($reloadOther) {
+      New-Item -ItemType Directory -Force -Path (Split-Path $yieldUnloadFile) | Out-Null
+      '' | Set-Content -LiteralPath $yieldUnloadFile -Encoding ascii
+      Write-Log "Asked the $YieldName Ollama to load its model again, now that the GPU is free."
+    }
   } elseif (-not $paused -and -not $running) {
     if ($proc) {
       Write-Log "Ollama exited (code $($proc.ExitCode)); see ollama-serve.log."

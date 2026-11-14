@@ -64,9 +64,14 @@ $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -Execution
   -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 foreach ($t in @(
     @{ Name = 'ollama'; Args = "-Listen $Listen"; Tip = 'Ollama for paperless-gpt on the mini; stops while paused.' },
-    @{ Name = 'ollama-subtitles'; Args = "-Name subtitles -Listen $SubtitlesListen -YieldPort $port"
+    @{ Name = 'ollama-subtitles'; Args = "-Name subtitles -Listen $SubtitlesListen -YieldPort $port -YieldName paperless"
        Tip = "Ollama for subfill's subtitles on the mini; stops while paused or while paperless's Ollama works." }
   )) {
+  # A running copy keeps the script it started with: re-registering does not
+  # end it, and starting the task again does nothing while it runs. So it is
+  # stopped here, and step 5 starts the new one, whose first act clears any
+  # Ollama the old one left on its port.
+  Stop-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$run`" -Base `"$Base`" $($t.Args)" -WorkingDirectory $Base
   $triggers = @(
