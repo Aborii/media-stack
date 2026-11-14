@@ -28,6 +28,10 @@ export type Config = {
 
 export type Current = { key: string; title: string; done: number; total: number; startedAt: number };
 
+// A machine that translates: its name, its model call, and whether it may
+// take an item held for the PC.
+export type NodeRef = { name: string; generate: Generate; takesHeld: boolean };
+
 // States the sync leaves alone: in progress, settled by the owner, or ours on disk.
 const HANDS_OFF: State[] = ['translating', 'failed', 'skipped', 'done'];
 // States whose row is dropped once Bazarr no longer wants Arabic for the item.
@@ -39,7 +43,8 @@ export function outPathFor(video: string, target: Language): string {
 }
 
 export class Worker {
-  current: Current | null = null;
+  // What each node is translating right now, by node name.
+  private readonly working = new Map<string, Current>();
   private readonly store: Store;
   private readonly bazarr: Bazarr;
   private readonly generate: Generate;
@@ -52,6 +57,26 @@ export class Worker {
     this.generate = opts.generate;
     this.cfg = opts.config;
     this.now = opts.now ?? Date.now;
+  }
+
+  // The mini, as the worker was built: the node used when none is named.
+  get mini(): NodeRef {
+    return { name: 'mini', generate: this.generate, takesHeld: false };
+  }
+
+  currentOf(node: string): Current | null {
+    return this.working.get(node) ?? null;
+  }
+
+  // Keeps the next item for the PC for that many minutes, or moves the hold.
+  holdForPc(minutes: number): Item | undefined {
+    const held = this.store.hold(this.now(), this.now() + minutes * 60_000);
+    if (held) this.store.log(held.key, `held for the PC for ${minutes} min`);
+    return held;
+  }
+
+  releaseHolds(): void {
+    this.store.releaseHolds();
   }
 
   private inMedia(p: string): boolean {
@@ -190,16 +215,15 @@ export class Worker {
 
   // Translates the next eligible item, if any. Returns false when there was
   // none, or when Bazarr or Ollama is down, so the caller waits before trying.
-  async translateNext(): Promise<boolean> {
-    const item = this.store.next(this.now());
+  async translateNext(node: NodeRef = this.mini): Promise<boolean> {
+    const item = this.store.next(this.now(), node.takesHeld);
     if (!item) return false;
-    if (!this.store.move(item.key, ['eligible'], 'translating', { started_at: this.now(), attempts: item.attempts + 1, note: null })) {
-      return true;
-    }
-    this.store.log(item.key, `translating from ${item.source_lang} (attempt ${item.attempts + 1})`);
+    const claim = { started_at: this.now(), attempts: item.attempts + 1, note: null, node: node.name, held_until: null };
+    if (!this.store.move(item.key, ['eligible'], 'translating', claim)) return true;
+    this.store.log(item.key, `translating from ${item.source_lang} on the ${node.name} (attempt ${item.attempts + 1})`);
     const part = `${outPathFor(item.video_path, this.cfg.target)}.part`;
     try {
-      await this.translate({ ...item, attempts: item.attempts + 1 });
+      await this.translate({ ...item, attempts: item.attempts + 1 }, node);
     } catch (err) {
       await unlink(part).catch(() => undefined);
       const message = (err as Error).message;
@@ -217,12 +241,12 @@ export class Worker {
       });
       this.store.log(item.key, `${final ? 'failed, giving up' : 'failed, will try again'}: ${message}`);
     } finally {
-      this.current = null;
+      this.working.delete(node.name);
     }
     return true;
   }
 
-  private async translate(item: Item): Promise<void> {
+  private async translate(item: Item, node: NodeRef): Promise<void> {
     const target = this.cfg.target;
     // Bazarr may have found Arabic since the last sync; never translate over that.
     const media = (await this.bazarr.details([{ kind: item.kind, id: item.bazarr_id }])).get(item.key);
@@ -250,16 +274,18 @@ export class Worker {
     const source = parseSrt(decode(await readFile(item.source_path)));
     if (!source.cues.length) throw new Error('the source subtitle has no cues');
     const segments = segmentsOf(source.cues);
-    this.current = { key: item.key, title: item.title, done: 0, total: segments.length, startedAt: this.now() };
+    const startedAt = this.now();
+    this.working.set(node.name, { key: item.key, title: item.title, done: 0, total: segments.length, startedAt });
     const { texts: translations, kept } = await translateAll(
       segments.map((s) => s.body),
-      this.generate,
+      node.generate,
       {
         from: languageOf(item.source_lang ?? 'en'),
         to: target,
         batchSize: this.cfg.batchSize,
         onProgress: (done, total) => {
-          if (this.current) this.current = { ...this.current, done, total };
+          const now = this.working.get(node.name);
+          if (now) this.working.set(node.name, { ...now, done, total });
         },
       },
     );
@@ -273,9 +299,9 @@ export class Worker {
     const part = `${out}.part`;
     await writeFile(part, serializeSrt(result), 'utf8');
     await rename(part, out);
-    const minutes = Math.round((this.now() - (this.current?.startedAt ?? this.now())) / 60_000);
+    const minutes = Math.round((this.now() - startedAt) / 60_000);
     const untranslated = kept ? `, ${kept} left in ${languageOf(item.source_lang ?? 'en').name}` : '';
-    const note = `${source.cues.length} cues in ${minutes} min${untranslated}`;
+    const note = `${source.cues.length} cues in ${minutes} min on the ${node.name}${untranslated}`;
     if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note })) {
       // The row changed under us, so nothing would ever clean this file up.
       await this.deleteOurs({ ...item, out_path: out });

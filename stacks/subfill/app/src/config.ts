@@ -17,6 +17,13 @@ export type Settings = {
   syncMinutes: number;
   maxAttempts: number;
   loginUrl: string;
+  // The PC's subtitle Ollama; empty means there is no PC node.
+  pcOllamaUrl: string;
+  powerClientUrl: string;
+  // subfill's token at the power client; empty means no lease is taken.
+  powerClientToken: string;
+  // The token Malak uses for /api; empty turns /api off.
+  apiToken: string;
 };
 
 function num(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number): number {
@@ -52,5 +59,9 @@ export function readSettings(env: NodeJS.ProcessEnv): Settings {
     syncMinutes: num(env, 'SYNC_MINUTES', 30, 1),
     maxAttempts: num(env, 'MAX_ATTEMPTS', 3, 1),
     loginUrl: env.LOGIN_URL || 'http://subfill-login:8000',
+    pcOllamaUrl: env.PC_OLLAMA_URL ?? '',
+    powerClientUrl: env.POWER_CLIENT_URL || 'http://pc-power-client:8791',
+    powerClientToken: env.POWER_CLIENT_TOKEN ?? '',
+    apiToken: env.API_TOKEN ?? '',
   };
 }

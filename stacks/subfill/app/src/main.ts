@@ -1,13 +1,15 @@
-// subfill's entry point: two loops and the page.
+// subfill's entry point: the sync loop, one loop per node, and the page.
 //
-// The sync loop reads Bazarr every SYNC_MINUTES. The work loop translates one
-// item at a time, inside ACTIVE_HOURS, whenever the model is there. They are
-// separate so a translation that takes most of an hour does not hold up the
-// sync that notices a human subtitle arrived.
+// The sync loop reads Bazarr every SYNC_MINUTES. Each node translates one item
+// at a time from the same queue: the mini inside ACTIVE_HOURS, the PC whenever
+// its Ollama answers (PC_OLLAMA_URL). They are separate loops so an hour-long
+// translation on the mini never holds up the PC, or the sync that notices a
+// human subtitle arrived.
 import path from 'node:path';
 import { Bazarr, BazarrError } from './bazarr.ts';
 import { readSettings } from './config.ts';
-import { inHours } from './hours.ts';
+import { Lease } from './lease.ts';
+import { NodeRunner } from './nodes.ts';
 import { Ollama } from './ollama.ts';
 import { Store } from './store.ts';
 import { ARABIC } from './translate.ts';
@@ -20,11 +22,11 @@ const recovered = store.recoverInterrupted();
 if (recovered) console.log(`picked up ${recovered} translation(s) interrupted by the last stop`);
 
 const bazarr = new Bazarr({ url: settings.bazarrUrl, apiKey: settings.bazarrApiKey });
-const ollama = new Ollama({ url: settings.ollamaUrl, model: settings.model });
+const mini = new Ollama({ url: settings.ollamaUrl, model: settings.model });
 const worker = new Worker({
   store,
   bazarr,
-  generate: (prompt) => ollama.generate(prompt),
+  generate: (prompt) => mini.generate(prompt),
   config: {
     target: ARABIC,
     sourceLanguages: settings.sourceLanguages,
@@ -36,7 +38,36 @@ const worker = new Worker({
   },
 });
 
-const status: Omit<Status, 'current' | 'outsideHours' | 'model'> = { bazarrError: null, ollamaProblem: null, lastSync: null };
+const nodes: NodeRunner[] = [
+  new NodeRunner({
+    name: 'mini',
+    label: 'Mini (CPU)',
+    model: { problem: () => mini.problem(), generate: (p) => mini.generate(p) },
+    worker,
+    store,
+    hours: settings.activeHours,
+  }),
+];
+if (settings.pcOllamaUrl) {
+  // A batch takes seconds on the GPU, so a PC that has not answered in three
+  // minutes has gone to sleep, not slowed down.
+  const pc = new Ollama({ url: settings.pcOllamaUrl, model: settings.model, timeoutMs: 3 * 60_000 });
+  const lease = settings.powerClientToken ? new Lease({ url: settings.powerClientUrl, token: settings.powerClientToken }) : null;
+  if (!lease) console.log('no POWER_CLIENT_TOKEN: the PC may hibernate in the middle of an episode, which then starts again later');
+  nodes.push(
+    new NodeRunner({
+      name: 'pc',
+      label: 'PC (GPU)',
+      model: { problem: () => pc.problem(), generate: (p) => pc.generate(p) },
+      worker,
+      store,
+      lease,
+      takesHeld: true,
+    }),
+  );
+}
+
+const status: Pick<Status, 'bazarrError' | 'lastSync'> = { bazarrError: null, lastSync: null };
 const savedSync = store.getMeta('last_sync');
 status.lastSync = savedSync ? Number(savedSync) : null;
 
@@ -63,43 +94,36 @@ async function syncLoop(): Promise<void> {
   }
 }
 
-async function workLoop(): Promise<void> {
-  while (!stopping) {
-    let worked = false;
-    try {
-      status.ollamaProblem = await ollama.problem();
-      if (!status.ollamaProblem && inHours(settings.activeHours, new Date())) worked = await worker.translateNext();
-    } catch (err) {
-      console.error('work loop:', (err as Error).message);
-    }
-    if (!worked) await sleep(60_000);
-  }
-}
-
 const server = startWeb(
   {
     store,
     worker,
     loginUrl: settings.loginUrl,
-    status: () => ({
-      ...status,
-      current: worker.current,
-      outsideHours: !inHours(settings.activeHours, new Date()),
-      model: settings.model,
-    }),
+    apiToken: settings.apiToken,
+    status: () => ({ ...status, nodes: nodes.map((n) => n.status()), model: settings.model }),
+    setNodePaused: (name, paused) => {
+      const node = nodes.find((n) => n.name === name);
+      if (!node) return `no node called ${name}`;
+      node.setPaused(paused);
+      return null;
+    },
   },
   settings.port,
 );
-console.log(`subfill on :${settings.port}, model ${settings.model}, from ${settings.sourceLanguages.join(',')}`);
+console.log(
+  `subfill on :${settings.port}, model ${settings.model}, from ${settings.sourceLanguages.join(',')}, nodes ${nodes.map((n) => n.name).join(', ')}`,
+);
 
 void syncLoop();
-void workLoop();
+for (const node of nodes) void node.run();
 
-function stop(): void {
+async function stop(): Promise<void> {
   stopping = true;
   server.close();
+  // The PC's lease goes back first, so pc-power is free to sleep the PC.
+  await Promise.all(nodes.map((n) => n.stop()));
   store.close();
   process.exit(0);
 }
-process.on('SIGTERM', stop);
-process.on('SIGINT', stop);
+process.on('SIGTERM', () => void stop());
+process.on('SIGINT', () => void stop());
