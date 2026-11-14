@@ -1,7 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # subfill — Arabic subtitles from a local model, only where Bazarr finds none.
 #
-#   subfill        8097  status page: what is waiting, translating, done, failed;
+#   subfill        8097  its page, Tdarr-style: the nodes and what each is
+#                        translating, the queue, pause/retry/skip buttons;
 #                        HTTPS mirror on 18097 through tls-proxy
 #   subfill-login  -     its sign-in page (glances-login's login.py)
 #
@@ -22,13 +23,33 @@
 # subtitles it downloaded itself.) subfill deletes only files it recorded
 # writing, and never overwrites one it did not.
 #
-# Speed. About 45-60 minutes per episode on the mini's CPU, one at a time, so
-# nobody should wait on it. Newest videos go first, the backlog after.
-# ACTIVE_HOURS limits when a new translation may start; empty is any hour.
+# Two nodes share one queue, newest videos first:
+#   mini  the ollama stack on this CPU: about 45-60 minutes an episode, always
+#         on. ACTIVE_HOURS limits when it may start one; empty is any hour.
+#   pc    a second Ollama on the PC's GPU, just for subtitles, over the direct
+#         cable: a few minutes an episode, whenever the PC is awake and that
+#         Ollama answers. It is not part of pc/ollama yet (its own change, with
+#         the tray's switches); until it is installed, leave
+#         SUBFILL_PC_OLLAMA_URL empty, which means no PC node.
+# A PC that sleeps in the middle of an episode hands it back with no attempt
+# used, and the mini or the PC takes it again later.
+#
+# The PC is never woken from here. Waking is Malak's: it reads /api/summary,
+# asks the owner on Telegram when work is piling up, and on ▶️ Wake PC turns
+# the PC on and tells subfill (POST /api/answer). Only then, for a PC that
+# comes up within the half hour, does subfill hold a lease at the mini's power
+# client (mini/subfill), so pc-power does not hibernate the PC under an
+# episode, dropping it when the PC has nothing left. A PC that is awake for
+# anything else is used without a lease: pc-power counts a lease ending as an
+# app finishing, and would put a PC the owner is using but not touching (a
+# film) to sleep. subfill never asks the power client for a wake.
+# While it asks, the next item is held for the PC (POST /api/ask); the mini
+# takes it after the hold if nobody answered. /api takes SUBFILL_API_TOKEN and
+# is off without it.
 #
 # Nothing phones home. The app has no dependencies besides Node itself, which
-# has no telemetry or update check; it talks only to Bazarr, Ollama and its
-# sign-in container. Ollama's cloud features are off in the ollama stack.
+# has no telemetry or update check; it talks only to Bazarr, the two Ollamas,
+# the power client and its sign-in container. Ollama's cloud features are off.
 #
 # First start, on the mini:
 #   1. The model, once:  docker exec ollama ollama pull translategemma:12b
@@ -42,6 +63,17 @@
 #   5. ln -s ../../docker-compose.env .env   (from this directory)
 #   6. docker compose up -d --build
 #   7. Add 18097 -> 8097 to ~/tls-proxy/Caddyfile.
+# For the PC node, also:
+#   8. The subtitle Ollama on the PC, from the pc/ollama change that adds it
+#      (port 11435, translategemma:12b). Do not run today's pc/ollama
+#      install.ps1 with other arguments for this: it would replace paperless's
+#      task and firewall rule.
+#   9. A token for subfill at the power client: add subfill:<token> to
+#      POWER_CLIENT_APPS in ~/pc-power-client/.env, restart it, and put the same
+#      token in SUBFILL_POWER_CLIENT_TOKEN. Not in POWER_CLIENT_CONTROL_APPS:
+#      subfill must not press the PC's power button.
+#  10. SUBFILL_PC_OLLAMA_URL=http://10.10.10.1:11435, and SUBFILL_API_TOKEN
+#      (openssl rand -hex 32) for Malak, then docker compose up -d.
 # ─────────────────────────────────────────────────────────────────────────────
 name: subfill
 
@@ -76,6 +108,11 @@ services:
       BATCH_SIZE: '30'
       MAX_ATTEMPTS: '3'
       LOGIN_URL: http://subfill-login:8000
+      # The PC node, its lease, and Malak's token. Each empty turns that part off.
+      PC_OLLAMA_URL: ${SUBFILL_PC_OLLAMA_URL:-}
+      POWER_CLIENT_URL: http://pc-power-client:8791
+      POWER_CLIENT_TOKEN: ${SUBFILL_POWER_CLIENT_TOKEN:-}
+      API_TOKEN: ${SUBFILL_API_TOKEN:-}
       # Where Bazarr sees the library. The same folder at the same path, so the
       # paths Bazarr reports are the paths here.
       MEDIA_ROOT: /data
@@ -100,6 +137,8 @@ services:
         max-file: '3'
     networks:
       - mediastack
+      # The mini's power client, for the PC's lease.
+      - pc-power
 
   # The same login.py as glances-login and omnitools-login, a third copy with
   # its own users, signing secret and cookie name. subfill asks it on every
@@ -133,4 +172,8 @@ services:
 networks:
   mediastack:
     name: mediastack
+    external: true
+  # Made by pc-power-client (~/pc-power-client); it must exist before this starts.
+  pc-power:
+    name: pc-power
     external: true

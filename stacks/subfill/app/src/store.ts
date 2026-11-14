@@ -44,9 +44,21 @@ export type Item = {
   updated_at: number;
   started_at: number | null;
   finished_at: number | null;
+  // Kept for the PC until then: the mini leaves it alone while the owner is
+  // asked whether to wake the PC.
+  held_until: number | null;
+  // The node that last took it: "mini" or "pc".
+  node: string | null;
 };
 
 export type LogLine = { at: number; message: string };
+
+// Columns added after the first release, so a database made before them gains
+// them at start. Each is nullable, so old rows need nothing filled in.
+const ADDED_COLUMNS: [string, string][] = [
+  ['held_until', 'INTEGER'],
+  ['node', 'TEXT'],
+];
 
 export class Store {
   readonly db: DatabaseSync;
@@ -75,7 +87,9 @@ export class Store {
         first_seen INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         started_at INTEGER,
-        finished_at INTEGER
+        finished_at INTEGER,
+        held_until INTEGER,
+        node TEXT
       );
       CREATE INDEX IF NOT EXISTS items_state ON items (state, priority, eligible_at);
       CREATE TABLE IF NOT EXISTS log (
@@ -87,6 +101,10 @@ export class Store {
       CREATE INDEX IF NOT EXISTS log_item ON log (item_key, id);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
+    const have = new Set((this.db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).map((c) => c.name));
+    for (const [name, type] of ADDED_COLUMNS) {
+      if (!have.has(name)) this.db.exec(`ALTER TABLE items ADD COLUMN ${name} ${type}`);
+    }
   }
 
   close(): void {
@@ -126,7 +144,9 @@ export class Store {
     return this.db.prepare('SELECT * FROM items').all() as Item[];
   }
 
-  insert(item: Omit<Item, 'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at'>): void {
+  insert(
+    item: Omit<Item, 'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node'>,
+  ): void {
     const now = this.now();
     this.db
       .prepare(
@@ -177,11 +197,39 @@ export class Store {
   }
 
   // The next item to translate: a "translate now" first, then the newest
-  // video. An item that failed waits out its retry delay first.
-  next(now: number): Item | undefined {
+  // video. An item that failed waits out its retry delay first. An item held
+  // for the PC is the PC's first pick, and the mini's only once the hold ends.
+  // A video another node is already translating is skipped: the episodes of a
+  // two-episode file share one subtitle, which the first to finish writes.
+  next(now: number, takesHeld = false): Item | undefined {
     return this.db
-      .prepare(`SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ? ORDER BY priority DESC, eligible_at DESC LIMIT 1`)
-      .get(now) as Item | undefined;
+      .prepare(
+        `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
+           AND (held_until IS NULL OR held_until <= ? OR ?)
+           AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
+         ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, eligible_at DESC LIMIT 1`,
+      )
+      .get(now, now, takesHeld ? 1 : 0, now) as Item | undefined;
+  }
+
+  // Keeps the item the mini would take next for the PC until `until`, or
+  // moves an existing hold to the new time. Returns the held item.
+  hold(now: number, until: number): Item | undefined {
+    const held = this.db.prepare('SELECT * FROM items WHERE state = ? AND held_until > ? LIMIT 1').get('eligible', now) as Item | undefined;
+    const item = held ?? this.next(now);
+    if (!item) return undefined;
+    this.db.prepare('UPDATE items SET held_until = ? WHERE key = ?').run(until, item.key);
+    return { ...item, held_until: until };
+  }
+
+  // Ends every hold: the mini may take those items again.
+  releaseHolds(): number {
+    return Number(this.db.prepare('UPDATE items SET held_until = NULL WHERE held_until IS NOT NULL').run().changes);
+  }
+
+  // The item held for the PC right now, if any.
+  heldNow(now: number): Item | undefined {
+    return this.db.prepare(`SELECT * FROM items WHERE state = 'eligible' AND held_until > ? LIMIT 1`).get(now) as Item | undefined;
   }
 
   log(key: string, message: string): void {
