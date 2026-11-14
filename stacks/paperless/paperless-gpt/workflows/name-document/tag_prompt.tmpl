@@ -1,0 +1,51 @@
+Choose tags for this document in paperless-ngx, only from the list of available tags below.
+
+Tags say what area of life a document belongs to (money, health, work, the car, the home...), plus a few kinds of paper the owner wants to find together (reports, certificates). Who sent it is kept elsewhere, so tags never name the sender.
+
+Rules:
+- Choose 1 to 4 tags, the ones that clearly fit. One is fine. Never more than 4, plus "translation" when it applies.
+- "translation": the document is a translation of another document (it says "translation", "certified translation", "ترجمة", "tercüme", "çeviri", "Übersetzung", or carries a translator's stamp or statement), or holds an original together with its translation. Never for a paper that is simply written in two languages side by side.
+- Use only tags exactly as written in the list. Never invent a tag, never change a tag's spelling.
+- Never choose any of these, even if they are in the list: ai-new, ai-read, ai-name, locked, unlocked, and any tag starting with "paperless-gpt". They are used by the system, not for topics.
+- "medical": anything from doctors, clinics, hospitals, labs or pharmacies about care or medicine: lab tests, prescriptions, x-ray and scan reports, doctors' notes, sick leave, vaccination records, medicines bought. Always together with "health". "health" and "medical" are only for care and medicine: never for food, groceries or a supermarket receipt.
+- "laboratory": the result of a lab test: blood tests (CBC, vitamins, cholesterol...), urine tests, pathology, cultures. Always together with "health" and "medical", whether or not the page says "laboratory".
+- "report": a paper that reports findings: medical, lab, x-ray and scan reports, inspection or assessment reports. Never an invoice, a letter or a certificate.
+- "certificate": any certificate: salary, experience, education, training, completion, birth, marriage. Never a letter: a recommendation or reference letter is not a certificate.
+- "employment": about a job itself: employment contracts, offer letters, work visas, labour cards and work permits, salary and experience certificates, resignation and end of service papers, and a recommendation letter from an employer about someone's work. Usually together with "work".
+- "education": anything from a school, university or ministry of education about study: recommendation letters from a university or a teacher, transcripts, degrees, enrollment and school certificates. A university paper about study is never "employment" or "work", even when it mentions a career or a job someone is applying for.
+- "government" only for papers issued by a government body (ministries, police, immigration, municipality, courts), never for a company's paper.
+- "important" only for papers that are hard to replace: IDs, passports, visas, contracts, deeds, certificates of education. Never for medical papers, tickets, bookings, receipts, bills, resumes or CVs, or letters.
+- "salary": always on a salary certificate, a payslip or a salary transfer letter, together with "work".
+- "shopping" only for buying goods (things you take home): a shop, pharmacy or online-order receipt or invoice. Never for a stay, a trip or a service, even when the paper is a receipt and says "amount paid": hotel and holiday-rental bookings and their receipts, tickets, bills, fines, rides and repairs are not shopping.
+- "tax" only when the paper is about tax itself (a tax return, a tax certificate). VAT printed on a receipt does not make it a tax paper.
+- When unsure about a tag, leave it out.
+
+Examples (made up; choose from the real list below, not from here):
+- A salary certificate from an employer: work, employment, salary, certificate
+- A blood test result: health, medical, laboratory, report
+- A doctor's prescription: health, medical
+- An x-ray report: health, medical, report
+- A pharmacy receipt for medicine: health, medical, shopping
+- A supermarket receipt for food: shopping
+- An employment contract: work, employment, important
+- A recommendation letter from a university professor: education
+- A recommendation letter from an employer: work, employment
+- A traffic fine from the police: car, government
+- A tenancy contract: home, rent, important
+- A flight ticket: travel
+- A paid receipt for a hotel or holiday-rental stay: travel
+- A phone bill: utilities
+
+Reply with the chosen tags only, comma separated, on one line, with no other words.
+
+<available_tags>
+{{.AvailableTags | join ", "}}
+</available_tags>
+
+<title>
+{{.Title}}
+</title>
+
+<content>
+{{.Content}}
+</content>

@@ -1,0 +1,59 @@
+Write a title for this document in paperless-ngx.
+
+First decide which kind of document it is, from the content below. Then build the title from that kind's row, as: Type – Key – Date
+Separate the parts with " – " (space, en dash, space).
+
+Kinds, with the exact Type to use, what Key is, and what Date is:
+1. Emirates ID card. Type "Emirates ID". Key: the holder's first and last name: the FIRST word and the LAST word of the full name, middle names dropped ("Layla Hassan Saeed" becomes "Layla Saeed"). Date: "expires Mon YYYY".
+2. Passport. Type "Passport". Key: the holder's first and last name. Date: "expires Mon YYYY".
+3. Visa or residence permit. Type "Residence Visa" (or "Visa"). Key: the holder's first and last name. Date: "expires Mon YYYY".
+4. Driving licence. Type "Driving Licence". Key: the holder's first and last name. Date: "expires Mon YYYY".
+5. Vehicle registration (mulkiya). Type "Vehicle Registration". Key: the car's make and model. Date: "expires Mon YYYY".
+6. Bank or credit card statement. Type "Bank Statement" or "Card Statement". Key: the bank's short name, a space, then the account or card's last 4 digits. Date: the statement month as "Mon YYYY", or "Mon–Mon YYYY" for several months.
+7. Tenancy contract (Ejari). Type "Tenancy Contract". Key: the PROPERTY (building or area), never the landlord or tenant. Date: the term as "YYYY–YYYY".
+8. Any other contract. Type "Contract". Key: the other party. Date: the term as "YYYY–YYYY".
+9. Medical report, prescription or lab result. Type "Medical Report", "Prescription" or "Lab Result". Key: the patient's first and last name (first word and last word of the full name), then " – ", then the test or condition in 1–3 words (always include it). Date: "Mon YYYY" of the test or visit.
+10. Warranty. Type "Warranty". Key: brand and model, short (e.g. "Samsung Galaxy Tab S9 FE"). Date: the purchase date as written, "bought Mon YYYY". Do not calculate an end date.
+11. Manual. Type "Manual". Key: brand and model. No date.
+12. Travel: a flight, train or bus ticket or booking, or a hotel or holiday-rental booking or receipt.
+    - Flights and trains: Type "Flight" (or "Ticket" for trains and buses). Key: the route, from every flight on the booking, on all pages. One flight: "Dubai to Baku", dated with its day, like "3 Jun 2026". Out and back between the same two places: "Dubai to Baku and back", dated from the first departure to the last, like "3 Jun–10 Jun 2026". More stops: "Dubai to Istanbul to Rome".
+    - Stays: Type "Hotel". Key: the hotel's or listing's name as shown at the top of the booking, not the street address, building or unit number. Date: check-in to check-out, like "30 Sep–4 Oct 2023", with the year printed on the booking.
+13. Everything issued by a company or office: invoice, receipt, bill, quotation, payslip, salary or experience certificate, letter, insurance policy, traffic fine, and the like. Type: what it is ("Invoice", "Receipt", "Salary Certificate", "Experience Certificate"...). Key: the company or office that ISSUED it, never the person it is about. Date: the document's date as "Mon YYYY".
+    Letters and certificates about a person are named by what they say, not by who wrote them:
+    - "Recommendation Letter": recommends or endorses a person (a reference letter, "I recommend", "توصية", "tavsiye"), from a university, a teacher or an employer. Always this exact Type, whoever wrote it.
+    - "Experience Certificate": only certifies that a person WORKED somewhere for a period ("شهادة خبرة", "worked with us from ... to ..."). Never for study, a recommendation or a school paper.
+    - From a school or university about study: "Graduation Certificate", "Degree Certificate", "Transcript", "Enrollment Certificate", or "School Certificate", whichever it is.
+14. Anything else (a note, a photo, a form): the title is only a short plain description of what it is, up to 8 words. No Type word in front, no dashes, no Key, no Date.
+Only kind 6 (statements) adds account or card digits; a bill or invoice never does.
+
+Examples (made-up; take the real values from the content, never from here):
+Invoice – Blue Harbour Supplies – Feb 2025
+Experience Certificate – Al Waha Contracting – Mar 2024   (an Arabic شهادة خبرة from شركة الواحة للمقاولات saying one of its engineers worked there: named after the company that issued it, not the engineer)
+Recommendation Letter – Nile Valley University – May 2022   (a professor recommending a former student)
+Emirates ID – Layla Saeed – expires Feb 2029   (card of "Layla Hassan Saeed": first and last name, the middle names left out)
+Bank Statement – ADCB 3392 – Mar 2026
+Tenancy Contract – Silicon Oasis – 2025–2026
+Lab Result – Yusuf Nasser – Vitamin D – Jul 2026   (patient "Yusuf Kareem Nasser": first and last name)
+Warranty – LG OLED C3 – bought May 2025
+Flight – Oslo to Lisbon – 3 Apr 2026
+Flight – Cairo to Berlin and back – 2 May–9 May 2026
+
+Rules:
+- Every date must be written in the content. If the content has no date for that part, leave the Date part out. Never guess or invent one.
+- Months are 3-letter English names: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec. Never numbers for months.
+- Write the title in English, even when the document is in Arabic: translate the Type, and write Arabic names of companies and people in Latin letters.
+- Short company names: drop legal suffixes such as "LLC", "L.L.C", "DMCC", "FZ-LLC", "FZE" and "Co.". Drop the word "Bank" too, unless the name means nothing without it.
+- No file-name leftovers: no underscores, extensions, or numbers that only belong to a file name.
+- Language, at the very end in parentheses, only in these cases:
+  - A translation of another document (it says "translation", "certified translation", "ترجمة", "tercüme", "çeviri", "Übersetzung", or carries a translator's stamp or statement): the language it is written in, then "translation". Example: "(Turkish translation)".
+  - An original that is neither English nor English with Arabic side by side: its language. Example: "(Arabic)".
+  - An original and its translation in one document: "(Arabic, with Turkish translation)", the original's language first.
+  - English, and English with Arabic side by side (most UAE papers): nothing.
+- A translation is titled like the original it translates: the same Type, the original's issuer as Key (never the translator or translation office) and the original's date, then its language. So "Experience Certificate – Al Waha Contracting – Mar 2024 (Arabic)" and its translation "Experience Certificate – Al Waha Contracting – Mar 2024 (Turkish translation)" differ only in the brackets.
+- Reply with the title only: one line, no quotes, no explanation.
+
+The original title is often just the file name. Use it only as a hint, never copy it.
+<original_title>{{.Title}}</original_title>
+<content>
+{{.Content}}
+</content>

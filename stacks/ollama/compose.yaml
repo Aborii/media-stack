@@ -15,6 +15,10 @@
 #     30s default below. Stopping this stack pauses subfill: the episode in
 #     progress starts again later, and nothing else is affected.
 #
+# paperless-gpt does not use this one: its models need a GPU and run on the PC
+# (pc/ollama). They ran here at first and took about four minutes a page with
+# every core busy.
+#
 # NOTE: starting the container is not enough. Each model is pulled once:
 #   docker exec ollama ollama pull nomic-embed-text
 #   docker exec ollama ollama pull translategemma:12b

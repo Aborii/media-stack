@@ -52,6 +52,8 @@ services:
       - GLUETUN_API_KEY=${GLUETUN_API_KEY:-}
       # Price Watcher's GLANCE_API_TOKEN (~/price-watcher/.env), for the Prices tile on Home.
       - PRICE_WATCHER_TOKEN=${PRICE_WATCHER_TOKEN:-}
+      # claude-web's WEB_GLANCE_TOKEN, for the Claude Code tile on Home.
+      - CLAUDE_WEB_GLANCE_TOKEN=${CLAUDE_WEB_GLANCE_TOKEN:-}
       - UPTIMEKUMA_SLUG=${UPTIMEKUMA_SLUG:-home-services}
       # qBittorrent has no API key: the tile logs in with these and keeps the
       # session cookie for the calls that follow. Never reaches the browser.

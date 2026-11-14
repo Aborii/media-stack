@@ -4,7 +4,8 @@
 # Four containers. The app itself; Valkey as its task queue (Paperless will not
 # start without one); and Tika plus Gotenberg, which turn Office files and
 # emails into PDFs it can OCR. Without those two, a .docx or .eml dropped in the
-# inbox is rejected instead of filed.
+# inbox is rejected instead of filed. A fifth, paperless-gpt, is the optional
+# AI part described under "First start".
 #
 # The database is the shared postgres17, not a fifth container: one role and
 # one database, created by hand once (see "First start" below). It is then
@@ -27,6 +28,107 @@
 #   2. docker compose up -d   (from this directory)
 #   3. The first account, typed by you rather than kept in a file:
 #        docker exec -it paperless python3 manage.py createsuperuser
+#
+# paperless-gpt, the AI part. It reads each new document with a vision model
+# (far better than Tesseract on photos, tables and messy scans), writes that
+# text back as the document's content, then names it and fills in tags,
+# correspondent and document type. The models run on the PC's GPU
+# (pc/ollama), reached over the direct cable, so nothing leaves the house; a
+# page takes seconds there against four minutes on this CPU.
+#
+# Only while the PC answers. The gate (scripts/paperless-gpt-gate.sh, a user
+# service on the mini) stops this container while the PC is off, asleep or
+# paused for a game, and starts it again when Ollama is back. Documents that
+# arrive meanwhile keep their "ai-new" tag and Paperless's own OCR, and are
+# read once it is back. Nothing here wakes the PC or keeps it awake.
+#
+# Which documents: two paperless-gpt workflows (paperless-gpt/workflows/) run
+# one after the other, so the names come from the good text. "new-document"
+# reads every document tagged "ai-new" (OCR only) and tags it "ai-read".
+# scripts/after-ai.py then cuts repeated text out of it and tags it "ai-name",
+# which "name-document" names. The vision model sometimes writes a watermark
+# or a security pattern thousands of times, and named straight after OCR, a
+# transcript was named from nothing but its university's name repeated.
+# scripts/after-filing.py (the
+# post-consume script) puts that tag on every new document; set AI_TAG to ''
+# on the paperless service to stop it. To run it again on old documents (after
+# a prompt changes), use scripts/rerun-ai.py rather than tagging them "ai-new"
+# by hand: the model is shown the current title, and copies an old AI title.
+#   docker exec -u paperless paperless python3 /usr/src/paperless/scripts/rerun-ai.py 32 36
+# (-u paperless: these scripts move files and write the search index, which
+# must stay Paperless's own. They refuse to run as root.)
+#
+# "new-document" has its own OCR prompt (ocr_prompt.tmpl beside it). The
+# built-in one pastes the whole document's existing text into every page's
+# request: on a long document that overflows the context window, and the
+# model can copy another page's text into this one. "name-document" has its
+# own title, tag, correspondent and custom field prompts, and fills three
+# Paperless custom fields: Total amount (monetary, AED), Due date and Invoice
+# number. It names them by their ids in this install (1, 2, 3); on a fresh
+# install, create them in that order or update custom_field_ids.
+#
+# Languages. Titles of translations and of originals that are neither
+# English nor English-with-Arabic end with the language: "(Arabic)", "(Turkish
+# translation)", "(Arabic, with Turkish translation)". The "Languages" field
+# (string, id 4) is filled by after-filing.py from the text, not by the AI.
+# "Related documents" (document link, id 5) links an original to its
+# translation; it is set by hand in the document's custom fields, and
+# Paperless shows the link on both. Letting the AI fill it made the bill
+# fields worse, and an original and its translation rarely share a number it
+# could match on. Translations are also tagged "translation".
+#
+# Correspondents. The OCR prompt writes brands shown only as a logo as a
+# "Logo: <name>" line, and the correspondent prompt prefers the platform over
+# the people on it (Airbnb, not the host), takes nothing for papers the owner
+# wrote (a resume), and never picks a name the page does not show: without
+# those, a hotel receipt was filed under its host and a resume under a
+# correspondent copied from the list. The owner's own names go in
+# PAPERLESS_GPT_CORRESPONDENT_BLACK_LIST (docker-compose.env).
+#
+# After the AI. scripts/after-ai.py, run in this container every 2 minutes
+# by aborii's user timer (install-paperless-after-ai.sh), hands read documents
+# on to naming (above), and fixes what the naming gets wrong in a way a rule
+# can catch: a made-up due date or title date, "shopping" on a trip. The list
+# is at the top of the script.
+#
+#   4. Ollama and the models on the PC: pc/ollama/README.md (one elevated
+#      install.ps1), then the gate here, as aborii:
+#        ../../scripts/install-paperless-gpt-gate.sh
+#   5. A token for it: in Paperless, your profile (top right) > API Auth
+#      Token > generate, into PAPERLESS_GPT_API_TOKEN in docker-compose.env.
+#   6. Its workflows, copied into its prompts folder:
+#        mkdir -p "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows"
+#        rsync -a --delete paperless-gpt/workflows/ "$FOLDER_FOR_DATA/paperless-gpt/prompts/workflows/"
+#      then docker compose up -d again. Run the rsync again whenever a file in
+#      paperless-gpt/workflows/ changes; it picks changes up without a restart.
+#      --delete drops files moved or removed here, so the live folder never
+#      holds a workflow or prompt the repo no longer has.
+#   7. Nothing to set up in Paperless for "ai-new": after-filing.py adds it.
+#      An older install has a Paperless workflow "AI: read and name new
+#      documents" doing the same; turn it off, or it hands a locked original
+#      to the AI before its unlocked version exists (see after-filing.py).
+#
+# Bills from Gmail. Paperless reads one Gmail label, "Paperless"; Gmail
+# filters decide which senders land there, so the list is changed in Gmail.
+# In Paperless, Mail > Add account: imap.gmail.com, port 993, SSL, your
+# address, and a Google app password (made by you, entered by you). Then one
+# mail rule on that account: folder "Paperless", attachments only, PDFs, mark
+# as read. Mail goes through the same unlock, AI and naming as uploads.
+#
+# Locked PDFs are stored exactly as they came, so they can be sent on as
+# received. after-filing.py tries each password in
+#   $FOLDER_FOR_DATA/paperless/secrets/pdf-passwords.txt
+# (one per line, # for comments; written by you, readable by aborii only:
+#   mkdir -p … && chmod 700 …/secrets && chmod 600 …/pdf-passwords.txt).
+# The first that opens it is handed to Paperless's own unlock, which adds an
+# unlocked copy as version 2; content, search and the AI use that one, and the
+# original stays as version 1 in the Versions menu, labelled "Original
+# (locked, as received)" beside the "Unlocked copy". The document is tagged
+# "unlocked" with a note naming the password's line. If none opens it, it is
+# tagged "locked" with a note and kept from the AI; once the password is in
+# the list, Actions > Remove password with "Update document" unlocks it the
+# same way. A PDF that only restricts copying or printing opens without a
+# password and is read as it is. backup.sh copies the list with appdata.
 # ─────────────────────────────────────────────────────────────────────────────
 name: paperless
 
@@ -88,6 +190,18 @@ services:
       # slower but copes with a page that mixes them.
       PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng+ara}
 
+      # Dates never taken as a document's date, such as birthdays printed on
+      # every ID and medical report: the first date in the text wins, and a
+      # date of birth is often first. Kept in docker-compose.env, not here.
+      PAPERLESS_IGNORE_DATES: ${PAPERLESS_IGNORE_DATES:-}
+
+      # Files are stored as Type/Year/Title.pdf rather than by number, so the
+      # library reads well on disk and in its nightly copy on the storage
+      # share (scripts/paperless-library-sync.sh). A missing type or date
+      # leaves its folder out instead of writing "none".
+      PAPERLESS_FILENAME_FORMAT: '{{ document_type }}/{{ created_year }}/{{ title }}'
+      PAPERLESS_FILENAME_FORMAT_REMOVE_NONE: 'true'
+
       # PAPERLESS_URL is deliberately NOT set. It would also become the only
       # allowed host, and this is reached as aboriis-mini, by the tailnet name
       # and by the tailnet address. Plain HTTP on 8000 passes Django's CSRF
@@ -95,6 +209,11 @@ services:
       # not: the browser says https:// and Paperless, behind the proxy, sees
       # http://, so those origins have to be listed.
       PAPERLESS_CSRF_TRUSTED_ORIGINS: ${PAPERLESS_CSRF_TRUSTED_ORIGINS:?err}
+
+      # Once a document is filed: unlocks a locked PDF as a new version with
+      # the passwords in secrets/pdf-passwords.txt (see "Locked PDFs" above),
+      # and tags documents "ai-new" for paperless-gpt.
+      PAPERLESS_POST_CONSUME_SCRIPT: /usr/src/paperless/scripts/after-filing.py
 
     volumes:
       # The search index, the classifier and the logs.
@@ -110,6 +229,11 @@ services:
       # It sits on the data disk, under what Samba publishes as [storage], so
       # a scanner or the PC can drop files straight into it.
       - ${PAPERLESS_CONSUME_DIR:-/srv/storage/data/paperless-inbox}:/usr/src/paperless/consume
+      # The post-consume script, straight from this repo.
+      - ./scripts:/usr/src/paperless/scripts:ro
+      # The PDF password list. A folder, not the file itself: a bind-mounted
+      # file that does not exist yet would be created as a directory.
+      - ${FOLDER_FOR_DATA:?err}/paperless/secrets:/usr/src/paperless/secrets:ro
 
     healthcheck:
       test: ['CMD-SHELL', 'curl -fsS http://127.0.0.1:8000 >/dev/null || exit 1']
@@ -172,6 +296,101 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
+    networks:
+      - mediastack
+
+  paperless-gpt:
+    container_name: paperless-gpt
+    # Docker Hub for the same reason as paperless above.
+    image: icereed/paperless-gpt:latest
+    restart: unless-stopped
+    depends_on:
+      paperless:
+        condition: service_started
+    ports:
+      # Loopback only. Its page has no sign-in and holds a token that can read
+      # and change every document, so it is not published to the network.
+      # Nothing needs it day to day; for a look, tunnel it:
+      #   ssh -L 8001:127.0.0.1:8001 mini   then http://localhost:8001
+      - '127.0.0.1:${PAPERLESS_GPT_PORT:-8001}:8080'
+    environment:
+      # The entrypoint drops to this uid and owns its folders as it.
+      PUID: ${PUID:?err}
+      PGID: ${PGID:?err}
+      TZ: ${TIMEZONE:?err}
+
+      PAPERLESS_BASE_URL: http://paperless:8000
+      # Empty rather than required: the token only exists once Paperless is up
+      # (step 5), and a required one would stop the whole stack starting on a
+      # fresh install. Until it is set this one container exits and retries.
+      PAPERLESS_API_TOKEN: ${PAPERLESS_GPT_API_TOKEN:-}
+
+      # Names, tags, correspondent and type.
+      LLM_PROVIDER: ollama
+      LLM_MODEL: ${PAPERLESS_GPT_LLM_MODEL:-qwen2.5:14b}
+      # The language names and tags are written in. Documents can be in
+      # Arabic; the model reads them either way.
+      LLM_LANGUAGE: English
+      # Tags come only from the list in Paperless (the 21 topics added at
+      # setup, and any you add). Left to create its own, the model filled the
+      # list with near-duplicates of the type and the issuer ("laboratory",
+      # "pathology", "report"). Document types are never created by it either.
+      CREATE_NEW_TAGS: 'false'
+      # Names never used as a correspondent: the owner's own, which are on
+      # most of their papers. Kept in docker-compose.env, not here.
+      CORRESPONDENT_BLACK_LIST: ${PAPERLESS_GPT_CORRESPONDENT_BLACK_LIST:-}
+      # Paperless reads the date itself, from the text, and gets it right more
+      # often: on the first test invoice, dated 12 October, the model wrote
+      # 1 October. Off here for the plain paperless-gpt-auto tag too; the
+      # workflow turns it off in its own file.
+      AUTO_GENERATE_CREATED_DATE: 'false'
+
+      # Reading the page.
+      OCR_PROVIDER: llm
+      VISION_LLM_PROVIDER: ollama
+      # Qwen 2.5 VL rather than minicpm-v, which most guides use: Qwen's
+      # vision models list Arabic among the languages they read in images.
+      VISION_LLM_MODEL: ${PAPERLESS_GPT_VISION_MODEL:-qwen2.5vl:7b}
+      # The PC, over the direct cable (pc/ollama). The ollama stack on this box
+      # only serves the small embedding model now.
+      OLLAMA_HOST: ${PAPERLESS_GPT_OLLAMA_URL:-http://10.10.10.1:11434}
+      # Every page. The default of 5 replaces a long document's content with
+      # its first five pages, and search then misses the rest.
+      OCR_LIMIT_PAGES: '0'
+      # The page is rendered at up to this many pixels, about an A4 page at
+      # 150 DPI. Every pixel the model sees is a prompt token; the default of
+      # 40 million made one page about 4,000 tokens, which with the prompt
+      # overflowed the window below. At this size a page is about 2,900 tokens,
+      # and the first test page came back word for word, Arabic included.
+      IMAGE_MAX_TOTAL_PIXELS: '2200000'
+      # Ollama's default window is 4,096 tokens, and a page image alone nearly
+      # fills it: the first page tried failed with 4,416. 8,192 holds a page,
+      # the prompt and a full page of text back. Applies to OCR and naming.
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      # At most this many tokens of text per page. Unset, a page that sends
+      # the model into a loop (a watermark or security pattern written over
+      # and over) runs on past the window: one page came back as 141,000
+      # characters. The densest real page here was about 720 tokens.
+      VISION_LLM_MAX_TOKENS: '3000'
+      # Naming reads at most this much of a document's text, so a long one
+      # still fits the window above. The start of a document is what names it.
+      TOKEN_LIMIT: '4000'
+
+    volumes:
+      # Prompts and its workflows (prompts/workflows/, seeded from
+      # paperless-gpt/workflows/ in this folder - see "First start").
+      - ${FOLDER_FOR_DATA:?err}/paperless-gpt/prompts:/app/prompts
+      # Settings changed in its page.
+      - ${FOLDER_FOR_DATA:?err}/paperless-gpt/config:/app/config
+      # History, so a change it made can be undone from its page.
+      - ${FOLDER_FOR_DATA:?err}/paperless-gpt/db:/app/db
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
     networks:
       - mediastack
 
