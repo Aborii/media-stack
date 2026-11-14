@@ -1,38 +1,62 @@
-# Keeps Ollama running on the PC for paperless-gpt on the mini, except while
-# something has paused it. Task "ollama" starts this at boot and every 5
-# minutes; the task's "ignore new instance" setting makes the repeat a crash
-# restart only.
+# Keeps one Ollama running on the PC for the mini, except while something has
+# paused it. There are two, each started by its own task at boot and every 5
+# minutes (the task's "ignore new instance" setting makes the repeat a crash
+# restart only):
+#   paperless  task "ollama", port 11434: paperless-gpt's reading and naming
+#   subtitles  task "ollama-subtitles", port 11435: subfill's translation
+# Both share the download, the models folder and the pause folder; each has
+# its own switch, logs and request log. -Name picks which; paperless keeps the
+# file names it had before there were two.
 #
-# Paused means any file in the pause folder:
+# Paused means any file in the pause folder, for both:
 #   user       - pause.ps1, for gaming or anything else that wants the GPU.
 #                It may hold an "until" time; past it, the file is removed.
 #   storychat  - storychat-server, while its chat model is loaded.
-# The tray icon's "Paperless models can load" switch, when off, writes
-# off\paperless, which counts as a pause too, until it is switched back on.
-# While paused, Ollama is stopped, which frees the GPU at once. paperless-gpt
-# on the mini sees nothing answering and is stopped there by its gate, so its
-# documents wait with their "ai-new" tag rather than failing.
+# The tray icon's "... models can load" switch, when off, writes off\<name>,
+# which pauses that one only, until it is switched back on. And -YieldPort:
+# while the Ollama on that port has a model loaded, this one stays stopped.
+# Subtitles yields to paperless that way, so the GPU's order is the chat
+# model, then paperless, then subtitles.
+# While paused, Ollama is stopped, which frees the GPU at once. The mini sees
+# nothing answering: paperless-gpt is stopped by its gate, so its documents
+# wait with their "ai-new" tag, and subfill's PC node goes offline and hands
+# its episode back to the queue.
 #
-# unload\paperless is the tray's "Unload the paperless model now": the model
-# runner is killed mid-work and the file removed. Ollama stays up; the next
-# request loads the model again, and a page cut off is read again.
+# unload\<name> is the tray's "Unload the ... model now": the model runner is
+# killed mid-work and the file removed. Ollama stays up; the next request
+# loads the model again, and a page or batch cut off is done again.
 param(
   [string]$Base = 'I:\AI\ollama',
-  [string]$Listen = '10.10.10.1:11434'
+  [string]$Listen = '10.10.10.1:11434',
+  [ValidatePattern('^[a-z]+$')]
+  [string]$Name = 'paperless',
+  # The Ollama this one gives the GPU to, by its port and its name.
+  [int]$YieldPort = 0,
+  [ValidatePattern('^[a-z]+$')]
+  [string]$YieldName = 'paperless'
 )
 
 $ErrorActionPreference = 'Stop'
 $exe = Join-Path $Base 'ollama.exe'
+$port = [int]($Listen -split ':')[-1]
+$tag = if ($Name -eq 'paperless') { '' } else { "-$Name" }
 $pauseDir = Join-Path $Base 'pause'
-$offFile = Join-Path $Base 'off\paperless'
-$unloadFile = Join-Path $Base 'unload\paperless'
-$log = Join-Path $Base 'run-ollama.log'
-$serveLog = Join-Path $Base 'ollama-serve.log'
+$offFile = Join-Path $Base "off\$Name"
+$unloadFile = Join-Path $Base "unload\$Name"
+$yieldUnloadFile = Join-Path $Base "unload\$YieldName"
+# The yield holds this long after the other Ollama's model last showed, so the
+# moment between its two models (it unloads one before loading the next) does
+# not start this one only for it to be stopped again.
+$yieldHoldSeconds = 30
+$yieldSeen = [datetime]::MinValue
+$yieldReason = "the $YieldName Ollama is working"
+$log = Join-Path $Base "run-ollama$tag.log"
+$serveLog = Join-Path $Base "ollama$tag-serve.log"
 # Ollama writes one [GIN] line per request to stdout: when, status, how long,
 # from where. Start-Process can only overwrite, so before each start the last
 # run's lines are moved into the history, which the tray icon reads.
-$requestLog = Join-Path $Base 'ollama-requests.log'
-$requestHistory = Join-Path $Base 'ollama-requests-history.log'
+$requestLog = Join-Path $Base "ollama$tag-requests.log"
+$requestHistory = Join-Path $Base "ollama$tag-requests-history.log"
 New-Item -ItemType Directory -Force -Path $pauseDir, (Join-Path $Base 'models'), (Split-Path $offFile), (Split-Path $unloadFile) | Out-Null
 
 function Write-Log([string]$message) {
@@ -51,12 +75,21 @@ $env:OLLAMA_MODELS = Join-Path $Base 'models'
 $env:OLLAMA_MAX_LOADED_MODELS = '1'
 $env:OLLAMA_NUM_PARALLEL = '1'
 $env:OLLAMA_KEEP_ALIVE = '2m'
+# Every Ollama prunes the models folder's unused files when it starts. The two
+# share that folder, and the second restarts after every pause and yield; a
+# prune landing during a pull through the first could delete a layer not yet
+# in a manifest. Only paperless pulls (install.ps1), so only it prunes.
+if ($Name -ne 'paperless') { $env:OLLAMA_NOPRUNE = '1' }
 
 function Stop-Ollama {
-  # The server starts a runner process per loaded model; that runner is what
-  # holds the GPU memory, so every ollama process goes, not just the server.
-  Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
-    ForEach-Object { & taskkill.exe /PID $_.Id /T /F 2>&1 | Out-Null }
+  # This copy only: the other Ollama on the PC keeps running. Its server is
+  # the one this script started, or whatever still listens on its port (one
+  # left by a stopped task). The server starts a runner per loaded model, and
+  # that runner holds the GPU memory, so the whole tree goes, not just the server.
+  $ids = @()
+  if ($script:proc -and -not $script:proc.HasExited) { $ids += $script:proc.Id }
+  $ids += @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object OwningProcess)
+  foreach ($id in ($ids | Select-Object -Unique)) { & taskkill.exe /PID $id /T /F 2>&1 | Out-Null }
 }
 
 function Save-RequestHistory {
@@ -85,13 +118,32 @@ function Get-PauseReasons {
     }
     $reasons += $file.Name
   }
-  if (Test-Path -LiteralPath $offFile) { $reasons += 'paperless models switched off' }
+  if (Test-Path -LiteralPath $offFile) { $reasons += "$Name models switched off" }
+  if ($YieldPort -gt 0) {
+    if (Test-Loaded $YieldPort) {
+      $script:yieldSeen = Get-Date
+      $reasons += $yieldReason
+    } elseif (((Get-Date) - $script:yieldSeen).TotalSeconds -lt $yieldHoldSeconds) {
+      $reasons += "the $YieldName Ollama was working moments ago"
+    }
+  }
   return $reasons
+}
+
+# The model runners under a server, each a llama-server holding a loaded model.
+function Get-Runners([int]$serverPid) {
+  @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$serverPid" -ErrorAction SilentlyContinue)
+}
+
+# True when the Ollama listening on that port has a model loaded.
+function Test-Loaded([int]$onPort) {
+  $server = Get-NetTCPConnection -LocalPort $onPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  return [bool]($server -and (Get-Runners $server.OwningProcess).Count -gt 0)
 }
 
 # Kills the runner holding the loaded model, not the server itself.
 function Stop-Runner([int]$serverPid) {
-  $runners = @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$serverPid" -ErrorAction SilentlyContinue)
+  $runners = Get-Runners $serverPid
   foreach ($r in $runners) { & taskkill.exe /PID $r.ProcessId /T /F 2>&1 | Out-Null }
   return $runners.Count
 }
@@ -99,7 +151,7 @@ function Stop-Runner([int]$serverPid) {
 # An Ollama left from a stopped task (stopping the task ends this script but
 # not its child) is a stale copy: start clean.
 Stop-Ollama
-Write-Log "Started. Listening on $Listen when not paused."
+Write-Log "Started ($Name). Listening on $Listen when not paused$(if ($YieldPort) { "; stops while port $YieldPort has a model loaded" })."
 
 $proc = $null
 $lastStart = [datetime]::MinValue
@@ -112,8 +164,8 @@ while ($true) {
   if (Test-Path -LiteralPath $unloadFile) {
     Remove-Item -LiteralPath $unloadFile -Force -ErrorAction SilentlyContinue
     $killed = if ($running) { Stop-Runner $proc.Id } else { 0 }
-    if ($killed -gt 0) { Write-Log 'Unloaded the paperless model (tray icon).' }
-    else { Write-Log 'Asked to unload the paperless model, but none was loaded.' }
+    if ($killed -gt 0) { Write-Log "Unloaded the $Name model, as asked (the tray icon, or an Ollama that yielded to this one)." }
+    else { Write-Log "Asked to unload the $Name model, but none was loaded." }
   }
 
   if ($paused -ne $wasPaused) {
@@ -122,9 +174,19 @@ while ($true) {
   }
 
   if ($paused -and $running) {
+    # Yielding with a model loaded means the other Ollama measured the GPU
+    # while this one still filled it, and put most of its model on the CPU.
+    # Once this one is gone, it is asked to load again, on the freed GPU; the
+    # page cut off is read again, as for the tray's unload.
+    $reloadOther = ($reasons -contains $yieldReason) -and (Get-Runners $proc.Id).Count -gt 0
     Stop-Ollama
     $proc = $null
     Write-Log 'Stopped Ollama; the GPU is free.'
+    if ($reloadOther) {
+      New-Item -ItemType Directory -Force -Path (Split-Path $yieldUnloadFile) | Out-Null
+      '' | Set-Content -LiteralPath $yieldUnloadFile -Encoding ascii
+      Write-Log "Asked the $YieldName Ollama to load its model again, now that the GPU is free."
+    }
   } elseif (-not $paused -and -not $running) {
     if ($proc) {
       Write-Log "Ollama exited (code $($proc.ExitCode)); see ollama-serve.log."

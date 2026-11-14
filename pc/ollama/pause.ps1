@@ -34,7 +34,7 @@ while (((Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue) -or (Test-Ch
   Start-Sleep -Milliseconds 500
 }
 if (Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue) {
-  Write-Host 'Ollama is still running. Is the "ollama" task running? Check I:\AI\ollama\run-ollama.log.'
+  Write-Host 'An Ollama is still running. Are the "ollama" and "ollama-subtitles" tasks running? Check run-ollama.log and run-ollama-subtitles.log in I:\AI\ollama.'
 } elseif (Test-ChatLoaded) {
   Write-Host 'The chat model is still loaded. Is the "storychat-server" task running? Check its storychat-server.log.'
 } else {
