@@ -50,6 +50,8 @@ HTTP = [
     ("qBittorrent",    "http://gluetun:8200/",                      OK2XX),
     ("Scrutiny",       "http://scrutiny:8080/",                     OK3XX),
     ("Bazarr",         "http://bazarr:6767/",                       OK4XX),
+    # /healthz needs no session; everything else redirects to the sign-in.
+    ("subfill",        "http://subfill:8080/healthz",               OK2XX),
     # Hardware monitoring. Both health endpoints answer 200 with no session.
     ("Beszel",         "http://beszel:8090/api/health",             OK2XX),
     ("Grafana",        "http://grafana:3000/api/health",            OK2XX),

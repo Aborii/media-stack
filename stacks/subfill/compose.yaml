@@ -1,0 +1,136 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# subfill — Arabic subtitles from a local model, only where Bazarr finds none.
+#
+#   subfill        8097  status page: what is waiting, translating, done, failed;
+#                        HTTPS mirror on 18097 through tls-proxy
+#   subfill-login  -     its sign-in page (glances-login's login.py)
+#
+# How it fits with Bazarr. Bazarr searches first, and subfill reads Bazarr's
+# wanted lists every SYNC_MINUTES. An episode or film whose Arabic is still
+# missing WAIT_HOURS after its video arrived, and which has an English .srt
+# beside it, is translated by TranslateGemma 12B in the ollama stack and saved
+# as <video>.ar.machine.srt. Only the words change: index and timing lines go
+# back out byte for byte, and tags, positions, song markers and dialogue dashes
+# are put back where they were.
+#
+# Why ".machine" in the name. Jellyfin reads <video>.ar.machine.srt as an
+# Arabic track titled "machine", so it is plain which track is not a human one.
+# Bazarr's scanner only takes <video>.ar.srt, so it skips this file, Arabic
+# stays "missing" there, and Bazarr keeps searching for a human subtitle. When
+# one arrives, subfill sees Arabic is no longer missing and deletes its own
+# file. (A plain .ar.srt would end Bazarr's search for good: it only upgrades
+# subtitles it downloaded itself.) subfill deletes only files it recorded
+# writing, and never overwrites one it did not.
+#
+# Speed. About 45-60 minutes per episode on the mini's CPU, one at a time, so
+# nobody should wait on it. Newest videos go first, the backlog after.
+# ACTIVE_HOURS limits when a new translation may start; empty is any hour.
+#
+# Nothing phones home. The app has no dependencies besides Node itself, which
+# has no telemetry or update check; it talks only to Bazarr, Ollama and its
+# sign-in container. Ollama's cloud features are off in the ollama stack.
+#
+# First start, on the mini:
+#   1. The model, once:  docker exec ollama ollama pull translategemma:12b
+#   2. In ../../docker-compose.env set SUBFILL_BAZARR_API_KEY to Bazarr's key
+#      (Settings > General > Security > API Key).
+#   3. mkdir -p /srv/appdata/subfill/db /srv/appdata/subfill/auth
+#      chown -R "$PUID:$PGID" /srv/appdata/subfill/db
+#   4. The sign-in user, typing the password when asked (from this directory):
+#        printf 'aborii:%s\n' "$(read -rsp 'Password: ' p; printf %s "$p" | python3 \
+#          ../monitoring/glances-web/login.py hash)" > /srv/appdata/subfill/auth/users
+#   5. ln -s ../../docker-compose.env .env   (from this directory)
+#   6. docker compose up -d --build
+#   7. Add 18097 -> 8097 to ~/tls-proxy/Caddyfile.
+# ─────────────────────────────────────────────────────────────────────────────
+name: subfill
+
+services:
+  subfill:
+    container_name: subfill
+    build:
+      context: ./app
+    image: media-stack/subfill:local
+    restart: unless-stopped
+    labels:
+      # Built here, so there is no registry for wud to check.
+      - wud.watch=false
+    # Bazarr's user, so the subtitles it writes beside the videos belong to
+    # the same owner as everything else in the library.
+    user: '${PUID:?err}:${PGID:?err}'
+    ports:
+      - '${SUBFILL_PORT:-8097}:8080'
+    environment:
+      TZ: ${TIMEZONE:?err}
+      BAZARR_URL: http://bazarr:6767
+      BAZARR_API_KEY: ${SUBFILL_BAZARR_API_KEY:?err}
+      OLLAMA_URL: http://ollama:11434
+      MODEL: ${SUBFILL_MODEL:-translategemma:12b}
+      # Languages to translate from, in order of preference.
+      SOURCE_LANGUAGES: ${SUBFILL_SOURCE_LANGUAGES:-en}
+      # How long Bazarr gets to find a human subtitle before subfill steps in.
+      # Bazarr searches every 6 hours, so 72 is about twelve searches.
+      WAIT_HOURS: ${SUBFILL_WAIT_HOURS:-72}
+      ACTIVE_HOURS: ${SUBFILL_ACTIVE_HOURS:-}
+      SYNC_MINUTES: '30'
+      BATCH_SIZE: '30'
+      MAX_ATTEMPTS: '3'
+      LOGIN_URL: http://subfill-login:8000
+      # Where Bazarr sees the library. The same folder at the same path, so the
+      # paths Bazarr reports are the paths here.
+      MEDIA_ROOT: /data
+      DATA_DIR: /var/lib/subfill
+    volumes:
+      - ${FOLDER_FOR_MEDIA:?err}:/data
+      # Its SQLite database. Under appdata, so the nightly backup takes it.
+      - ${FOLDER_FOR_DATA:?err}/subfill/db:/var/lib/subfill
+    depends_on:
+      subfill-login:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/healthz']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+  # The same login.py as glances-login and omnitools-login, a third copy with
+  # its own users, signing secret and cookie name. subfill asks it on every
+  # request (see app/src/web.ts). No published port.
+  subfill-login:
+    image: python:3.12-alpine
+    container_name: subfill-login
+    restart: unless-stopped
+    command: ['python', '/app/login.py', 'serve']
+    environment:
+      TZ: ${TIMEZONE:?err}
+      LOGIN_TITLE: subfill
+      LOGIN_COOKIE: subfill_session
+    volumes:
+      - ../monitoring/glances-web/login.py:/app/login.py:ro
+      - ${FOLDER_FOR_DATA:?err}/subfill/auth:/data
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - mediastack
+
+networks:
+  mediastack:
+    name: mediastack
+    external: true

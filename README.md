@@ -55,6 +55,7 @@ docker compose down
 | **Automation** | sonarr | 8989 | TV |
 | | radarr | 7878 | films |
 | | bazarr | 6767 | subtitles |
+| | subfill | 8097 | Arabic subtitles from a local model where Bazarr finds none, saved as `<video>.ar.machine.srt`; sign-in required, HTTPS mirror on 18097 |
 | **Libraries** | jellyfin | 8096 | video |
 | | kavita | 5000 | books, comics, manga |
 | | audiobookshelf | 13378 | audiobooks, filed beside the ebooks in `books/` |

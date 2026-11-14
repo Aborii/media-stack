@@ -1,0 +1,21 @@
+{
+  // Type checking only. Node runs the .ts files directly by stripping the
+  // types, so there is no build step and no output folder; erasableSyntaxOnly
+  // keeps out the few TypeScript features (enum, namespace, parameter
+  // properties) that stripping cannot handle.
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2024"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": false,
+    "skipLibCheck": true
+  },
+  "include": ["src", "test"]
+}

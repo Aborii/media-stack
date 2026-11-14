@@ -7,6 +7,8 @@ Dockge at `:5001` or by `docker compose` from inside the directory.
 |---|---|
 | `vpn` | gluetun, qbittorrent, prowlarr, flaresolverr |
 | `arr` | sonarr, radarr, bazarr |
+| `subfill` | subfill and its sign-in page: translates subtitles to Arabic with the `ollama` stack's model when Bazarr finds none - see its compose header |
+| `ollama` | the local model server, CPU only: embeddings, and subfill's translation model |
 | `media` | jellyfin, kavita, audiobookshelf |
 | `immich` | server, machine-learning, postgres, valkey |
 | `monitoring` | uptime-kuma, scrutiny, dozzle, glances, wud |
