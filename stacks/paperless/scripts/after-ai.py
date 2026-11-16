@@ -65,7 +65,11 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   "finance" and none of the other topics, and gets the matching document
   type. The tag model tagged what a statement lists: VAT as "tax", card
   purchases as "shopping", a salary credit as "salary" and "work", a premium
-  as "insurance". Once per document, with a note.
+  as "insurance". Its correspondent is the bank its title names ("Mashreq
+  7933" is Mashreq): an existing correspondent with that name, or one that
+  differs only in spacing, case or a "Bank" ("Emirates Islamic Bank"), or a
+  new one by that name. The correspondent model wrote one bank three ways
+  ("Mashreq", "mashreqbank", "Mashreqbank"). Once per document, with a note.
 - The document's own date is set from its title's date when the two disagree
   on the year. Paperless reads the date from the text when a paper arrives,
   and on half the papers it found none (the upload day was kept) or the wrong
@@ -127,6 +131,8 @@ STATEMENT_NOTE = "after-ai: filed as a statement"
 # title_prompt.tmpl's kind 6, and the document type each one gets.
 STATEMENT_TYPES = {"Bank Statement": "Bank statement", "Card Statement": "Credit card statement"}
 STATEMENT_TAGS = {"bank", "finance"}
+# Words that do not tell one bank from another.
+BANK_FILLER = {"bank", "the", "pjsc", "psc", "llc", "finance"}
 # Tags a statement keeps: they say how it was stored, not what it is about.
 KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG}
 # title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
@@ -320,6 +326,37 @@ def known_key(title: str, names: list[str]) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
+def squashed(name: str) -> str:
+    """A bank's name without case, spacing and filler words: "Mashreqbank",
+    "mashreq bank" and "Mashreq" are all "mashreq"."""
+    joined = re.sub(r"[^a-z]", "", name.lower())
+    for word in sorted(BANK_FILLER, key=len, reverse=True):
+        if joined.endswith(word) and len(joined) > len(word):
+            joined = joined[: -len(word)]
+    return joined
+
+
+def statement_bank(title: str) -> str | None:
+    """The bank a statement's title names: "Card Statement – Mashreq 7933 –
+    Oct 2026" is "Mashreq"."""
+    parts = SUFFIX.sub(r"\1", title).split(" – ")
+    if len(parts) < 2:
+        return None
+    bank = re.sub(r"\s+\d{3,}$", "", parts[1]).strip()
+    return bank or None
+
+
+def statement_correspondent(bank: str, current: str | None, names: list[str]) -> str:
+    """The correspondent a statement from this bank belongs under."""
+    exact = [n for n in names if n.lower() == bank.lower()]
+    if exact:
+        return exact[0]
+    if current and squashed(current) == squashed(bank):
+        return current
+    alike = [n for n in names if squashed(n) == squashed(bank)]
+    return alike[0] if len(alike) == 1 else bank
+
+
 def date_of_title(title: str):
     """The date a title's date part stands for (its start, for a range), or
     None when it has none or it is an expiry."""
@@ -468,6 +505,16 @@ def main() -> None:
                 doc.document_type = wanted
                 doc.save(update_fields=["document_type"])
                 changes.append(f"type {type_name}")
+            bank = statement_bank(doc.title)
+            current = doc.correspondent.name if doc.correspondent else None
+            if bank:
+                name = statement_correspondent(bank, current, list(Correspondent.objects.values_list("name", flat=True)))
+                if name != current:
+                    doc.correspondent = Correspondent.objects.get_or_create(
+                        name=name, defaults={"matching_algorithm": 0, "owner": doc.owner}
+                    )[0]
+                    doc.save(update_fields=["correspondent"])
+                    changes.append(f"correspondent {name} (was {current or 'none'})")
             # Even with nothing to change: each statement is decided once, so a
             # tag the owner adds later is never taken off again.
             Note.objects.create(
