@@ -330,9 +330,14 @@ def squashed(name: str) -> str:
     """A bank's name without case, spacing and filler words: "Mashreqbank",
     "mashreq bank" and "Mashreq" are all "mashreq"."""
     joined = re.sub(r"[^a-z]", "", name.lower())
-    for word in sorted(BANK_FILLER, key=len, reverse=True):
-        if joined.endswith(word) and len(joined) > len(word):
-            joined = joined[: -len(word)]
+    # Until nothing more comes off: "... Bank PJSC" ends in two of them.
+    stripped = True
+    while stripped:
+        stripped = False
+        for word in BANK_FILLER:
+            if joined.endswith(word) and len(joined) > len(word):
+                joined = joined[: -len(word)]
+                stripped = True
     return joined
 
 
