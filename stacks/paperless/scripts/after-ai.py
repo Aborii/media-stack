@@ -61,6 +61,11 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   Education Syrian Arab Republic".
   These two rules change a document once, with a note saying what changed,
   and leave it alone after that, so the owner's own edits stay.
+- A paper titled "Bank Statement" or "Card Statement" is tagged "bank" and
+  "finance" and none of the other topics, and gets the matching document
+  type. The tag model tagged what a statement lists: VAT as "tax", card
+  purchases as "shopping", a salary credit as "salary" and "work", a premium
+  as "insurance". Once per document, with a note.
 - The document's own date is set from its title's date when the two disagree
   on the year. Paperless reads the date from the text when a paper arrives,
   and on half the papers it found none (the upload day was kept) or the wrong
@@ -118,6 +123,12 @@ DROPPED_NOTE = "after-ai: removed the date"
 LANGUAGES_FIELD = "Languages"
 LANGUAGE_NOTE = "after-ai: corrected the language"
 DATE_NOTE = "after-ai: set the document date"
+STATEMENT_NOTE = "after-ai: filed as a statement"
+# title_prompt.tmpl's kind 6, and the document type each one gets.
+STATEMENT_TYPES = {"Bank Statement": "Bank statement", "Card Statement": "Credit card statement"}
+STATEMENT_TAGS = {"bank", "finance"}
+# Tags a statement keeps: they say how it was stored, not what it is about.
+KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG}
 # title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
 TRAVEL_TYPES = {"Flight", "Ticket", "Hotel"}
 MONTH_NUMBER = {m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
@@ -435,6 +446,37 @@ def main() -> None:
         print(f"after-ai: document {doc.pk}: title {doc.title!r} -> {title!r} ({', '.join(missing)} not in the text).")
         doc.title = title
         doc.save(update_fields=["title"])
+
+    from documents.models import DocumentType
+
+    for kind, type_name in STATEMENT_TYPES.items():
+        for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG, title__startswith=f"{kind} – "):
+            if Note.objects.filter(document=doc, note__startswith=STATEMENT_NOTE).exists():
+                continue
+            names = {t.name for t in doc.tags.all()}
+            drop = sorted(n for n in names if n not in STATEMENT_TAGS | KEPT_TAGS and not n.startswith("paperless-gpt"))
+            add = sorted(STATEMENT_TAGS - names)
+            changes = []
+            if drop:
+                doc.tags.remove(*Tag.objects.filter(name__in=drop))
+                changes.append(f"removed {', '.join(drop)}")
+            if add:
+                doc.tags.add(*Tag.objects.filter(name__in=add))
+                changes.append(f"added {', '.join(add)}")
+            wanted = DocumentType.objects.filter(name=type_name).first()
+            if wanted and doc.document_type_id != wanted.pk:
+                doc.document_type = wanted
+                doc.save(update_fields=["document_type"])
+                changes.append(f"type {type_name}")
+            # Even with nothing to change: each statement is decided once, so a
+            # tag the owner adds later is never taken off again.
+            Note.objects.create(
+                document=doc,
+                user=doc.owner,
+                note=f"{STATEMENT_NOTE}: {'; '.join(changes) or 'nothing to change'}. Edits made after this are kept.",
+            )
+            if changes:
+                print(f"after-ai: document {doc.pk}: statement, {'; '.join(changes)}.")
 
     from django.utils import timezone
 
