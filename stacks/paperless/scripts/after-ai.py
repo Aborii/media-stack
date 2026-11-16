@@ -468,12 +468,14 @@ def main() -> None:
                 doc.document_type = wanted
                 doc.save(update_fields=["document_type"])
                 changes.append(f"type {type_name}")
+            # Even with nothing to change: each statement is decided once, so a
+            # tag the owner adds later is never taken off again.
+            Note.objects.create(
+                document=doc,
+                user=doc.owner,
+                note=f"{STATEMENT_NOTE}: {'; '.join(changes) or 'nothing to change'}. Edits made after this are kept.",
+            )
             if changes:
-                Note.objects.create(
-                    document=doc,
-                    user=doc.owner,
-                    note=f"{STATEMENT_NOTE}: {'; '.join(changes)}. Edits made after this are kept.",
-                )
                 print(f"after-ai: document {doc.pk}: statement, {'; '.join(changes)}.")
 
     from django.utils import timezone
