@@ -11,7 +11,7 @@ Fields to fill:
 {{ .CustomFieldsXML }}
 
 What each field means. Fill a field only when the document is the kind named here AND the value is printed in it; otherwise leave the field out.
-- "Total amount" (monetary): the final amount to pay or that was paid, VAT included, on an invoice, receipt, bill, quotation, traffic fine or similar. On a bill or statement with an "amount due", use that. Never a salary, a balance, a price per item, a limit or a rent mentioned in a contract.
+- "Total amount" (monetary): the final amount to pay or that was paid, VAT included, on an invoice, receipt, bill, quotation, traffic fine or similar. On a bill or statement with an "amount due", use that; on a credit card statement, the total amount due, never the credit limit, the available limit or the minimum payment. Never a salary, a balance, a price per item, a limit or a rent mentioned in a contract.
   Format: the three-letter currency code, then the number with two decimals and a period, no thousands separators. AED unless another currency is printed. An amount printed as "AED 1,234.50" becomes "AED1234.50".
 - "Due date" (date): the date a payment is due ("due date", "pay by", "payment due"). Never the document's own date, an expiry date or a date of birth. Format: YYYY-MM-DD.
 - "Invoice number" (string): the number of an invoice, bill or receipt, exactly as printed ("Invoice no", "Bill no", "Receipt no", "Tax invoice no"). Never an account number, a customer number, a TRN or an ID number.
