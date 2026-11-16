@@ -70,6 +70,11 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   differs only in spacing, case or a "Bank" ("Emirates Islamic Bank"), or a
   new one by that name. The correspondent model wrote one bank three ways
   ("Mashreq", "mashreqbank", "Mashreqbank"). Once per document, with a note.
+- A statement title's account or card digits ("Mashreq 7933") stay only when
+  the statement's text or its file's name shows them at the end of a number
+  ("...7933", "XXXXXX7933"); otherwise they are taken out of the title. The model copied the prompt's example digits
+  onto a card whose number it could not read, and wrote a masked "36**".
+  Once per document, with a note; it checks the text in code, nobody reads it.
 - The document's own date is set from its title's date when the two disagree
   on the year. Paperless reads the date from the text when a paper arrives,
   and on half the papers it found none (the upload day was kept) or the wrong
@@ -128,6 +133,7 @@ LANGUAGES_FIELD = "Languages"
 LANGUAGE_NOTE = "after-ai: corrected the language"
 DATE_NOTE = "after-ai: set the document date"
 STATEMENT_NOTE = "after-ai: filed as a statement"
+DIGITS_NOTE = "after-ai: checked the account digits"
 # title_prompt.tmpl's kind 6, and the document type each one gets.
 STATEMENT_TYPES = {"Bank Statement": "Bank statement", "Card Statement": "Credit card statement"}
 STATEMENT_TAGS = {"bank", "finance"}
@@ -341,6 +347,28 @@ def squashed(name: str) -> str:
     return joined
 
 
+def without_unshown_digits(title: str, text: str, filename: str = "") -> str:
+    """The statement title without its account digits when neither the text
+    nor the file's own name shows them as the end of a number ("...5101",
+    "XXXXXX7933"; not inside an amount like "17424.00"). A masked "36**"
+    never counts."""
+    parts = title.split(" – ")
+    if len(parts) < 3 or not (text.strip() or filename):
+        return title
+    m = re.search(r"\s+([\d*xX]{3,})$", parts[1])
+    if not m:
+        return title
+    digits = m.group(1)
+    shown = False
+    if digits.isdigit():
+        ending = re.compile(rf"(?<![.,]){digits}(?![\d.,])")
+        shown = bool(ending.search(text.translate(DIGITS)) or ending.search(filename))
+    if shown:
+        return title
+    parts[1] = parts[1][: m.start()].strip()
+    return " – ".join(parts)
+
+
 def statement_bank(title: str) -> str | None:
     """The bank a statement's title names: "Card Statement – Mashreq 7933 –
     Oct 2026" is "Mashreq"."""
@@ -529,6 +557,18 @@ def main() -> None:
             )
             if changes:
                 print(f"after-ai: document {doc.pk}: statement, {'; '.join(changes)}.")
+
+    for kind in STATEMENT_TYPES:
+        for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG, title__startswith=f"{kind} – "):
+            if Note.objects.filter(document=doc, note__startswith=DIGITS_NOTE).exists():
+                continue
+            title = without_unshown_digits(doc.title, text_of(doc), doc.original_filename or "")
+            done = f"took the digits out of {doc.title!r}: the statement never shows them" if title != doc.title else "the digits are in the statement"
+            Note.objects.create(document=doc, user=doc.owner, note=f"{DIGITS_NOTE}: {done}.")
+            if title != doc.title:
+                print(f"after-ai: document {doc.pk}: title {doc.title!r} -> {title!r} (digits not in the text).")
+                doc.title = title
+                doc.save(update_fields=["title"])
 
     from django.utils import timezone
 
