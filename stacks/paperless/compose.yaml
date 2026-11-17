@@ -392,6 +392,17 @@ services:
       # and over) runs on past the window: one page came back as 141,000
       # characters. The densest real page here was about 720 tokens.
       VISION_LLM_MAX_TOKENS: '3000'
+      # One try at reading a document. A page Ollama aborts ("prediction
+      # aborted, token repeat limit reached": the model looping on a
+      # watermark) fails the same way every time at this temperature, and
+      # every failed try before the last is an error that makes paperless-gpt
+      # wait before its next batch, the wait doubling up to an hour. With
+      # most batches of statements holding one such page, the queue stalled
+      # and Ollama unloaded. On its last try paperless-gpt marks the document
+      # failed without an error, and after-ai.py names it from Paperless's own
+      # OCR. A document cut off by the PC going off fails at once too; run it
+      # again with rerun-ai.py.
+      OCR_MAX_RETRIES: '1'
       # Naming reads at most this much of a document's text, so a long one
       # still fits the window above. The start of a document is what names it.
       TOKEN_LIMIT: '4000'
