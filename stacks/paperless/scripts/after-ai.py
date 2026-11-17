@@ -102,7 +102,11 @@ from (so documents from several connected accounts can be told apart), and
 the tag "gmail" ("email" for a mailbox elsewhere). Handled mail is remembered
 by Gmail's message id in MAIL_STATE; a mail whose document is not there
 (still being consumed) is tried again, and after MAIL_GIVE_UP_DAYS it is let
-go. The listing and the ids use Gmail's IMAP extensions.
+go. So is a mail whose document paperless-gpt is still working on (tagged
+ai-new, ai-read or ai-name): paperless-gpt reads a document's tags when it
+starts and writes them back when it ends, so a tag added in between was lost
+(two statements lost "gmail" that way). The listing and the ids use Gmail's
+IMAP extensions.
 """
 
 import os
@@ -114,6 +118,8 @@ DONE_TAG = "paperless-gpt-auto-complete"
 # search update wrote root's index files; Paperless, running as paperless,
 # then could not move files into them, and a save failed with a 500.
 ROOT_REFUSED = "after-ai: run as the paperless user: docker exec -u paperless paperless python3 ..."
+# new-document's trigger (after-filing.py's AI_TAG).
+AI_TAG_NEW = "ai-new"
 # new-document's completion tag, and name-document's trigger.
 READ_TAG = "ai-read"
 NAME_TAG = "ai-name"
@@ -492,8 +498,8 @@ def fill_sent_fields() -> None:
     from django.conf import settings
     from imap_tools import AND, MailBox
 
-    from documents.models import CustomField, CustomFieldInstance, Tag
-    from paperless_mail.models import MailRule
+    from documents.models import CustomField, CustomFieldInstance, Document, Tag
+    from paperless_mail.models import MailAccount, MailRule
 
     sent_by = CustomField.objects.get_or_create(name=SENT_BY_FIELD, defaults={"data_type": "string"})[0]
     sent_on = CustomField.objects.get_or_create(name=SENT_ON_FIELD, defaults={"data_type": "string"})[0]
@@ -524,6 +530,9 @@ def fill_sent_fields() -> None:
                     if not when or now - when > datetime.timedelta(days=MAIL_GIVE_UP_DAYS):
                         done.add(msgid)
                     continue
+                # Still with paperless-gpt: its write-back would undo the tag.
+                if any(d.tags.filter(name__in=(AI_TAG_NEW, READ_TAG, NAME_TAG)).exists() for d in docs):
+                    continue
                 stamp = when.astimezone(local).strftime("%Y-%m-%d %H:%M") if when else ""
                 for doc in docs:
                     for field, value in ((sent_by, sender), (sent_on, stamp), (recipient, a.username)):
@@ -534,6 +543,21 @@ def fill_sent_fields() -> None:
                 done.add(msgid)
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(json.dumps(sorted(done)))
+
+    # A handled document (it has a Recipient) that lost its mail tag, to a
+    # paperless-gpt write-back that started before the tag went on, gets it
+    # back once paperless-gpt has let it go.
+    lost = (
+        Document.objects.filter(root_document__isnull=True, custom_fields__field=recipient)
+        .exclude(tags__name__in=MAIL_TAGS | {AI_TAG_NEW, READ_TAG, NAME_TAG})
+        .distinct()
+    )
+    for doc in lost:
+        address = doc.custom_fields.filter(field=recipient).values_list("value_text", flat=True).first()
+        account = MailAccount.objects.filter(username=address).first()
+        name = "gmail" if account and "gmail" in account.imap_server.lower() else "email"
+        doc.tags.add(Tag.objects.get_or_create(name=name, defaults={"matching_algorithm": 0})[0])
+        print(f"after-ai: document {doc.pk}: tag {name} put back.")
 
 
 def main() -> None:
