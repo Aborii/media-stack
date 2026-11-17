@@ -14,7 +14,7 @@ rather than replacing them, so old ones would stay beside the new.
 
 So for each document this puts the title back to the file name, removes every
 tag except "locked" and "unlocked" (which after-filing.py set from the file,
-not the AI), clears the correspondent, document type and the AI's custom
+not the AI) and "gmail"/"email" (after-ai.py's mail step), clears the correspondent, document type and the AI's custom
 fields, and tags it "ai-new". It also deletes after-ai.py's notes (a removed
 date, a failed reading), so its one-time fixes apply to the new run again.
 "Languages" and "Related documents" are kept:
@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 AI_TAG = "ai-new"
-KEEP_TAGS = {"locked", "unlocked"}
+KEEP_TAGS = {"locked", "unlocked", "gmail", "email"}
 AI_FIELDS = ["Total amount", "Due date", "Invoice number"]
 # Every note after-ai.py writes starts with this (DROPPED_NOTE, FAILED_NOTE).
 AFTER_AI_NOTE = "after-ai: "
