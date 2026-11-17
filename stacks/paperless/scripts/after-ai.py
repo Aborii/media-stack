@@ -454,6 +454,7 @@ def gmail_ids(M, uids: list[str]) -> dict[str, str]:
 def mail_matches(M, uids: list[str]):
     """For each mail, (uid, its date, sender, and the documents its PDF
     attachments became). Hashes the attachments; never opens them."""
+    import datetime
     import hashlib
 
     from documents.models import Document
@@ -462,7 +463,14 @@ def mail_matches(M, uids: list[str]):
         sums = [hashlib.sha256(a.payload).hexdigest() for a in msg.attachments if (a.filename or "").lower().endswith(".pdf")]
         docs = list(Document.objects.filter(root_document__isnull=True, checksum__in=sums)) if sums else []
         sender = msg.from_values.full if msg.from_values else msg.from_
-        yield msg.uid, msg.date, sender, docs
+        # imap_tools gives 1900-01-01 for a mail with no Date header, and a
+        # naive time for one without an offset.
+        when = msg.date
+        if when and when.year < 1971:
+            when = None
+        elif when and when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        yield msg.uid, when, sender, docs
 
 
 def fill_sent_fields() -> None:
@@ -499,7 +507,8 @@ def fill_sent_fields() -> None:
             for uid, when, sender, docs in mail_matches(M, todo):
                 msgid = ids[uid]
                 if not docs:
-                    if when and now - when > datetime.timedelta(days=MAIL_GIVE_UP_DAYS):
+                    # Undated, it cannot be aged: let it go rather than fetch it forever.
+                    if not when or now - when > datetime.timedelta(days=MAIL_GIVE_UP_DAYS):
                         done.add(msgid)
                     continue
                 stamp = when.astimezone(local).strftime("%Y-%m-%d %H:%M") if when else ""
