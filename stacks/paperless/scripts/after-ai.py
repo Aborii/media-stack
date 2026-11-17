@@ -87,6 +87,19 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
 
 Those fixes look only at documents paperless-gpt has finished (tagged
 paperless-gpt-auto-complete). It prints what it changed and exits 0 either way.
+
+Mail: a document that came from Gmail gets "Sent by" (the sender, name and
+address) and "Sent on" (when the email was sent, local time, as text: no
+custom field type holds a time). Paperless keeps neither, and the AI soon
+replaces the correspondent taken from the sender. Every run lists the mail
+each enabled "tag the mail" rule has tagged as filed, and fetches the ones not
+handled yet (at most MAIL_BATCH a run). A PDF attachment's SHA-256 is the
+checksum Paperless gave the document, so the hash finds it, whatever the
+file is called (FAB names all 49 of its statements "EStatement.PDF"). The
+attachments are hashed in code, never opened. A field already filled is left
+as it is. Handled mail is remembered by Gmail's message id in MAIL_STATE; a
+mail whose document is not there (still being consumed) is tried again, and
+after MAIL_GIVE_UP_DAYS it is let go.
 """
 
 import os
@@ -134,6 +147,12 @@ LANGUAGE_NOTE = "after-ai: corrected the language"
 DATE_NOTE = "after-ai: set the document date"
 STATEMENT_NOTE = "after-ai: filed as a statement"
 DIGITS_NOTE = "after-ai: checked the account digits"
+SENT_BY_FIELD = "Sent by"
+SENT_ON_FIELD = "Sent on"
+# Paperless's data folder: writable by the paperless user and backed up.
+MAIL_STATE = "/usr/src/paperless/data/after-ai/mail-dated.json"
+MAIL_BATCH = 40
+MAIL_GIVE_UP_DAYS = 7
 # title_prompt.tmpl's kind 6, and the document type each one gets.
 STATEMENT_TYPES = {"Bank Statement": "Bank statement", "Card Statement": "Credit card statement"}
 STATEMENT_TAGS = {"bank", "finance"}
@@ -419,6 +438,81 @@ def date_of_title(title: str):
         return None
 
 
+def gmail_ids(M, uids: list[str]) -> dict[str, str]:
+    """IMAP uid -> Gmail's message id, which stays the same across folders and
+    sessions. Each reply line is read for both numbers, whatever their order."""
+    _, data = M.client.uid("FETCH", ",".join(uids), "(X-GM-MSGID)")
+    ids = {}
+    for item in data:
+        line = item if isinstance(item, bytes) else item[0] if isinstance(item, tuple) else b""
+        uid, msgid = re.search(rb"\bUID (\d+)", line), re.search(rb"X-GM-MSGID (\d+)", line)
+        if uid and msgid:
+            ids[uid.group(1).decode()] = msgid.group(1).decode()
+    return ids
+
+
+def mail_matches(M, uids: list[str]):
+    """For each mail, (uid, its date, sender, and the documents its PDF
+    attachments became). Hashes the attachments; never opens them."""
+    import hashlib
+
+    from documents.models import Document
+
+    for msg in M.fetch(f"UID {','.join(uids)}", mark_seen=False, bulk=True):
+        sums = [hashlib.sha256(a.payload).hexdigest() for a in msg.attachments if (a.filename or "").lower().endswith(".pdf")]
+        docs = list(Document.objects.filter(root_document__isnull=True, checksum__in=sums)) if sums else []
+        sender = msg.from_values.full if msg.from_values else msg.from_
+        yield msg.uid, msg.date, sender, docs
+
+
+def fill_sent_fields() -> None:
+    """Fills Sent by and Sent on on documents that came from mail."""
+    import datetime
+    import json
+    from pathlib import Path
+    from zoneinfo import ZoneInfo
+
+    from django.conf import settings
+    from imap_tools import AND, MailBox
+
+    from documents.models import CustomField, CustomFieldInstance
+    from paperless_mail.models import MailRule
+
+    sent_by = CustomField.objects.get_or_create(name=SENT_BY_FIELD, defaults={"data_type": "string"})[0]
+    sent_on = CustomField.objects.get_or_create(name=SENT_ON_FIELD, defaults={"data_type": "string"})[0]
+    state_file = Path(MAIL_STATE)
+    done = set(json.loads(state_file.read_text())) if state_file.exists() else set()
+    local = ZoneInfo(settings.TIME_ZONE)
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    for rule in MailRule.objects.filter(enabled=True, action=5).select_related("account"):
+        a = rule.account
+        with MailBox(a.imap_server, a.imap_port).login(a.username, a.password) as M:
+            M.folder.set(rule.folder)
+            uids = M.uids(AND(gmail_label=rule.action_parameter))
+            if not uids:
+                continue
+            ids = gmail_ids(M, uids)
+            todo = [u for u in uids if u in ids and ids[u] not in done][:MAIL_BATCH]
+            if not todo:
+                continue
+            for uid, when, sender, docs in mail_matches(M, todo):
+                msgid = ids[uid]
+                if not docs:
+                    if when and now - when > datetime.timedelta(days=MAIL_GIVE_UP_DAYS):
+                        done.add(msgid)
+                    continue
+                stamp = when.astimezone(local).strftime("%Y-%m-%d %H:%M") if when else ""
+                for doc in docs:
+                    for field, value in ((sent_by, sender), (sent_on, stamp)):
+                        if value and not CustomFieldInstance.objects.filter(document=doc, field=field).exists():
+                            CustomFieldInstance.objects.create(document=doc, field=field, value_text=value)
+                    print(f"after-ai: document {doc.pk}: sent by {sender} on {stamp}.")
+                done.add(msgid)
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps(sorted(done)))
+
+
 def main() -> None:
     if os.geteuid() == 0:
         print(ROOT_REFUSED)
@@ -431,6 +525,10 @@ def main() -> None:
     from documents.models import CustomFieldInstance, Document, Note, Tag
 
     hand_to_naming()
+    try:
+        fill_sent_fields()
+    except Exception as error:  # noqa: BLE001 - Gmail being down must not stop the fixes below
+        print(f"after-ai: Sent by / Sent on not filled ({type(error).__name__}: {error}).")
 
     for keep, drop in EXCLUSIVE_TAGS:
         drop_tag = Tag.objects.filter(name=drop).first()
