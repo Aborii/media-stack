@@ -111,9 +111,21 @@
 # Bills from Gmail. Paperless reads one Gmail label, "Paperless"; Gmail
 # filters decide which senders land there, so the list is changed in Gmail.
 # In Paperless, Mail > Add account: imap.gmail.com, port 993, SSL, your
-# address, and a Google app password (made by you, entered by you). Then one
-# mail rule on that account: folder "Paperless", attachments only, PDFs, mark
-# as read. Mail goes through the same unlock, AI and naming as uploads.
+# address, and a Google app password (made by you, entered by you). The label
+# needs "Show in IMAP" ticked (Gmail Settings > Labels). Then one mail rule on
+# that account, "Bills from the Paperless label":
+#   folder "Paperless"; attachment type "Process all files, including inline"
+#   (Emirates NBD and Emirates Islamic send the PDF without marking it an
+#   attachment); filename filter *.pdf; maximum age 3650 days; action "Tag
+#   the mail" with "Paperless-filed" (a Gmail label, so mail you already read
+#   is still taken, and Gmail shows what was filed); title from the attachment
+#   filename; correspondent from the mail address (a locked statement the AI
+#   cannot read still shows who sent it; FAB's sender name is just
+#   "estatement").
+# Mail goes through the same unlock, AI and naming as uploads. Paperless
+# remembers each mail it looked at (Mail > processed mail); one it skipped is
+# skipped again until that record is deleted. Don't run a manual fetch while
+# a big batch is still being consumed: see PAPERLESS_CONSUMER_DELETE_DUPLICATES.
 #
 # Locked PDFs are stored exactly as they came, so they can be sent on as
 # received. after-filing.py tries each password in
@@ -201,6 +213,14 @@ services:
       # leaves its folder out instead of writing "none".
       PAPERLESS_FILENAME_FORMAT: '{{ document_type }}/{{ created_year }}/{{ title }}'
       PAPERLESS_FILENAME_FORMAT_REMOVE_NONE: 'true'
+
+      # A file Paperless already has is refused, not filed a second time.
+      # This version keeps duplicates by default (it only logs a warning),
+      # and the first big Gmail import filed all 348 older statements twice:
+      # a manual fetch and the 10-minute one both queued them before either
+      # had tagged the mail. A file in the trash counts too, so empty the
+      # trash before uploading again something deleted on purpose.
+      PAPERLESS_CONSUMER_DELETE_DUPLICATES: 'true'
 
       # PAPERLESS_URL is deliberately NOT set. It would also become the only
       # allowed host, and this is reached as aboriis-mini, by the tailnet name
