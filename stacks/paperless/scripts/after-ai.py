@@ -498,8 +498,8 @@ def fill_sent_fields() -> None:
     from django.conf import settings
     from imap_tools import AND, MailBox
 
-    from documents.models import CustomField, CustomFieldInstance, Tag
-    from paperless_mail.models import MailRule
+    from documents.models import CustomField, CustomFieldInstance, Document, Tag
+    from paperless_mail.models import MailAccount, MailRule
 
     sent_by = CustomField.objects.get_or_create(name=SENT_BY_FIELD, defaults={"data_type": "string"})[0]
     sent_on = CustomField.objects.get_or_create(name=SENT_ON_FIELD, defaults={"data_type": "string"})[0]
@@ -543,6 +543,21 @@ def fill_sent_fields() -> None:
                 done.add(msgid)
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(json.dumps(sorted(done)))
+
+    # A handled document (it has a Recipient) that lost its mail tag, to a
+    # paperless-gpt write-back that started before the tag went on, gets it
+    # back once paperless-gpt has let it go.
+    lost = (
+        Document.objects.filter(root_document__isnull=True, custom_fields__field=recipient)
+        .exclude(tags__name__in=MAIL_TAGS | {AI_TAG_NEW, READ_TAG, NAME_TAG})
+        .distinct()
+    )
+    for doc in lost:
+        address = doc.custom_fields.filter(field=recipient).values_list("value_text", flat=True).first()
+        account = MailAccount.objects.filter(username=address).first()
+        name = "gmail" if account and "gmail" in account.imap_server.lower() else "email"
+        doc.tags.add(Tag.objects.get_or_create(name=name, defaults={"matching_algorithm": 0})[0])
+        print(f"after-ai: document {doc.pk}: tag {name} put back.")
 
 
 def main() -> None:
