@@ -97,9 +97,12 @@ handled yet (at most MAIL_BATCH a run). A PDF attachment's SHA-256 is the
 checksum Paperless gave the document, so the hash finds it, whatever the
 file is called (FAB names all 49 of its statements "EStatement.PDF"). The
 attachments are hashed in code, never opened. A field already filled is left
-as it is. Handled mail is remembered by Gmail's message id in MAIL_STATE; a
-mail whose document is not there (still being consumed) is tried again, and
-after MAIL_GIVE_UP_DAYS it is let go.
+as it is. It also gets "Recipient", the address of the mailbox it was fetched
+from (so documents from several connected accounts can be told apart), and
+the tag "gmail" ("email" for a mailbox elsewhere). Handled mail is remembered
+by Gmail's message id in MAIL_STATE; a mail whose document is not there
+(still being consumed) is tried again, and after MAIL_GIVE_UP_DAYS it is let
+go. The listing and the ids use Gmail's IMAP extensions.
 """
 
 import os
@@ -149,8 +152,13 @@ STATEMENT_NOTE = "after-ai: filed as a statement"
 DIGITS_NOTE = "after-ai: checked the account digits"
 SENT_BY_FIELD = "Sent by"
 SENT_ON_FIELD = "Sent on"
-# Paperless's data folder: writable by the paperless user and backed up.
-MAIL_STATE = "/usr/src/paperless/data/after-ai/mail-dated.json"
+RECIPIENT_FIELD = "Recipient"
+# Every emailed document gets one: "gmail" for a Gmail mailbox, else "email".
+MAIL_TAGS = {"gmail", "email"}
+# Paperless's data folder: writable by the paperless user and backed up. A new
+# name whenever the step starts filling something more, so every mail is
+# visited again once (mail-dated.json predates Recipient and the tag).
+MAIL_STATE = "/usr/src/paperless/data/after-ai/mail-filed.json"
 MAIL_BATCH = 40
 MAIL_GIVE_UP_DAYS = 7
 # title_prompt.tmpl's kind 6, and the document type each one gets.
@@ -159,7 +167,7 @@ STATEMENT_TAGS = {"bank", "finance"}
 # Words that do not tell one bank from another.
 BANK_FILLER = {"bank", "the", "pjsc", "psc", "llc", "finance"}
 # Tags a statement keeps: they say how it was stored, not what it is about.
-KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG}
+KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG} | MAIL_TAGS
 # title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
 TRAVEL_TYPES = {"Flight", "Ticket", "Hotel"}
 MONTH_NUMBER = {m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
@@ -474,7 +482,8 @@ def mail_matches(M, uids: list[str]):
 
 
 def fill_sent_fields() -> None:
-    """Fills Sent by and Sent on on documents that came from mail."""
+    """Fills Sent by, Sent on and Recipient, and tags documents that came from
+    mail."""
     import datetime
     import json
     from pathlib import Path
@@ -483,11 +492,12 @@ def fill_sent_fields() -> None:
     from django.conf import settings
     from imap_tools import AND, MailBox
 
-    from documents.models import CustomField, CustomFieldInstance
+    from documents.models import CustomField, CustomFieldInstance, Tag
     from paperless_mail.models import MailRule
 
     sent_by = CustomField.objects.get_or_create(name=SENT_BY_FIELD, defaults={"data_type": "string"})[0]
     sent_on = CustomField.objects.get_or_create(name=SENT_ON_FIELD, defaults={"data_type": "string"})[0]
+    recipient = CustomField.objects.get_or_create(name=RECIPIENT_FIELD, defaults={"data_type": "string"})[0]
     state_file = Path(MAIL_STATE)
     done = set(json.loads(state_file.read_text())) if state_file.exists() else set()
     local = ZoneInfo(settings.TIME_ZONE)
@@ -495,6 +505,9 @@ def fill_sent_fields() -> None:
 
     for rule in MailRule.objects.filter(enabled=True, action=5).select_related("account"):
         a = rule.account
+        mail_tag = Tag.objects.get_or_create(
+            name="gmail" if "gmail" in a.imap_server.lower() else "email", defaults={"matching_algorithm": 0}
+        )[0]
         with MailBox(a.imap_server, a.imap_port).login(a.username, a.password) as M:
             M.folder.set(rule.folder)
             uids = M.uids(AND(gmail_label=rule.action_parameter))
@@ -513,10 +526,11 @@ def fill_sent_fields() -> None:
                     continue
                 stamp = when.astimezone(local).strftime("%Y-%m-%d %H:%M") if when else ""
                 for doc in docs:
-                    for field, value in ((sent_by, sender), (sent_on, stamp)):
+                    for field, value in ((sent_by, sender), (sent_on, stamp), (recipient, a.username)):
                         if value and not CustomFieldInstance.objects.filter(document=doc, field=field).exists():
                             CustomFieldInstance.objects.create(document=doc, field=field, value_text=value)
-                    print(f"after-ai: document {doc.pk}: sent by {sender} on {stamp}.")
+                    doc.tags.add(mail_tag)
+                    print(f"after-ai: document {doc.pk}: sent by {sender} on {stamp}, to {a.username}.")
                 done.add(msgid)
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(json.dumps(sorted(done)))
