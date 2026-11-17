@@ -102,7 +102,11 @@ from (so documents from several connected accounts can be told apart), and
 the tag "gmail" ("email" for a mailbox elsewhere). Handled mail is remembered
 by Gmail's message id in MAIL_STATE; a mail whose document is not there
 (still being consumed) is tried again, and after MAIL_GIVE_UP_DAYS it is let
-go. The listing and the ids use Gmail's IMAP extensions.
+go. So is a mail whose document paperless-gpt is still working on (tagged
+ai-new, ai-read or ai-name): paperless-gpt reads a document's tags when it
+starts and writes them back when it ends, so a tag added in between was lost
+(two statements lost "gmail" that way). The listing and the ids use Gmail's
+IMAP extensions.
 """
 
 import os
@@ -114,6 +118,8 @@ DONE_TAG = "paperless-gpt-auto-complete"
 # search update wrote root's index files; Paperless, running as paperless,
 # then could not move files into them, and a save failed with a 500.
 ROOT_REFUSED = "after-ai: run as the paperless user: docker exec -u paperless paperless python3 ..."
+# new-document's trigger (after-filing.py's AI_TAG).
+AI_TAG_NEW = "ai-new"
 # new-document's completion tag, and name-document's trigger.
 READ_TAG = "ai-read"
 NAME_TAG = "ai-name"
@@ -523,6 +529,9 @@ def fill_sent_fields() -> None:
                     # Undated, it cannot be aged: let it go rather than fetch it forever.
                     if not when or now - when > datetime.timedelta(days=MAIL_GIVE_UP_DAYS):
                         done.add(msgid)
+                    continue
+                # Still with paperless-gpt: its write-back would undo the tag.
+                if any(d.tags.filter(name__in=(AI_TAG_NEW, READ_TAG, NAME_TAG)).exists() for d in docs):
                     continue
                 stamp = when.astimezone(local).strftime("%Y-%m-%d %H:%M") if when else ""
                 for doc in docs:
