@@ -1,0 +1,108 @@
+# Every web UI under its own name: https://jellyfin.home.almofleh.dev, with a
+# real Let's Encrypt certificate that every browser and phone app trusts.
+#
+# One wildcard certificate covers every name, proven over DNS (see the
+# Dockerfile), so adding a service is one line below and no new certificate.
+# Certificates and the ACME account live in /data, which is kept on disk:
+# losing it means re-issuing, and Let's Encrypt limits how often that may
+# happen.
+#
+# Only 443. Port 80 is Glance, so there is no http-to-https redirect; .dev is
+# on every browser's HTTPS-only list anyway, so typing the bare name works.
+#
+# 443 needs the whole host, tailnet address included: tailscale serve must not
+# hold 443 (Glances moved to 8446 for this). Host networking, like tls-proxy, so
+# services published on 127.0.0.1 only are reachable too.
+#
+# The Location rewrite and the qBittorrent Host header are the same fixes as
+# in tls-proxy; its Caddyfile explains both.
+{
+	admin off
+	auto_https disable_redirects
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+(app) {
+	@{args[0]} host {args[0]}.{$HOME_DOMAIN}
+	handle @{args[0]} {
+		reverse_proxy 127.0.0.1:{args[1]} {
+			header_down Location "^http://(.*)$" "https://$1"
+		}
+	}
+}
+
+(app_upstream_host) {
+	@{args[0]} host {args[0]}.{$HOME_DOMAIN}
+	handle @{args[0]} {
+		reverse_proxy 127.0.0.1:{args[1]} {
+			header_up Host {upstream_hostport}
+			header_down Location "^http://(.*)$" "https://$1"
+		}
+	}
+}
+
+# The bare name is the dashboard.
+{$HOME_DOMAIN} {
+	reverse_proxy 127.0.0.1:80
+}
+
+*.{$HOME_DOMAIN} {
+	# Libraries
+	import app jellyfin 8096
+	import app immich 2283
+	import app kavita 5000
+	import app audiobookshelf 13378
+	import app seerr 5055
+
+	# Automation and downloads
+	import app sonarr 8989
+	import app radarr 7878
+	import app bazarr 6767
+	import app prowlarr 9696
+	import app_upstream_host qbittorrent 8200
+	import app subfill 8097
+	import app pinchflat 8945
+	import app metube 8082
+	import app tdarr 8265
+
+	# Management and monitoring
+	import app portainer 9000
+	import app uptime 3001
+	import app scrutiny 8081
+	import app dozzle 8888
+	import app beszel 8091
+	import app grafana 3010
+	import app wud 3002
+	import app glances 61210
+	import app speedtest 3030
+	import app adguard 3053
+	import app registry 5002
+
+	# Home
+	import app prayer 3003
+	import app dawarich 3004
+	import app actual 5006
+	import app homebox 7745
+	import app wallos 8282
+	import app donetick 2021
+	import app vikunja 3456
+	import app karakeep 3007
+	import app syncthing 8384
+
+	# Documents and tools
+	import app paperless 8000
+	import app sftpgo 8080
+	import app stirling 8090
+	import app convertx 3006
+	import app searxng 8092
+	import app changedetection 5010
+	import app omnitools 8094
+
+	# Not here on purpose: Vaultwarden and OpenCloud each pin the one address
+	# they answer on (VAULTWARDEN_DOMAIN, OpenCloud's OC_URL). Moving them is a
+	# change to those apps, not a line here.
+
+	handle {
+		respond "Nothing is served at this name." 404
+	}
+}

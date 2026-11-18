@@ -15,7 +15,7 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden adguard opencloud; do
+for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden adguard opencloud home-domain; do
   (cd stacks/$s && docker compose up -d)
 done
 ```

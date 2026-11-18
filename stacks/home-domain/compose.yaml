@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Home domain — every web UI at its own name under HOME_DOMAIN, over HTTPS with
+# a real certificate: https://jellyfin.home.almofleh.dev.
+#
+# HOW A NAME REACHES THE MINI
+#
+# The names are public DNS records at Cloudflare that point to the mini's LAN
+# address. Anyone can look them up, but a 192.168.x address only leads
+# anywhere from inside this network, or over Tailscale with the subnet route
+# approved. No AdGuard rewrite is needed, so the names keep working on a
+# device that uses other DNS, and when AdGuard is down.
+#
+# The mini takes its LAN address from the router, so it can change. home-dns
+# checks every five minutes and moves the records with it.
+#
+# ONE TOKEN, BOTH CONTAINERS
+#
+# CLOUDFLARE_API_TOKEN needs Zone → DNS → Edit on the one zone, nothing else.
+# Caddy uses it to prove the domain for the certificate; home-dns uses it to
+# keep the A records current.
+#
+# BEFORE THE FIRST `up`
+#
+#   1. Move Glances off tailnet 443, or Caddy cannot bind it:
+#        tailscale serve --https=443 off
+#        tailscale serve --bg --https=8446 http://127.0.0.1:61210
+#   2. mkdir -p ${FOLDER_FOR_DATA}/home-proxy/{data,config}
+#   3. docker compose up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+name: home-domain
+
+services:
+  home-proxy:
+    container_name: home-proxy
+    build:
+      context: .
+    image: media-stack/home-proxy:local
+    restart: unless-stopped
+    labels:
+      # Built here, so there is no registry for wud to check for updates.
+      - wud.watch=false
+    network_mode: host
+    environment:
+      HOME_DOMAIN: ${HOME_DOMAIN:?err}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?err}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${FOLDER_FOR_DATA:?err}/home-proxy/data:/data
+      - ${FOLDER_FOR_DATA:?err}/home-proxy/config:/config
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  home-dns:
+    container_name: home-dns
+    image: favonia/cloudflare-ddns:1
+    restart: unless-stopped
+    # `local` reads the address the host would use to reach the internet,
+    # which is the Wi-Fi's LAN address. Inside a bridge network it would see
+    # the container's own address instead.
+    network_mode: host
+    user: '1000:1000'
+    read_only: true
+    cap_drop:
+      - all
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?err}
+      DOMAINS: ${HOME_DOMAIN:?err},*.${HOME_DOMAIN:?err}
+      IP4_PROVIDER: local
+      IP6_PROVIDER: none
+      # Grey cloud. Cloudflare's proxy cannot reach a LAN address.
+      PROXIED: 'false'
+      UPDATE_CRON: '@every 5m'
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
