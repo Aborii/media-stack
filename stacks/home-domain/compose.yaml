@@ -21,11 +21,12 @@
 #
 # BEFORE THE FIRST `up`
 #
-#   1. Move Glances off tailnet 443, or Caddy cannot bind it:
+#   1. ln -s ../../docker-compose.env .env    (every stack reads the one env file)
+#   2. Move Glances off tailnet 443, or Caddy cannot bind it:
 #        tailscale serve --https=443 off
 #        tailscale serve --bg --https=8446 http://127.0.0.1:61210
-#   2. mkdir -p ${FOLDER_FOR_DATA}/home-proxy/{data,config}
-#   3. docker compose up -d --build
+#   3. mkdir -p ${FOLDER_FOR_DATA}/home-proxy/{data,config}
+#   4. docker compose up -d --build
 # ─────────────────────────────────────────────────────────────────────────────
 name: home-domain
 
