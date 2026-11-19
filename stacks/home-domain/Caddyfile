@@ -11,7 +11,7 @@
 # on every browser's HTTPS-only list anyway, so typing the bare name works.
 #
 # 443 needs the whole host, tailnet address included: tailscale serve must not
-# hold 443 (Glances moved to 8446 for this). Host networking, like tls-proxy, so
+# hold 443 (Glances moved to 8447 for this). Host networking, like tls-proxy, so
 # services published on 127.0.0.1 only are reachable too.
 #
 # The Location rewrite and the qBittorrent Host header are the same fixes as
