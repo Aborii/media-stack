@@ -30,12 +30,17 @@ const EVERY   = SLUG === 'markets' ? 60000 : 5000;
 // has to reach them - they are separate servers on their own ports, not part
 // of Glance. Over plain HTTP that is the port itself; over HTTPS a page is
 // not allowed to fetch http://, so it goes through the TLS proxy on the
-// mirrored port instead - the service port plus 10000.
+// mirrored port instead - the service port plus 10000. Opened at
+// home.almofleh.dev, each helper has its own name under it instead
+// (stacks/home-domain/Caddyfile), which also works away from home.
 const HTTPS   = location.protocol === 'https:';
-const helper  = p => location.protocol + '//aboriis-mini:' + (HTTPS ? p + 10000 : p) + '/';
-const BACKUP  = helper(9101);   // the backup status service
-const PCSW    = helper(9102);   // the power switch proxy
-const VPNCTL  = helper(9103);   // the VPN stack restart control
+const DOMAIN  = /^home\./.test(location.hostname) ? location.hostname : null;
+const helper  = (p, name) => DOMAIN
+  ? `https://${name}.${DOMAIN}/`
+  : location.protocol + '//aboriis-mini:' + (HTTPS ? p + 10000 : p) + '/';
+const BACKUP  = helper(9101, 'backup');     // the backup status service
+const PCSW    = helper(9102, 'pcswitch');   // the power switch proxy
+const VPNCTL  = helper(9103, 'vpnctl');     // the VPN stack restart control
 
 // True while the desktop tile has a dialog open or a press in flight, so the
 // refresh below leaves that one tile alone.
