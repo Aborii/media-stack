@@ -124,7 +124,7 @@ pages:
           # load.
           - type: custom-api
             title: Internet load
-            title-url: http://aboriis-mini:61210
+            title-url: https://glances.home.almofleh.dev
             cache: 5s
             url: http://172.28.10.1:61208/api/4/network
             template: |
@@ -134,7 +134,7 @@ pages:
                 {{ $up = add $up (.Float "bytes_sent_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "interface_name") }}
               {{ end }}
-              <a data-live="net" href="http://aboriis-mini:61210" class="block" style="color:inherit;text-decoration:none">
+              <a data-live="net" href="https://glances.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
               <div class="flex items-center gap-10">
                 <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/wifi.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
                 <div class="grow flex justify-between text-center">
@@ -151,7 +151,7 @@ pages:
           # the pattern so nothing is counted twice.
           - type: custom-api
             title: Disk I/O
-            title-url: http://aboriis-mini:61210
+            title-url: https://glances.home.almofleh.dev
             cache: 5s
             url: http://172.28.10.1:61208/api/4/diskio
             template: |
@@ -161,7 +161,7 @@ pages:
                 {{ $w = add $w (.Float "write_bytes_rate_per_sec") }}
                 {{ $names = printf "%s %s" $names (.String "disk_name") }}
               {{ end }}
-              <a data-live="disk" href="http://aboriis-mini:61210" class="block" style="color:inherit;text-decoration:none">
+              <a data-live="disk" href="https://glances.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
               <div class="flex items-center gap-10">
                 <img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/harddisk.svg" alt="" style="width:30px;height:30px;flex:none;filter:invert(.8)">
                 <div class="grow flex justify-between text-center">
@@ -223,7 +223,7 @@ pages:
           # the server re-reads the prayer service: 5 s, it is local and cheap.
           - type: custom-api
             title: Prayer times
-            title-url: http://aboriis-mini:3003/
+            title-url: https://prayer.home.almofleh.dev/
             cache: 5s
             url: http://prayer:8000/api/status
             template: |
@@ -233,7 +233,7 @@ pages:
                    browser that already has the page open keeps the old
                    module - and its buttons quietly stop working. -->
               <img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="" style="display:none" onload="import('/assets/live.js?v=10')">
-              <a data-live="prayer" href="http://aboriis-mini:3003/" class="block" style="color:inherit;text-decoration:none">
+              <a data-live="prayer" href="https://prayer.home.almofleh.dev/" class="block" style="color:inherit;text-decoration:none">
               {{ if not (.JSON.Bool "haveTimes") }}
                 <p class="color-negative">No prayer times yet: {{ .JSON.String "iacadStatus" }}</p>
               {{ else }}
@@ -281,7 +281,7 @@ pages:
           # rather than at the next cache expiry.
           - type: custom-api
             title: Desktop
-            title-url: http://aboriis-mini:9102/
+            title-url: https://pcswitch.home.almofleh.dev/
             cache: 10s
             url: http://172.28.10.1:9102/
             template: |
@@ -332,7 +332,7 @@ pages:
           # same value as CLAUDE_WEB_GLANCE_TOKEN here.
           - type: custom-api
             title: Claude Code
-            title-url: https://aboriis-mini:8446/
+            title-url: https://claude.home.almofleh.dev/
             cache: 5s
             url: http://172.28.10.1:8793/api/glance?limit=6
             headers:
@@ -379,7 +379,7 @@ pages:
               # Homepage's Jellyfin tile: the library counts.
               - type: custom-api
                 title: Jellyfin
-                title-url: http://aboriis-mini:8096
+                title-url: https://jellyfin.home.almofleh.dev
                 cache: 10m
                 url: http://jellyfin:8096/Items/Counts
                 headers:
@@ -387,7 +387,7 @@ pages:
                   Authorization: 'MediaBrowser Token="${JELLYFIN_API_KEY}"'
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://jellyfin:8096/System/Info/Public" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-mini:8096" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://jellyfin.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/jellyfin.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -401,7 +401,7 @@ pages:
               # Homepage's Immich tile. The key needs only server.statistics.
               - type: custom-api
                 title: Immich
-                title-url: http://aboriis-mini:2283
+                title-url: https://immich.home.almofleh.dev
                 cache: 1h
                 url: http://immich_server:2283/api/server/statistics
                 headers:
@@ -409,7 +409,7 @@ pages:
                   Accept: application/json
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://immich_server:2283/api/server/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-mini:2283" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://immich.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/immich.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -442,7 +442,7 @@ pages:
               # trip on every page load.
               - type: custom-api
                 title: Dawarich
-                title-url: http://aboriis-mini:3004
+                title-url: https://dawarich.home.almofleh.dev
                 cache: 1h
                 url: http://dawarich_app:3000/api/v1/stats
                 headers:
@@ -451,7 +451,7 @@ pages:
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://dawarich_app:3000/api/v1/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   {{ $y := (now).Format "2006" }}{{ $yk := 0.0 }}{{ range .JSON.Array "yearlyStats" }}{{ if eq (printf "%d" (.Int "year")) $y }}{{ $yk = .Float "totalDistanceKm" }}{{ end }}{{ end }}
-                  <a href="http://aboriis-mini:3004" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://dawarich.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/dawarich.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -472,7 +472,7 @@ pages:
               # comes back.
               - type: custom-api
                 title: Internet speed
-                title-url: http://aboriis-mini:3030
+                title-url: https://speedtest.home.almofleh.dev
                 cache: 15m
                 url: http://speedtest-tracker:80/api/v1/results/latest
                 headers:
@@ -481,7 +481,7 @@ pages:
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://speedtest-tracker:80/api/healthcheck" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   {{ $m := ((now).Sub (parseTime "rfc3339" (.JSON.String "data.data.timestamp"))).Minutes | toInt }}
-                  <a href="http://aboriis-mini:3030" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://speedtest.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/speedtest-tracker.png" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -502,7 +502,7 @@ pages:
               # length.
               - type: custom-api
                 title: Sonarr
-                title-url: http://aboriis-mini:8989
+                title-url: https://sonarr.home.almofleh.dev
                 cache: 5m
                 url: http://sonarr:8989/api/v3/wanted/missing?pageSize=1
                 headers:
@@ -518,7 +518,7 @@ pages:
                       X-Api-Key: ${SONARR_API_KEY}
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://sonarr:8989/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-mini:8989" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://sonarr.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/sonarr.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -531,7 +531,7 @@ pages:
                   </a>
               - type: custom-api
                 title: Radarr
-                title-url: http://aboriis-mini:7878
+                title-url: https://radarr.home.almofleh.dev
                 cache: 5m
                 url: http://radarr:7878/api/v3/wanted/missing?pageSize=1
                 headers:
@@ -547,7 +547,7 @@ pages:
                       X-Api-Key: ${RADARR_API_KEY}
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://radarr:7878/ping" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-mini:7878" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://radarr.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/radarr.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -564,14 +564,14 @@ pages:
               # Homepage's Seerr tile: the request counts.
               - type: custom-api
                 title: Seerr
-                title-url: http://aboriis-mini:5055
+                title-url: https://seerr.home.almofleh.dev
                 cache: 5m
                 url: http://seerr:5055/api/v1/request/count
                 headers:
                   X-Api-Key: ${SEERR_API_KEY}
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://seerr:5055/api/v1/status" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-mini:5055" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://seerr.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/seerr.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -587,7 +587,7 @@ pages:
               # route, with the key.
               - type: custom-api
                 title: Bazarr
-                title-url: http://aboriis-mini:6767
+                title-url: https://bazarr.home.almofleh.dev
                 cache: 15m
                 url: http://bazarr:6767/api/episodes/wanted?length=1
                 headers:
@@ -599,7 +599,7 @@ pages:
                       X-API-KEY: ${BAZARR_API_KEY}
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://bazarr:6767/api/system/status" | withHeader "X-API-KEY" "${BAZARR_API_KEY}" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
-                  <a href="http://aboriis-mini:6767" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://bazarr.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/bazarr.svg" alt="" style="width:34px;height:34px;flex:none">
                     <span class="grow size-h5 color-paragraph">missing subtitles</span>
@@ -618,7 +618,7 @@ pages:
               # Reached as gluetun:9696 - Prowlarr has no hostname of its own.
               - type: custom-api
                 title: Prowlarr
-                title-url: http://aboriis-mini:9696
+                title-url: https://prowlarr.home.almofleh.dev
                 cache: 15m
                 url: http://gluetun:9696/api/v1/indexerstats
                 headers:
@@ -636,7 +636,7 @@ pages:
                     {{ $queries = add $queries (.Int "numberOfQueries") }}
                     {{ $fails = add $fails (.Int "numberOfFailedQueries") }}
                   {{ end }}
-                  <a href="http://aboriis-mini:9696" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://prowlarr.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/prowlarr.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -660,7 +660,7 @@ pages:
               # client ban is for FAILED logins.
               - type: custom-api
                 title: qBittorrent
-                title-url: http://aboriis-mini:8200
+                title-url: https://qbittorrent.home.almofleh.dev
                 cache: 10s
                 method: POST
                 url: http://gluetun:8200/api/v2/auth/login
@@ -676,7 +676,7 @@ pages:
                   {{ $t0 := now }}{{ $tr := newRequest "http://gluetun:8200/api/v2/transfer/info" | withHeader "Cookie" $sid | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   {{ $dl := newRequest "http://gluetun:8200/api/v2/torrents/info" | withParameter "filter" "downloading" | withHeader "Cookie" $sid | getResponse }}
                   {{ $seed := newRequest "http://gluetun:8200/api/v2/torrents/info" | withParameter "filter" "seeding" | withHeader "Cookie" $sid | getResponse }}
-                  <a data-live="qbit" href="http://aboriis-mini:8200" class="block" style="color:inherit;text-decoration:none">
+                  <a data-live="qbit" href="https://qbittorrent.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/qbittorrent.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -766,7 +766,7 @@ pages:
               # recreated, so not the 2 most guides assume).
               - type: custom-api
                 title: Portainer
-                title-url: http://aboriis-mini:9000
+                title-url: https://portainer.home.almofleh.dev
                 cache: 1m
                 url: http://portainer:9000/api/endpoints/${PORTAINER_ENV}/docker/containers/json?all=1
                 headers:
@@ -774,7 +774,7 @@ pages:
                 template: |
                   {{ $t0 := now }}{{ $h := newRequest "http://portainer:9000/api/system/status" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
                   {{ $all := len (.JSON.Array "") }}{{ $running := len (.JSON.Array "#(State==running)#") }}
-                  <a href="http://aboriis-mini:9000" class="block" style="color:inherit;text-decoration:none">
+                  <a href="https://portainer.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
                   <div class="flex items-center gap-10">
                     <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/portainer.svg" alt="" style="width:34px;height:34px;flex:none">
                     <div class="grow flex justify-between text-center">
@@ -798,13 +798,13 @@ pages:
           # one tile in it leaves the right half empty.
           - type: custom-api
             title: Drive health
-            title-url: http://aboriis-mini:8081
+            title-url: https://scrutiny.home.almofleh.dev
             cache: 30m
             url: http://scrutiny:8080/api/summary
             template: |
               {{ $t0 := now }}{{ $h := newRequest "http://scrutiny:8080/api/health" | getResponse }}{{ $ms := ((now).Sub $t0).Milliseconds }}
               {{ $t := .JSON.Int "data.summary.0x50014ee216baa995.smart.temp" }}
-              <a href="http://aboriis-mini:8081" class="block" style="color:inherit;text-decoration:none">
+              <a href="https://scrutiny.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
               <div class="flex items-center gap-10">
                 <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/scrutiny.svg" alt="" style="width:34px;height:34px;flex:none">
                 <div class="grow flex justify-between text-center">
@@ -830,7 +830,7 @@ pages:
           # since the 5 s swap would wipe that in-progress state.
           - type: custom-api
             title: Backups
-            title-url: http://aboriis-mini:9101/ui
+            title-url: https://backup.home.almofleh.dev/ui
             cache: 5m
             url: http://172.28.10.1:9101/
             template: |
@@ -838,7 +838,7 @@ pages:
               {{ $bm := ((now).Sub (parseTime "rfc3339" (printf "%s+04:00" (.JSON.String "last_backup")))).Minutes | toInt }}
               {{ $dm := ((now).Sub (parseTime "rfc3339" (.JSON.String "last_sent"))).Minutes | toInt }}
               <div class="flex items-center gap-10">
-                <a href="http://aboriis-mini:9101/ui" style="flex:none;display:block"><img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:34px;height:34px;display:block;filter:invert(.8)"></a>
+                <a href="https://backup.home.almofleh.dev/ui" style="flex:none;display:block"><img src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/backup-restore.svg" alt="" style="width:34px;height:34px;display:block;filter:invert(.8)"></a>
                 <div class="grow flex justify-between text-center">
                   <div>
                     <div class="color-highlight size-h4"><span data-backup="state">{{ .JSON.String "state" }}</span>
@@ -872,7 +872,7 @@ pages:
           # longer cache kept new products off the tile for minutes.
           - type: custom-api
             title: Prices watcher
-            title-url: http://aboriis-mini:3005/
+            title-url: https://prices.home.almofleh.dev/
             cache: 1m
             url: http://price-watcher:3000/api/glance?limit=6
             headers:
@@ -907,17 +907,17 @@ pages:
             title: Services
             cache: 1m
             sites:
-              - { title: Uptime Kuma, url: http://aboriis-mini:3001, check-url: http://uptime-kuma:3001/,               icon: di:uptime-kuma }
-              - { title: Kavita,      url: http://aboriis-mini:5000, check-url: http://kavita:5000/api/health,          icon: di:kavita }
-              - { title: Audiobookshelf, url: http://aboriis-mini:13378, check-url: http://audiobookshelf:80/healthcheck, icon: di:audiobookshelf }
-              - { title: Pinchflat,   url: http://aboriis-mini:8945, check-url: http://pinchflat:8945/healthcheck,    icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/pinchflat.png }
-              - { title: MeTube,      url: http://aboriis-mini:8082, check-url: http://metube:8081/,                    icon: di:metube }
-              - { title: subfill,     url: http://aboriis-mini:8097, check-url: http://subfill:8080/healthz,            icon: di:bazarr }
-              - { title: SFTPGo,      url: http://aboriis-mini:8080, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
-              - { title: Dozzle,      url: http://aboriis-mini:8888, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
-              - { title: What's Up Docker, url: http://aboriis-mini:3002, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
-              - { title: Beszel,      url: http://aboriis-mini:8091, check-url: http://beszel:8090/api/health,         icon: di:beszel }
-              - { title: Grafana,     url: http://aboriis-mini:3010, check-url: http://grafana:3000/api/health,        icon: di:grafana }
+              - { title: Uptime Kuma, url: https://uptime.home.almofleh.dev, check-url: http://uptime-kuma:3001/,               icon: di:uptime-kuma }
+              - { title: Kavita,      url: https://kavita.home.almofleh.dev, check-url: http://kavita:5000/api/health,          icon: di:kavita }
+              - { title: Audiobookshelf, url: https://audiobookshelf.home.almofleh.dev, check-url: http://audiobookshelf:80/healthcheck, icon: di:audiobookshelf }
+              - { title: Pinchflat,   url: https://pinchflat.home.almofleh.dev, check-url: http://pinchflat:8945/healthcheck,    icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/pinchflat.png }
+              - { title: MeTube,      url: https://metube.home.almofleh.dev, check-url: http://metube:8081/,                    icon: di:metube }
+              - { title: subfill,     url: https://subfill.home.almofleh.dev, check-url: http://subfill:8080/healthz,            icon: di:bazarr }
+              - { title: SFTPGo,      url: https://sftpgo.home.almofleh.dev, check-url: http://sftpgo:8080/healthz,             icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/sftpgo.png }
+              - { title: Dozzle,      url: https://dozzle.home.almofleh.dev, check-url: http://dozzle:8080/healthcheck,         icon: di:dozzle }
+              - { title: What's Up Docker, url: https://wud.home.almofleh.dev, check-url: http://wud:3000/health,            icon: di:whats-up-docker }
+              - { title: Beszel,      url: https://beszel.home.almofleh.dev, check-url: http://beszel:8090/api/health,         icon: di:beszel }
+              - { title: Grafana,     url: https://grafana.home.almofleh.dev, check-url: http://grafana:3000/api/health,        icon: di:grafana }
 
           # The household apps, documents and tools. Same shape as Services:
           # the check goes to the container, the link opens the browser URL.
@@ -927,33 +927,33 @@ pages:
             title: Home apps
             cache: 1m
             sites:
-              - { title: Paperless,   url: http://aboriis-mini:8000, check-url: http://paperless:8000/,                  icon: di:paperless-ngx }
-              - { title: Actual,      url: https://aboriis-mini:15006, check-url: http://actual:5006/,                   icon: di:actual-budget }
-              - { title: HomeBox,     url: http://aboriis-mini:7745, check-url: http://homebox:7745/api/v1/status,       icon: di:homebox }
-              - { title: Wallos,      url: http://aboriis-mini:8282, check-url: http://wallos:80/,                       icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/wallos.png }
-              - { title: Donetick,    url: http://aboriis-mini:2021, check-url: http://donetick:2021/api/v1/health,      icon: di:donetick }
-              - { title: Vikunja,     url: http://aboriis-mini:3456, check-url: http://vikunja:3456/health,              icon: di:vikunja }
-              - { title: Karakeep,    url: http://aboriis-mini:3007, check-url: http://karakeep:3000/api/health,         icon: di:karakeep }
-              - { title: Syncthing,   url: http://aboriis-mini:8384, check-url: http://172.28.10.1:8384/rest/noauth/health, icon: di:syncthing }
-              - { title: Vaultwarden, url: https://aboriis-mini.tail54d520.ts.net:8443, check-url: http://vaultwarden:80/alive, icon: di:vaultwarden }
-              - { title: OpenCloud,   url: https://aboriis-mini:19200, check-url: http://opencloud:9200/status.php,      icon: di:open-cloud }
-              - { title: AdGuard,     url: https://aboriis-mini:13053, check-url: http://172.28.10.1:3053/,              icon: di:adguard-home }
-              - { title: Stirling-PDF, url: http://aboriis-mini:8090, check-url: http://stirling-pdf:8080/api/v1/info/status, icon: di:stirling-pdf }
-              - { title: ConvertX,    url: http://aboriis-mini:3006, check-url: http://convertx:3000/,                   icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/convertx.png }
-              - { title: SearXNG,     url: http://aboriis-mini:8092, check-url: http://searxng:8080/healthz,             icon: di:searxng }
-              - { title: changedetection, url: http://aboriis-mini:5010, check-url: http://changedetection:5000/,        icon: di:changedetection }
-              - { title: OmniTools,   url: http://aboriis-mini:8094, check-url: http://omnitools:80/healthz,             icon: di:omni-tools }
+              - { title: Paperless,   url: https://paperless.home.almofleh.dev, check-url: http://paperless:8000/,                  icon: di:paperless-ngx }
+              - { title: Actual,      url: https://actual.home.almofleh.dev, check-url: http://actual:5006/,                   icon: di:actual-budget }
+              - { title: HomeBox,     url: https://homebox.home.almofleh.dev, check-url: http://homebox:7745/api/v1/status,       icon: di:homebox }
+              - { title: Wallos,      url: https://wallos.home.almofleh.dev, check-url: http://wallos:80/,                       icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/wallos.png }
+              - { title: Donetick,    url: https://donetick.home.almofleh.dev, check-url: http://donetick:2021/api/v1/health,      icon: di:donetick }
+              - { title: Vikunja,     url: https://vikunja.home.almofleh.dev, check-url: http://vikunja:3456/health,              icon: di:vikunja }
+              - { title: Karakeep,    url: https://karakeep.home.almofleh.dev, check-url: http://karakeep:3000/api/health,         icon: di:karakeep }
+              - { title: Syncthing,   url: https://syncthing.home.almofleh.dev, check-url: http://172.28.10.1:8384/rest/noauth/health, icon: di:syncthing }
+              - { title: Vaultwarden, url: https://vault.home.almofleh.dev, check-url: http://vaultwarden:80/alive, icon: di:vaultwarden }
+              - { title: OpenCloud,   url: https://cloud.home.almofleh.dev, check-url: http://opencloud:9200/status.php,      icon: di:open-cloud }
+              - { title: AdGuard,     url: https://adguard.home.almofleh.dev, check-url: http://172.28.10.1:3053/,              icon: di:adguard-home }
+              - { title: Stirling-PDF, url: https://stirling.home.almofleh.dev, check-url: http://stirling-pdf:8080/api/v1/info/status, icon: di:stirling-pdf }
+              - { title: ConvertX,    url: https://convertx.home.almofleh.dev, check-url: http://convertx:3000/,                   icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/convertx.png }
+              - { title: SearXNG,     url: https://searxng.home.almofleh.dev, check-url: http://searxng:8080/healthz,             icon: di:searxng }
+              - { title: changedetection, url: https://changedetection.home.almofleh.dev, check-url: http://changedetection:5000/,        icon: di:changedetection }
+              - { title: OmniTools,   url: https://omnitools.home.almofleh.dev, check-url: http://omnitools:80/healthz,             icon: di:omni-tools }
 
           # Homepage's Registry tile: how many repositories the private
           # registry holds. It publishes to 127.0.0.1 only, so the count is
           # read over the docker network and the link goes to registry-ui.
           - type: custom-api
             title: Registry
-            title-url: http://aboriis-mini:5002
+            title-url: https://registry.home.almofleh.dev
             cache: 10m
             url: http://registry:5000/v2/_catalog
             template: |
-              <a href="http://aboriis-mini:5002" class="block" style="color:inherit;text-decoration:none">
+              <a href="https://registry.home.almofleh.dev" class="block" style="color:inherit;text-decoration:none">
               <div class="flex items-center gap-10">
                 <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/docker.svg" alt="" style="width:30px;height:30px;flex:none">
                 <div class="grow text-center">
@@ -1002,61 +1002,61 @@ pages:
             groups:
               - title: System
                 links:
-                  - { title: Portainer,   url: http://aboriis-mini:9000 }
-                  - { title: Registry,    url: http://aboriis-mini:5002 }
-                  - { title: SFTPGo,      url: http://aboriis-mini:8080 }
-                  - { title: Glances,     url: http://aboriis-mini:61210 }
+                  - { title: Portainer,   url: https://portainer.home.almofleh.dev }
+                  - { title: Registry,    url: https://registry.home.almofleh.dev }
+                  - { title: SFTPGo,      url: https://sftpgo.home.almofleh.dev }
+                  - { title: Glances,     url: https://glances.home.almofleh.dev }
               - title: Monitoring
                 links:
-                  - { title: Speedtest,   url: http://aboriis-mini:3030 }
-                  - { title: Uptime Kuma, url: http://aboriis-mini:3001 }
-                  - { title: Backups,     url: http://aboriis-mini:9101/ui }
-                  - { title: Scrutiny,    url: http://aboriis-mini:8081 }
-                  - { title: Dozzle,      url: http://aboriis-mini:8888 }
-                  - { title: What's Up Docker, url: http://aboriis-mini:3002 }
-                  - { title: Beszel,      url: http://aboriis-mini:8091 }
-                  - { title: Grafana,     url: http://aboriis-mini:3010 }
+                  - { title: Speedtest,   url: https://speedtest.home.almofleh.dev }
+                  - { title: Uptime Kuma, url: https://uptime.home.almofleh.dev }
+                  - { title: Backups,     url: https://backup.home.almofleh.dev/ui }
+                  - { title: Scrutiny,    url: https://scrutiny.home.almofleh.dev }
+                  - { title: Dozzle,      url: https://dozzle.home.almofleh.dev }
+                  - { title: What's Up Docker, url: https://wud.home.almofleh.dev }
+                  - { title: Beszel,      url: https://beszel.home.almofleh.dev }
+                  - { title: Grafana,     url: https://grafana.home.almofleh.dev }
               - title: Libraries
                 links:
-                  - { title: Jellyfin,    url: http://aboriis-mini:8096 }
-                  - { title: Immich,      url: http://aboriis-mini:2283 }
-                  - { title: Kavita,      url: http://aboriis-mini:5000 }
-                  - { title: Audiobookshelf, url: http://aboriis-mini:13378 }
+                  - { title: Jellyfin,    url: https://jellyfin.home.almofleh.dev }
+                  - { title: Immich,      url: https://immich.home.almofleh.dev }
+                  - { title: Kavita,      url: https://kavita.home.almofleh.dev }
+                  - { title: Audiobookshelf, url: https://audiobookshelf.home.almofleh.dev }
               - title: Automation
                 links:
-                  - { title: Seerr,       url: http://aboriis-mini:5055 }
-                  - { title: Sonarr,      url: http://aboriis-mini:8989 }
-                  - { title: Radarr,      url: http://aboriis-mini:7878 }
-                  - { title: Bazarr,      url: http://aboriis-mini:6767 }
-                  - { title: subfill,     url: http://aboriis-mini:8097 }
-                  - { title: Tdarr,       url: http://aboriis-mini:8265 }
+                  - { title: Seerr,       url: https://seerr.home.almofleh.dev }
+                  - { title: Sonarr,      url: https://sonarr.home.almofleh.dev }
+                  - { title: Radarr,      url: https://radarr.home.almofleh.dev }
+                  - { title: Bazarr,      url: https://bazarr.home.almofleh.dev }
+                  - { title: subfill,     url: https://subfill.home.almofleh.dev }
+                  - { title: Tdarr,       url: https://tdarr.home.almofleh.dev }
               - title: Acquisition
                 links:
-                  - { title: Prowlarr,    url: http://aboriis-mini:9696 }
-                  - { title: qBittorrent, url: http://aboriis-mini:8200 }
-                  - { title: Pinchflat,   url: http://aboriis-mini:8945 }
-                  - { title: MeTube,      url: http://aboriis-mini:8082 }
+                  - { title: Prowlarr,    url: https://prowlarr.home.almofleh.dev }
+                  - { title: qBittorrent, url: https://qbittorrent.home.almofleh.dev }
+                  - { title: Pinchflat,   url: https://pinchflat.home.almofleh.dev }
+                  - { title: MeTube,      url: https://metube.home.almofleh.dev }
               - title: Home
                 links:
-                  - { title: Paperless,   url: http://aboriis-mini:8000 }
-                  - { title: Actual,      url: https://aboriis-mini:15006 }
-                  - { title: HomeBox,     url: http://aboriis-mini:7745 }
-                  - { title: Wallos,      url: http://aboriis-mini:8282 }
-                  - { title: Donetick,    url: http://aboriis-mini:2021 }
-                  - { title: Vikunja,     url: http://aboriis-mini:3456 }
-                  - { title: Karakeep,    url: http://aboriis-mini:3007 }
-                  - { title: Syncthing,   url: http://aboriis-mini:8384 }
-                  - { title: Vaultwarden, url: https://aboriis-mini.tail54d520.ts.net:8443 }
-                  - { title: OpenCloud,   url: https://aboriis-mini:19200 }
-                  - { title: AdGuard,     url: https://aboriis-mini:13053 }
+                  - { title: Paperless,   url: https://paperless.home.almofleh.dev }
+                  - { title: Actual,      url: https://actual.home.almofleh.dev }
+                  - { title: HomeBox,     url: https://homebox.home.almofleh.dev }
+                  - { title: Wallos,      url: https://wallos.home.almofleh.dev }
+                  - { title: Donetick,    url: https://donetick.home.almofleh.dev }
+                  - { title: Vikunja,     url: https://vikunja.home.almofleh.dev }
+                  - { title: Karakeep,    url: https://karakeep.home.almofleh.dev }
+                  - { title: Syncthing,   url: https://syncthing.home.almofleh.dev }
+                  - { title: Vaultwarden, url: https://vault.home.almofleh.dev }
+                  - { title: OpenCloud,   url: https://cloud.home.almofleh.dev }
+                  - { title: AdGuard,     url: https://adguard.home.almofleh.dev }
               - title: Tools
                 links:
-                  - { title: Stirling-PDF, url: http://aboriis-mini:8090 }
-                  - { title: ConvertX,    url: http://aboriis-mini:3006 }
-                  - { title: SearXNG,     url: http://aboriis-mini:8092 }
-                  - { title: changedetection, url: http://aboriis-mini:5010 }
-                  - { title: OmniTools,   url: http://aboriis-mini:8094 }
-                  - { title: VS Code,     url: https://aboriis-mini:18448 }
+                  - { title: Stirling-PDF, url: https://stirling.home.almofleh.dev }
+                  - { title: ConvertX,    url: https://convertx.home.almofleh.dev }
+                  - { title: SearXNG,     url: https://searxng.home.almofleh.dev }
+                  - { title: changedetection, url: https://changedetection.home.almofleh.dev }
+                  - { title: OmniTools,   url: https://omnitools.home.almofleh.dev }
+                  - { title: VS Code,     url: https://code.home.almofleh.dev }
 
   # Prices, on a tab of their own.
   #
