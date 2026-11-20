@@ -110,10 +110,24 @@
 	import app pcswitch 9102
 	import app vpnctl 9103
 
-	# Projects on the mini that are not part of this repo. Coming Manager is
-	# not here: its page calls the API at http://<page host>:4001, which a
-	# browser blocks from an https page, so it stays on its old address until
-	# the web client can follow the page's scheme.
+	# Projects on the mini that are not part of this repo.
+	#
+	# Coming Manager's page, opened over https, calls its API on its own origin
+	# under /_api (coming-manager-frontend docs/API-BASE-URL.md), so that path
+	# goes to the API with the prefix stripped, socket.io included. One origin
+	# also keeps the API's sign-in cookie on the host the page checks it on.
+	# Its CORS_ORIGIN must list https://coming.<HOME_DOMAIN>.
+	@coming host coming.{$HOME_DOMAIN}
+	handle @coming {
+		handle_path /_api/* {
+			reverse_proxy 127.0.0.1:4001
+		}
+		handle {
+			reverse_proxy 127.0.0.1:4000 {
+				header_down Location "^http://(.*)$" "https://$1"
+			}
+		}
+	}
 	import app aldafter 4100
 	import app aldafter-api 4101
 	import app storychat 8101
