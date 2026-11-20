@@ -40,9 +40,9 @@ services:
       MEILI_ADDR: http://karakeep-meilisearch:7700
       MEILI_MASTER_KEY: ${KARAKEEP_MEILI_MASTER_KEY:?err}
       BROWSER_WEB_URL: http://karakeep-chrome:9222
-      # The address sign-in redirects back to. One name only, so use Karakeep
-      # at http://aboriis-mini:3007; the HTTPS mirror signs in, then lands here.
-      NEXTAUTH_URL: http://aboriis-mini:${KARAKEEP_PORT:-3007}
+      # The address sign-in redirects back to. One name only: signing in at
+      # http://aboriis-mini:3007 or the HTTPS mirror works, then lands here.
+      NEXTAUTH_URL: https://karakeep.${HOME_DOMAIN:?err}
       NEXTAUTH_SECRET: ${KARAKEEP_NEXTAUTH_SECRET:?err}
       DISABLE_SIGNUPS: ${KARAKEEP_DISABLE_SIGNUPS:-false}
       # A full copy of each page (not just the readable text) so a link still

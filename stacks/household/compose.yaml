@@ -140,10 +140,9 @@ services:
       - '${VIKUNJA_PORT:-3456}:3456'
     environment:
       # Links in reminder emails and the address the web app calls. Plain
-      # HTTP on purpose: the phone apps would have to trust the home CA to
-      # use the HTTPS mirror on 13456, and over Tailscale this name works
-      # from anywhere.
-      VIKUNJA_SERVICE_PUBLICURL: http://aboriis-mini:${VIKUNJA_PORT:-3456}/
+      # The name with a real certificate, so the phone apps trust it with no
+      # home CA. Apps already set to http://aboriis-mini:3456 keep working.
+      VIKUNJA_SERVICE_PUBLICURL: https://vikunja.${HOME_DOMAIN:?err}/
       VIKUNJA_SERVICE_SECRET: ${VIKUNJA_SECRET:?err}
       VIKUNJA_SERVICE_TIMEZONE: ${TIMEZONE:?err}
       # Set to false once everyone has an account.

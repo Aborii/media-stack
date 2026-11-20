@@ -110,9 +110,10 @@
 	import app pcswitch 9102
 	import app vpnctl 9103
 
-	# Projects on the mini that are not part of this repo.
-	import app coming 4000
-	import app coming-api 4001
+	# Projects on the mini that are not part of this repo. Coming Manager is
+	# not here: its page calls the API at http://<page host>:4001, which a
+	# browser blocks from an https page, so it stays on its old address until
+	# the web client can follow the page's scheme.
 	import app aldafter 4100
 	import app aldafter-api 4101
 	import app storychat 8101
