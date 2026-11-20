@@ -351,7 +351,7 @@ services:
     restart: unless-stopped
     environment:
       - TZ=${TIMEZONE:?err}
-      - APP_URL=http://aboriis-mini:${WEBUI_PORT_BESZEL:?err}
+      - APP_URL=https://beszel.${HOME_DOMAIN:?err}
       - USER_EMAIL=${BESZEL_USER_EMAIL:?err}
       - USER_PASSWORD=${BESZEL_USER_PASSWORD:?err}
     volumes:
@@ -512,7 +512,7 @@ services:
     restart: unless-stopped
     environment:
       - TZ=${TIMEZONE:?err}
-      - GF_SERVER_ROOT_URL=http://aboriis-mini:${WEBUI_PORT_GRAFANA:?err}
+      - GF_SERVER_ROOT_URL=https://grafana.${HOME_DOMAIN:?err}
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:?err}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?err}
       - GF_USERS_ALLOW_SIGN_UP=false

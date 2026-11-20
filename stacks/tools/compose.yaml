@@ -123,7 +123,7 @@ services:
     ports:
       - '${SEARXNG_PORT:-8092}:8080'
     environment:
-      SEARXNG_BASE_URL: http://aboriis-mini:${SEARXNG_PORT:-8092}/
+      SEARXNG_BASE_URL: https://searxng.${HOME_DOMAIN:?err}/
       SEARXNG_SECRET: ${SEARXNG_SECRET:?err}
     # No Valkey beside it. Upstream's template adds one for the limiter, the
     # bot protection a public instance needs. A private one behind the
@@ -154,7 +154,7 @@ services:
       - '${CHANGEDETECTION_PORT:-5010}:5000'
     environment:
       TZ: ${TIMEZONE:?err}
-      BASE_URL: http://aboriis-mini:${CHANGEDETECTION_PORT:-5010}
+      BASE_URL: https://changedetection.${HOME_DOMAIN:?err}
       # A real Chrome for pages that only show their content after
       # JavaScript runs (most shops). Each watch picks plain or Chrome; plain
       # is the default and is far cheaper.

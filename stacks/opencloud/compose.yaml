@@ -2,18 +2,20 @@
 # OpenCloud — files in the browser, with Euro-Office to edit Word, Excel and
 # PowerPoint files in place.
 #
-#   opencloud     https://aboriis-mini:19200   files, shares, sign-in
-#   euro-office   https://aboriis-mini:18095   the editor; opened from OpenCloud
+#   opencloud     https://cloud.home.almofleh.dev    files, shares, sign-in
+#   euro-office   https://office.home.almofleh.dev   the editor; opened from OpenCloud
 #
 # Based on opencloud-eu/opencloud-compose (docker-compose.yml plus
-# weboffice/euro-office.yml), without its Traefik: tls-proxy already gives
-# every app on the mini HTTPS with the home CA, so it does the same here.
+# weboffice/euro-office.yml), without its Traefik: stacks/home-domain already
+# gives every app on the mini a name with a real certificate, so it does the
+# same here.
 #
 # HTTPS ONLY, on purpose. Unlike the other stacks there is no plain-HTTP
 # address on the LAN. OpenCloud signs people in with OpenID Connect, which
 # ties every token to the one address in OC_URL; a second address would show
 # the sign-in page and then fail. So both containers publish to 127.0.0.1 only,
-# and tls-proxy's 19200 and 18095 are the way in.
+# and cloud. and office. under HOME_DOMAIN are the way in. tls-proxy's 19200
+# and 18095 still answer, but signing in there fails for that reason.
 #
 # Signing in. OpenCloud has its own accounts (its built-in IdP). The first
 # start creates "admin" with OPENCLOUD_ADMIN_PASSWORD; make your own account in
@@ -29,9 +31,11 @@
 #
 # The two talk to each other over HTTPS too: OpenCloud asks Euro-Office what it
 # can open, and Euro-Office loads and saves files through OpenCloud's WOPI
-# routes. Each reaches the other through tls-proxy, by the same names the
+# routes. Each reaches the other through home-proxy, by the same names the
 # browser uses, so the addresses match the certificate. extra_hosts points
-# aboriis-mini at the mediastack gateway, and both trust the home CA.
+# those names at the mediastack gateway, where home-proxy also listens, so
+# this keeps working when the LAN address changes. The home CA is still
+# mounted for anything reached by the old aboriis-mini names.
 #
 # First start, on the mini:
 #   1. In ../../docker-compose.env, set OPENCLOUD_ADMIN_PASSWORD and
@@ -39,7 +43,7 @@
 #   2. mkdir -p /srv/appdata/opencloud/config /srv/storage/data/opencloud
 #   3. ln -s ../../docker-compose.env .env   (from this directory)
 #   4. docker compose up -d
-#   5. Add 19200 -> 9200 and 18095 -> 8095 to ~/tls-proxy/Caddyfile.
+#   5. cloud and office are already in stacks/home-domain/Caddyfile.
 # The admin password only counts on the very first start; after that it lives
 # in OpenCloud and is changed there.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,8 +81,10 @@ services:
       - '127.0.0.1:${OPENCLOUD_PORT:-9200}:9200'
     extra_hosts:
       - 'aboriis-mini:172.28.10.1'
+      - 'cloud.${HOME_DOMAIN:?err}:172.28.10.1'
+      - 'office.${HOME_DOMAIN:?err}:172.28.10.1'
     environment:
-      OC_URL: https://aboriis-mini:${OPENCLOUD_HTTPS_PORT:-19200}
+      OC_URL: https://cloud.${HOME_DOMAIN:?err}
       OC_LOG_LEVEL: info
       # tls-proxy ends TLS; OpenCloud itself serves plain HTTP behind it.
       PROXY_TLS: 'false'
@@ -99,14 +105,14 @@ services:
       OC_ENABLE_GUEST_LINKS: 'false'
       OC_DEFAULT_LANGUAGE: en
       # Read by config/csp.yaml.
-      EURO_OFFICE_ADDR: https://aboriis-mini:${EURO_OFFICE_HTTPS_PORT:-18095}
+      EURO_OFFICE_ADDR: https://office.${HOME_DOMAIN:?err}
       # The WOPI service, run inside the main process as upstream does.
       OC_ADD_RUN_SERVICES: collaboration
-      COLLABORATION_WOPI_SRC: https://aboriis-mini:${OPENCLOUD_HTTPS_PORT:-19200}
+      COLLABORATION_WOPI_SRC: https://cloud.${HOME_DOMAIN:?err}
       COLLABORATION_APP_NAME: Euro-Office
       COLLABORATION_APP_PRODUCT: OnlyOffice
-      COLLABORATION_APP_ADDR: https://aboriis-mini:${EURO_OFFICE_HTTPS_PORT:-18095}
-      COLLABORATION_APP_ICON: https://aboriis-mini:${EURO_OFFICE_HTTPS_PORT:-18095}/web-apps/apps/documenteditor/main/resources/img/favicon.ico
+      COLLABORATION_APP_ADDR: https://office.${HOME_DOMAIN:?err}
+      COLLABORATION_APP_ICON: https://office.${HOME_DOMAIN:?err}/web-apps/apps/documenteditor/main/resources/img/favicon.ico
       COLLABORATION_APP_INSECURE: 'false'
       COLLABORATION_CS3API_DATAGATEWAY_INSECURE: 'true'
       COLLABORATION_APP_PROOF_DISABLE: 'true'
@@ -137,6 +143,8 @@ services:
       - '127.0.0.1:${EURO_OFFICE_PORT:-8095}:80'
     extra_hosts:
       - 'aboriis-mini:172.28.10.1'
+      - 'cloud.${HOME_DOMAIN:?err}:172.28.10.1'
+      - 'office.${HOME_DOMAIN:?err}:172.28.10.1'
     environment:
       WOPI_ENABLED: 'true'
       JWT_SECRET: ${EURO_OFFICE_JWT_SECRET:?err}

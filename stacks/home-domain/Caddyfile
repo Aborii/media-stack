@@ -97,10 +97,38 @@
 	import app searxng 8092
 	import app changedetection 5010
 	import app omnitools 8094
+	import app prices 3005
 
-	# Not here on purpose: Vaultwarden and OpenCloud each pin the one address
-	# they answer on (VAULTWARDEN_DOMAIN, OpenCloud's OC_URL). Moving them is a
-	# change to those apps, not a line here.
+	# Each pins this name as its own address (VAULTWARDEN_DOMAIN, OpenCloud's
+	# OC_URL and the Euro-Office addresses), so the old ones stop signing in.
+	import app vault 8222
+	import app cloud 9200
+	import app office 8095
+
+	# The dashboard's buttons call these from the browser (live.js).
+	import app backup 9101
+	import app pcswitch 9102
+	import app vpnctl 9103
+
+	# Projects on the mini that are not part of this repo.
+	import app coming 4000
+	import app coming-api 4001
+	import app aldafter 4100
+	import app aldafter-api 4101
+	import app storychat 8101
+	import app code 8448
+
+	# The Claude web app's LAN door, as in ~/.config/claude-web/Caddyfile: it
+	# asks for its LAN password, and the Tailscale identity headers are dropped
+	# so nobody can claim to be a tailnet user through this name.
+	@claude host claude.{$HOME_DOMAIN}
+	handle @claude {
+		reverse_proxy 127.0.0.1:8792 {
+			header_up -Tailscale-User-Login
+			header_up -Tailscale-User-Name
+			header_up -Tailscale-User-Profile-Pic
+		}
+	}
 
 	handle {
 		respond "Nothing is served at this name." 404
