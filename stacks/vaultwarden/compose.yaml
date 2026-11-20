@@ -2,14 +2,16 @@
 # Vaultwarden — the password manager. A small server for the official
 # Bitwarden apps, browser extensions and web vault.
 #
-# HTTPS COMES FROM TAILSCALE, not the tls-proxy. The Bitwarden apps refuse a
-# certificate the phone does not already trust, and the proxy's is signed by
-# the home CA. `tailscale serve` hands out a real certificate for the
-# tailnet name, so the address to give every app is
-#   https://aboriis-mini.tail54d520.ts.net:8443
-# That is set up once on the host, outside Compose, and survives reboots:
-#   tailscale serve --bg --https=8443 http://127.0.0.1:8222
-# It is tailnet only: the phone needs Tailscale on, at home as well.
+# HTTPS COMES FROM stacks/home-domain, not the tls-proxy. The Bitwarden apps
+# refuse a certificate the phone does not already trust, and tls-proxy's is
+# signed by the home CA. home-proxy's is a real Let's Encrypt one, so the
+# address to give every app is
+#   https://vault.home.almofleh.dev
+# It works at home without Tailscale, and away from home with it on.
+#
+# The old tailnet address, https://aboriis-mini.tail54d520.ts.net:8443 from
+# `tailscale serve`, still opens the vault, but DOMAIN no longer matches it, so
+# passkeys and the links Vaultwarden writes point at the new name.
 #
 # Port 8222 is plain HTTP for Glance's health check. The web vault will not
 # work there; browsers only allow its encryption on a secure page.

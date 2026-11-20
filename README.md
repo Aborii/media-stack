@@ -15,7 +15,7 @@ cp docker-compose.env.example docker-compose.env   # then fill it in
 # the shared network, created once outside every stack
 docker network create mediastack --driver bridge   --subnet 172.28.10.0/24 --gateway 172.28.10.1
 
-for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden adguard opencloud; do
+for s in vpn arr media immich monitoring management postgres paperless tools household karakeep syncthing vaultwarden adguard opencloud home-domain; do
   (cd stacks/$s && docker compose up -d)
 done
 ```
@@ -74,18 +74,18 @@ docker compose down
 | | wud | 3002 | image update watcher, Telegram notices, never pulls |
 | **Home** | prayer | 3003 | Dubai prayer times from IACAD, cached a year ahead; feeds the prayer tiles |
 | | dawarich | 3004 | location history from the phone; keeps its own PostGIS and Redis |
-| | actual | 5006 | budget; open it on `https://aboriis-mini:15006`, it needs a secure page |
+| | actual | 5006 | budget; open it on `https://actual.home.almofleh.dev`, it needs a secure page |
 | | homebox | 7745 | home inventory, receipts and warranties |
 | | wallos | 8282 | subscriptions and renewal dates |
 | | donetick | 2021 | chores and recurring tasks |
 | | vikunja | 3456 | to-do lists and projects, like Todoist; phone apps sync to it |
 | | karakeep | 3007 | saved links with a full copy of each page, searchable |
 | | syncthing | 8384 | folder sync with the phone and PC; host network, files in `data/sync` |
-| | vaultwarden | 8222 | passwords for the Bitwarden apps; use `https://aboriis-mini.tail54d520.ts.net:8443` |
+| | vaultwarden | 8222 | passwords for the Bitwarden apps; use `https://vault.home.almofleh.dev` |
 | **Network** | adguard | 3053 | ad and tracker blocking DNS on port 53; HTTPS mirror on 13053 |
 | **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
 | | paperless-gpt | 8001 (this host only) | reads each new document with a vision model on the PC's GPU, then names and tags it; runs only while the PC is on and not paused; see `pc/ollama/README.md` |
-| | opencloud | 19200 | files in the browser, with its own sign-in; HTTPS only, at `https://aboriis-mini:19200`; files in `data/opencloud` |
+| | opencloud | 19200 | files in the browser, with its own sign-in; HTTPS only, at `https://cloud.home.almofleh.dev`; files in `data/opencloud` |
 | | euro-office | 18095 | edits Word, Excel and PowerPoint files inside OpenCloud; opened from there |
 | **Tools** | stirling-pdf | 8090 | PDF tools: merge, split, compress, OCR, sign |
 | | convertx | 3006 | file format converter; files deleted after a day |
@@ -93,6 +93,10 @@ docker compose down
 | | changedetection | 5010 | watches pages for changes, with a Chrome for JavaScript sites |
 | | omnitools | 8094 | image, video, PDF and text tools that run in the browser; built with every engine inside, so nothing is fetched from outside; has a sign-in page |
 | **Database** | postgres17 | 5432 | shared cluster, TLS required |
+
+Every web page above also has a name with a real certificate,
+`https://<name>.home.almofleh.dev` (Glance is the bare `home.almofleh.dev`).
+The names are listed in [`stacks/home-domain/Caddyfile`](stacks/home-domain/Caddyfile).
 
 ## Network
 
