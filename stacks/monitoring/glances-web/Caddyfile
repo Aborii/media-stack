@@ -15,7 +15,8 @@
 # there. Stop this container and the tiles carry on working.
 #
 # Reachable as http://aboriis-mini:61210 on the LAN (plain http, by the owner's
-# choice) and as https://aboriis-mini.tail54d520.ts.net via tailscale serve.
+# choice), as https://glances.home.almofleh.dev through stacks/home-domain, and
+# as https://aboriis-mini.tail54d520.ts.net:8447 via tailscale serve.
 :80 {
 	handle /login* {
 		reverse_proxy glances-login:8000

@@ -277,9 +277,10 @@ services:
   # knowing the trade-off: the wifi here is an open network (see the glances
   # notes above), and the login form posts over plain http, so the password
   # crosses the LAN unencrypted at sign-in. The gate itself still stands; it is
-  # only the transport that is open. `tailscale serve` still fronts the same
-  # container with real HTTPS on aboriis-mini.tail54d520.ts.net - prefer that
-  # URL when away.
+  # only the transport that is open. Over HTTPS it is
+  # https://glances.home.almofleh.dev (stacks/home-domain), and `tailscale
+  # serve` also fronts it at https://aboriis-mini.tail54d520.ts.net:8447 - prefer
+  # either when away. 443 went to home-proxy, and 8446 is the Claude web app's.
   #
   # To pull it back off the LAN, prefix the binding below with 127.0.0.1: .
   glances-web:
