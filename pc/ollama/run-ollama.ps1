@@ -24,7 +24,8 @@
 #
 # unload\<name> is the tray's "Unload the ... model now": the model runner is
 # killed mid-work and the file removed. Ollama stays up; the next request
-# loads the model again, and a page or batch cut off is done again.
+# loads the model again. subfill does a cut-off batch again; paperless-gpt
+# does not retry a cut-off document (rerun-ai.py does).
 param(
   [string]$Base = 'I:\AI\ollama',
   [string]$Listen = '10.10.10.1:11434',
@@ -43,7 +44,6 @@ $tag = if ($Name -eq 'paperless') { '' } else { "-$Name" }
 $pauseDir = Join-Path $Base 'pause'
 $offFile = Join-Path $Base "off\$Name"
 $unloadFile = Join-Path $Base "unload\$Name"
-$yieldUnloadFile = Join-Path $Base "unload\$YieldName"
 # The yield holds this long after the other Ollama's model last showed, so the
 # moment between its two models (it unloads one before loading the next) does
 # not start this one only for it to be stopped again.
@@ -131,6 +131,9 @@ function Get-PauseReasons {
 }
 
 # The model runners under a server, each a llama-server holding a loaded model.
+# Always count them as @(Get-Runners ...).Count: PowerShell unwraps a one-item
+# array on return, and .Count on a single process object is empty in Windows
+# PowerShell 5.1, so one loaded model would read as none (run-ollama.Tests.ps1).
 function Get-Runners([int]$serverPid) {
   @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$serverPid" -ErrorAction SilentlyContinue)
 }
@@ -138,12 +141,12 @@ function Get-Runners([int]$serverPid) {
 # True when the Ollama listening on that port has a model loaded.
 function Test-Loaded([int]$onPort) {
   $server = Get-NetTCPConnection -LocalPort $onPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-  return [bool]($server -and (Get-Runners $server.OwningProcess).Count -gt 0)
+  return [bool]($server -and @(Get-Runners $server.OwningProcess).Count -gt 0)
 }
 
 # Kills the runner holding the loaded model, not the server itself.
 function Stop-Runner([int]$serverPid) {
-  $runners = Get-Runners $serverPid
+  $runners = @(Get-Runners $serverPid)
   foreach ($r in $runners) { & taskkill.exe /PID $r.ProcessId /T /F 2>&1 | Out-Null }
   return $runners.Count
 }
@@ -164,7 +167,7 @@ while ($true) {
   if (Test-Path -LiteralPath $unloadFile) {
     Remove-Item -LiteralPath $unloadFile -Force -ErrorAction SilentlyContinue
     $killed = if ($running) { Stop-Runner $proc.Id } else { 0 }
-    if ($killed -gt 0) { Write-Log "Unloaded the $Name model, as asked (the tray icon, or an Ollama that yielded to this one)." }
+    if ($killed -gt 0) { Write-Log "Unloaded the $Name model, as asked (the tray icon)." }
     else { Write-Log "Asked to unload the $Name model, but none was loaded." }
   }
 
@@ -175,18 +178,14 @@ while ($true) {
 
   if ($paused -and $running) {
     # Yielding with a model loaded means the other Ollama measured the GPU
-    # while this one still filled it, and put most of its model on the CPU.
-    # Once this one is gone, it is asked to load again, on the freed GPU; the
-    # page cut off is read again, as for the tray's unload.
-    $reloadOther = ($reasons -contains $yieldReason) -and (Get-Runners $proc.Id).Count -gt 0
+    # while this one still filled it, and put part of its model on the CPU.
+    # It is left to finish that way, slower: killing its runner to load again
+    # on the freed GPU would fail the request it is working on, and
+    # paperless-gpt does not retry a reading (OCR_MAX_RETRIES 1). It unloads
+    # after 2 minutes idle, so its next load has the whole GPU.
     Stop-Ollama
     $proc = $null
     Write-Log 'Stopped Ollama; the GPU is free.'
-    if ($reloadOther) {
-      New-Item -ItemType Directory -Force -Path (Split-Path $yieldUnloadFile) | Out-Null
-      '' | Set-Content -LiteralPath $yieldUnloadFile -Encoding ascii
-      Write-Log "Asked the $YieldName Ollama to load its model again, now that the GPU is free."
-    }
   } elseif (-not $paused -and -not $running) {
     if ($proc) {
       Write-Log "Ollama exited (code $($proc.ExitCode)); see ollama-serve.log."

@@ -18,7 +18,8 @@
 # read from each Ollama's request log.
 #
 # Per model, the menu says whether it is loaded, can unload it now (mid-work:
-# a page, a batch or a reply cut off is redone), and has a "can load" switch
+# a batch or a reply cut off is redone; a Paperless document cut off fails its
+# AI reading, and rerun-ai.py runs it again), and has a "can load" switch
 # that, when off, keeps it from loading until switched back on.
 #
 # It only reads the state and writes files in $Base, which the programs that
