@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly OpenCloud snapshot
+
+[Timer]
+# 03:10, a little before the nightly backup at 03:30, so OpenCloud's config in
+# that backup and in this snapshot come from the same night.
+OnCalendar=*-*-* 03:10:00
+# A missed night runs shortly after the next boot instead of waiting a day.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
