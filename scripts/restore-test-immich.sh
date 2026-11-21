@@ -138,9 +138,10 @@ note "it answers: Immich $(curl -s "$url/api/server/version" | python3 -I -c 'im
 if [ -n "${RESTORE_API_KEY:-}" ]; then
   found=$(curl -s -H "x-api-key: $RESTORE_API_KEY" -H 'Content-Type: application/json' \
     -d '{"size": 1, "type": "IMAGE"}' "$url/api/search/metadata" \
-    | python3 -I -c 'import json,sys; a=json.load(sys.stdin)["assets"]["items"][0]; print(a["id"], a["originalPath"], a["originalFileName"])') \
+    | python3 -I -c 'import json,sys; a=json.load(sys.stdin)["assets"]["items"][0]; print(a["id"], a["originalPath"], a["originalFileName"], sep="\t")') \
     || die "could not list photos through the restored Immich - is RESTORE_API_KEY from this snapshot?"
-  read -r id path filename <<<"$found"
+  # Tabs, not spaces: photo names have spaces in them.
+  IFS=$'\t' read -r id path filename <<<"$found"
   case "$path" in
     /data/library/*) orig="$SNAPSHOT/library/${path#/data/library/}" ;;
     /data/upload/*)  orig="$scratch_abs/server/upload/${path#/data/upload/}" ;;

@@ -82,6 +82,9 @@ problems=()
 alerts=()
 problem() { note "$*"; problems+=("$*"); }
 alert() { note "$*"; alerts+=("$*"); }
+# Refusing before anything started: the reason goes into the report too, not
+# only to stderr, so Telegram and the dashboard say why.
+refuse() { problems+=("$*"); echo "$*" >&2; exit 1; }
 stopped_by_us=0
 down_at=0
 downtime=0
@@ -117,7 +120,9 @@ MARK="$DEST/.stopped-by-backup"
 running() { [ "$(docker inspect "$1" --format '{{.State.Running}}' 2>/dev/null)" = "true" ]; }
 restart_if_ours() {
   [ "$stopped_by_us" = "1" ] || return 0
-  stopped_by_us=0
+  # stopped_by_us stays 1 until the container is confirmed running: a signal
+  # that kills `docker start` before the daemon acts must leave the trap
+  # something to retry.
   local up=0
   for _ in 1 2; do
     docker start "$CONTAINER" >/dev/null 2>&1 || true
@@ -132,9 +137,11 @@ restart_if_ours() {
   done
   downtime=$(( $(date +%s) - down_at ))
   if ! running "$CONTAINER"; then
+    stopped_by_us=0
     alert "$CONTAINER DID NOT START AGAIN - start it: docker start $CONTAINER"
     return 0
   fi
+  stopped_by_us=0
   rm -f -- "$MARK"
   if [ "$up" = "1" ]; then
     note "$CONTAINER answering again after ${downtime}s"
@@ -205,17 +212,13 @@ copy_parts() {
 probe=$DEST
 while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); done
 if [ "$(stat -c %d "$probe")" = "$(stat -c %d "$SRC_LIBRARY" 2>/dev/null || echo none)" ]; then
-  echo "$DEST is on the same disk as $SRC_LIBRARY - refusing, that protects nothing" >&2
-  exit 1
+  refuse "$DEST is on the same disk as $SRC_LIBRARY - refusing, that protects nothing"
 fi
 
 # Immich writes a .immich marker into each folder it uses, so a missing one
 # means an unmounted disk or a wrong path, not an empty library.
 for need in "$SRC_LIBRARY/.immich" "$SRC_SERVER/upload/.immich" "$SRC_SERVER/profile"; do
-  [ -e "$need" ] || {
-    echo "$need is missing - is /srv/storage mounted? refusing" >&2
-    exit 1
-  }
+  [ -e "$need" ] || refuse "$need is missing - is /srv/storage mounted? refusing"
 done
 
 mkdir -p "$DEST"
@@ -248,22 +251,19 @@ prev_bytes=""
 
 stage="checking free space"
 src_bytes=$(tree_stats "${SRC[@]}" | cut -d' ' -f2)
-prev_all=0
-[ -n "$PREV" ] && prev_all=$(tree_stats "$PREV/library" "$PREV/upload" "$PREV/profile" | cut -d' ' -f2)
-growth=$(( src_bytes - prev_all ))
-[ "$growth" -gt 0 ] || growth=0
+# Room for the WHOLE source, not just what grew: --link-dest matches by path,
+# so a storage-template change that moves photos copies every moved one in
+# full while the total size has not changed at all.
 avail=$(df --output=avail -B1 "$DEST" | tail -1 | tr -d ' ')
-need=$(( growth + MIN_FREE_GB * 1024 * 1024 * 1024 ))
+need=$(( src_bytes + MIN_FREE_GB * 1024 * 1024 * 1024 ))
 if [ "$avail" -lt "$need" ]; then
-  problems+=("NOT ENOUGH SPACE on $DEST: $(numfmt --to=iec "$avail") free, needs $(numfmt --to=iec "$need") ($(numfmt --to=iec "$growth") new plus ${MIN_FREE_GB}G kept free) - Immich was not stopped")
-  echo "${problems[-1]}" >&2
-  exit 1
+  refuse "NOT ENOUGH SPACE on $DEST: $(numfmt --to=iec "$avail") free, needs $(numfmt --to=iec "$need") (the whole $(numfmt --to=iec "$src_bytes") plus ${MIN_FREE_GB}G kept free) - Immich was not stopped"
 fi
 
 image=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)
-[ -n "$image" ] || { echo "no container named $CONTAINER" >&2; exit 1; }
+[ -n "$image" ] || refuse "no container named $CONTAINER"
 printf '%s\n' "$image" > "$WORK/image"
-running "$DB_CONTAINER" || { echo "$DB_CONTAINER is not running - cannot dump the database" >&2; exit 1; }
+running "$DB_CONTAINER" || refuse "$DB_CONTAINER is not running - cannot dump the database"
 docker inspect "$DB_CONTAINER" --format '{{.Config.Image}}' > "$WORK/db-image"
 
 # ------------------------------------------------------ pass 1, Immich running
@@ -292,7 +292,7 @@ db_user=$(sed -n 's/^POSTGRES_USER=//p' <<<"$cvars")
 db_name=$(sed -n 's/^POSTGRES_DB=//p' <<<"$cvars")
 dump="$WORK/db/immich-db.sql.gz"
 rc=0
-docker exec "$DB_CONTAINER" pg_dump --clean --if-exists -U "$db_user" -d "$db_name" 2>/dev/null | gzip > "$dump" || rc=$?
+docker exec "$DB_CONTAINER" pg_dump --clean --if-exists -U "$db_user" -d "$db_name" | gzip > "$dump" || rc=$?
 # A truncated gzip still leaves a file. A tiny one is a dump of nothing.
 if [ "$rc" -ne 0 ] || ! gzip -t "$dump" 2>/dev/null || [ "$(stat -c %s "$dump")" -lt 10240 ]; then
   problem "DATABASE DUMP FAILED or is empty (exit $rc, $(stat -c %s "$dump" 2>/dev/null || echo 0) bytes)"

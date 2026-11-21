@@ -32,6 +32,9 @@ install -m 644 "$REPO/systemd/media-stack-immich-backup.timer" "$UNITS/"
 systemctl daemon-reload
 systemctl enable --now media-stack-immich-backup.timer
 systemctl list-timers media-stack-immich-backup.timer --no-pager | head -2
+# The dashboard's status service reads the new status file only after a
+# restart; until then the tile shows an empty Immich state.
+systemctl try-restart media-stack-backup-status.service
 
 echo
 echo "First snapshot (copies the library while Immich runs, then stops it for seconds):"

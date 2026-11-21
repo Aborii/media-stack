@@ -302,7 +302,10 @@ under Account Settings > API Keys):
 
 To restore for real, follow Immich's own command-line restore with the
 snapshot's dump: fresh database, `gunzip | psql --single-transaction`, then
-`rsync -aH` `library/`, `upload/` and `profile/` back to their paths.
+`rsync -aH` `library/`, `upload/` and `profile/` back to their paths. Before the
+first start, create `thumbs/`, `encoded-video/` and `backups/` in
+`/srv/appdata/immich/server`, each holding a `.immich` file: the restored
+database remembers checking them, and Immich will not start without them.
 
 ## Remote access
 
