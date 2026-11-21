@@ -12,6 +12,7 @@
 //   skipped      the owner said not to translate this one
 //   no_source    Arabic is missing but there is no usable subtitle to translate from
 import { DatabaseSync } from 'node:sqlite';
+import { CRASH_PHRASES } from './ollama.ts';
 
 export const STATES = [
   'waiting',
@@ -49,16 +50,24 @@ export type Item = {
   held_until: number | null;
   // The node that last took it: "mini" or "pc".
   node: string | null;
+  // Times the model's runner died while translating it. Not attempts: a crash
+  // is the machine's trouble, until one episode keeps causing it.
+  crashes: number;
 };
 
 export type LogLine = { at: number; message: string };
 
 // Columns added after the first release, so a database made before them gains
-// them at start. Each is nullable, so old rows need nothing filled in.
+// them at start. Each is nullable or has a default, so old rows need nothing.
 const ADDED_COLUMNS: [string, string][] = [
   ['held_until', 'INTEGER'],
   ['node', 'TEXT'],
+  ['crashes', 'INTEGER NOT NULL DEFAULT 0'],
 ];
+
+// What a failure from a runner crash said, before crashes stopped counting as
+// attempts: Ollama's 5xx answer, kept in the note, in Ollama's own words.
+const CRASH_NOTES = CRASH_PHRASES.map((p) => `%${p}%`);
 
 export class Store {
   readonly db: DatabaseSync;
@@ -89,7 +98,8 @@ export class Store {
         started_at INTEGER,
         finished_at INTEGER,
         held_until INTEGER,
-        node TEXT
+        node TEXT,
+        crashes INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS items_state ON items (state, priority, eligible_at);
       CREATE TABLE IF NOT EXISTS log (
@@ -124,6 +134,22 @@ export class Store {
     return Number(r.changes);
   }
 
+  // Episodes that gave up only because the model's runner kept dying under
+  // them, from before crashes stopped counting as attempts: back in the queue
+  // with their attempts cleared. Returns their keys. A later failure says
+  // something else in its note, so this finds nothing once they have run.
+  requeueCrashFailures(): string[] {
+    const where = `state = 'failed' AND note LIKE 'Ollama answered 5%' AND (${CRASH_NOTES.map(() => 'note LIKE ?').join(' OR ')})`;
+    const keys = (this.db.prepare(`SELECT key FROM items WHERE ${where}`).all(...CRASH_NOTES) as { key: string }[]).map((r) => r.key);
+    this.db
+      .prepare(
+        `UPDATE items SET state = 'eligible', attempts = 0, crashes = 0, eligible_at = ?, updated_at = ?,
+           note = 'tried again: it failed only because the model crashed' WHERE ${where}`,
+      )
+      .run(this.now(), this.now(), ...CRASH_NOTES);
+    return keys;
+  }
+
   // Other items that recorded the same subtitle path: episodes sharing one file.
   sharing(outPath: string, exceptKey: string): Item[] {
     return this.db.prepare('SELECT * FROM items WHERE out_path = ? AND key != ?').all(outPath, exceptKey) as Item[];
@@ -145,7 +171,10 @@ export class Store {
   }
 
   insert(
-    item: Omit<Item, 'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node'>,
+    item: Omit<
+      Item,
+      'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node' | 'crashes'
+    >,
   ): void {
     const now = this.now();
     this.db
@@ -196,8 +225,11 @@ export class Store {
     this.db.prepare('DELETE FROM log WHERE item_key = ?').run(key);
   }
 
-  // The next item to translate: a "translate now" first, then the newest
-  // video. An item that failed waits out its retry delay first. An item held
+  // The next item to translate: a "translate now" first, then the one that
+  // crashed the model fewest times, then the newest video. Crashes last: when
+  // the machine keeps crashing (the mini short of memory), each crash lands on
+  // a different episode instead of five in a row failing the same one, and
+  // only an episode that really does crash the model reaches MAX_CRASHES. An item that failed waits out its retry delay first. An item held
   // for the PC is the PC's first pick, and the mini's only once the hold ends.
   // A video another node is already translating is skipped: the episodes of a
   // two-episode file share one subtitle, which the first to finish writes.
@@ -207,7 +239,7 @@ export class Store {
         `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
            AND (held_until IS NULL OR held_until <= ? OR ?)
            AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
-         ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, eligible_at DESC LIMIT 1`,
+         ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, crashes ASC, eligible_at DESC LIMIT 1`,
       )
       .get(now, now, takesHeld ? 1 : 0, now) as Item | undefined;
   }

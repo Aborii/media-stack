@@ -24,6 +24,7 @@
 // runs out of work: then the PC was woken for this, and may sleep after it.
 import { inHours, type Hours } from './hours.ts';
 import type { Lease, LeaseState } from './lease.ts';
+import { OllamaCrash } from './ollama.ts';
 import type { Store } from './store.ts';
 import type { Generate } from './translate.ts';
 import type { Current, Worker } from './worker.ts';
@@ -32,6 +33,10 @@ export const NODE_STATES = ['working', 'idle', 'offline', 'paused', 'outside_hou
 export type NodeState = (typeof NODE_STATES)[number];
 
 export const MAX_BACKOFF_MS = 15 * 60_000;
+export const SEEN_SAVE_MS = 10 * 60_000;
+// Crashes in a row a woken PC keeps its lease through: Ollama starts a new
+// runner on the next request, so one crash does not mean the work is over.
+export const CRASHES_HELD = 3;
 
 export type NodeStatus = {
   name: string;
@@ -42,7 +47,7 @@ export type NodeStatus = {
   problem: string | null;
   current: Current | null;
   lease: LeaseState | null;
-  // When its Ollama last answered.
+  // When its Ollama last answered, across restarts; null if it never has.
   lastSeen: number | null;
 };
 
@@ -90,6 +95,20 @@ export class NodeRunner {
     this.takesHeld = opts.takesHeld ?? false;
     this.waitMs = opts.waitMs ?? { idle: 60_000, offline: 30_000, paused: 15_000 };
     this.now = opts.now ?? Date.now;
+    const saved = Number(this.store.getMeta(`seen:${this.name}`));
+    this.lastSeen = saved > 0 ? saved : null;
+  }
+
+  // When its Ollama last answered, kept in the database so a restart still
+  // knows the node has worked. Malak asks to wake the PC only for a PC node
+  // that has answered at least once: before the PC's subtitle Ollama is
+  // installed, waking the PC would do nothing. Written at most every
+  // SEEN_SAVE_MS, since a node answers every minute.
+  private markSeen(): void {
+    const now = this.now();
+    const saved = Number(this.store.getMeta(`seen:${this.name}`) ?? 0);
+    if (now - saved >= SEEN_SAVE_MS) this.store.setMeta(`seen:${this.name}`, String(now));
+    this.lastSeen = now;
   }
 
   // The owner's pause, kept in the database so it survives a restart.
@@ -140,7 +159,7 @@ export class NodeRunner {
       await this.letGo();
       return this.waitMs.offline;
     }
-    this.lastSeen = this.now();
+    this.markSeen();
     if (!this.store.next(this.now(), this.takesHeld)) {
       this.state = 'idle';
       this.misses = 0;
@@ -150,15 +169,27 @@ export class NodeRunner {
     if (this.stopped) return 0;
     if (this.lease && this.worker.pcWoken()) await this.lease.hold();
     this.state = 'working';
+    let crashed = false;
+    const generate: Generate = async (prompt) => {
+      try {
+        return await this.model.generate(prompt);
+      } catch (err) {
+        if (err instanceof OllamaCrash) crashed = true;
+        throw err;
+      }
+    };
     try {
-      const worked = await this.worker.translateNext({ name: this.name, generate: this.model.generate, takesHeld: this.takesHeld });
+      const worked = await this.worker.translateNext({ name: this.name, generate, takesHeld: this.takesHeld });
       if (worked) {
         this.misses = 0;
         return 0;
       }
-      // An outage while the model looked fine: nothing to keep the PC up for.
-      await this.letGo();
       this.misses++;
+      // An outage while the model looked fine: nothing to keep the PC up for.
+      // A crashed runner is the exception for a few in a row, since the next
+      // request starts a new one: letting go would end the owner's wake and
+      // let pc-power hibernate the PC with the work still there.
+      if (!crashed || this.misses > CRASHES_HELD) await this.letGo();
       return Math.min(this.waitMs.offline * 2 ** this.misses, MAX_BACKOFF_MS);
     } finally {
       this.state = 'idle';

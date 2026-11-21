@@ -9,6 +9,25 @@ import { Unavailable } from './errors.ts';
 export class OllamaError extends Error {}
 // No answer at all (stopped, restarting, or past the deadline): an outage.
 export class OllamaDown extends Unavailable {}
+// The model's runner died under the request: killed for memory (the mini ran
+// out 52 times on 2026-11-15), or crashed. That is the machine's trouble, not
+// the episode's, so it is an outage too; the worker still counts these per
+// episode, in case one episode is what keeps crashing it (MAX_CRASHES).
+export class OllamaCrash extends Unavailable {}
+
+// Ollama's words for a runner that went away: mid-request, or while it was
+// loading the model. The store reads the same list to find old failures that
+// were only crashes (Store.requeueCrashFailures), so the two cannot drift.
+export const CRASH_PHRASES = [
+  'model runner has unexpectedly stopped',
+  'unexpected EOF',
+  'llama runner process has terminated',
+  'llama runner process no longer running',
+  'llama-server process has terminated',
+  'llama-server process no longer running',
+] as const;
+// Plain words, no regex characters in them, so they join as they are.
+const CRASHED = new RegExp(CRASH_PHRASES.join('|'), 'i');
 
 export class Ollama {
   private readonly base: string;
@@ -55,7 +74,11 @@ export class Ollama {
     } catch (err) {
       throw new OllamaDown(`Ollama call failed: ${(err as Error).message}`);
     }
-    if (!res.ok) throw new OllamaError(`Ollama answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 200);
+      const message = `Ollama answered ${res.status}: ${text}`;
+      throw res.status >= 500 && CRASHED.test(text) ? new OllamaCrash(message) : new OllamaError(message);
+    }
     const body = (await res.json()) as { response?: string };
     return body.response ?? '';
   }

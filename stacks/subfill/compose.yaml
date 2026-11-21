@@ -32,7 +32,9 @@
 #         the tray's switches); until it is installed, leave
 #         SUBFILL_PC_OLLAMA_URL empty, which means no PC node.
 # A PC that sleeps in the middle of an episode hands it back with no attempt
-# used, and the mini or the PC takes it again later.
+# used, and the mini or the PC takes it again later. So does an episode whose
+# model runner crashed (the mini running out of memory): only 5 crashes on the
+# same episode give it up.
 #
 # The PC is never woken from here. Waking is Malak's: it reads /api/summary,
 # asks the owner on Telegram when work is piling up, and on ▶️ Wake PC turns

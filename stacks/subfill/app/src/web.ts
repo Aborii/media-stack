@@ -140,7 +140,7 @@ export function renderNodes(nodes: NodeStatus[], held: Item | undefined, now: nu
         : '';
       const facts = [
         n.state === 'offline' && n.problem ? esc(n.problem) : '',
-        n.lastSeen ? `last answered ${ago(n.lastSeen, now)}` : n.state === 'offline' ? 'not seen since subfill started' : '',
+        n.lastSeen ? `last answered ${ago(n.lastSeen, now)}` : n.state === 'offline' ? 'has never answered' : '',
         n.lease?.held ? 'keeping the PC awake while it works' : '',
         n.name !== 'mini' && held ? `${esc(held.title)} is kept for it until ${new Date(held.held_until ?? 0).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : '',
       ].filter(Boolean);
@@ -246,6 +246,9 @@ export function summary(deps: WebDeps): Record<string, unknown> {
       name: n.name,
       state: n.state,
       current: n.current ? { title: n.current.title, done: n.current.done, total: n.current.total } : null,
+      // When its Ollama last answered, or null if it never has (a PC whose
+      // subtitle Ollama is not installed yet): Malak asks only for one that has.
+      lastSeen: n.lastSeen,
     })),
   };
 }

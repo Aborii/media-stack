@@ -20,6 +20,11 @@ const settings = readSettings(process.env);
 const store = new Store(path.join(settings.dataDir, 'subfill.db'));
 const recovered = store.recoverInterrupted();
 if (recovered) console.log(`picked up ${recovered} translation(s) interrupted by the last stop`);
+// Before crashes were told apart, a dead model runner used up an episode's
+// attempts. Those episodes did nothing wrong; give them another go.
+const requeued = store.requeueCrashFailures();
+for (const key of requeued) store.log(key, 'tried again: it failed only because the model crashed');
+if (requeued.length) console.log(`put back ${requeued.length} episode(s) that failed only because the model crashed`);
 
 const bazarr = new Bazarr({ url: settings.bazarrUrl, apiKey: settings.bazarrApiKey });
 const mini = new Ollama({ url: settings.ollamaUrl, model: settings.model });

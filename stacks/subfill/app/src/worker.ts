@@ -10,11 +10,15 @@ import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Bazarr, Media, Wanted } from './bazarr.ts';
 import { Unavailable } from './errors.ts';
+import { OllamaCrash } from './ollama.ts';
 import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
 import type { Item, State, Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
 
 export const MARKER = 'machine';
+
+// Crashes of the model on one episode before it is given up on.
+export const MAX_CRASHES = 5;
 
 export type Config = {
   target: Language;
@@ -241,6 +245,21 @@ export class Worker {
     } catch (err) {
       await unlink(part).catch(() => undefined);
       const message = (err as Error).message;
+      if (err instanceof OllamaCrash) {
+        // The runner died under it. Not an attempt; but an episode that keeps
+        // doing it is the likelier cause by then, so it stops after MAX_CRASHES.
+        const crashes = item.crashes + 1;
+        const final = crashes >= MAX_CRASHES;
+        this.store.move(item.key, ['translating'], final ? 'failed' : 'eligible', {
+          attempts: item.attempts,
+          crashes,
+          note: final
+            ? `the model crashed ${crashes} times on this episode; giving up`
+            : `paused: the model crashed (${crashes} of ${MAX_CRASHES})`,
+        });
+        this.store.log(item.key, `${final ? 'model crashed again, giving up' : 'model crashed, will start again'}: ${message}`);
+        return false;
+      }
       if (err instanceof Unavailable) {
         // Not this item's fault: back in the queue as it was, attempt not counted.
         this.store.move(item.key, ['translating'], 'eligible', { attempts: item.attempts, note: `paused: ${message}` });
@@ -317,7 +336,7 @@ export class Worker {
     const minutes = Math.round((this.now() - startedAt) / 60_000);
     const untranslated = kept ? `, ${kept} left in ${languageOf(item.source_lang ?? 'en').name}` : '';
     const note = `${source.cues.length} cues in ${minutes} min on the ${node.name}${untranslated}`;
-    if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note })) {
+    if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note, crashes: 0 })) {
       // The row changed under us, so nothing would ever clean this file up.
       await this.deleteOurs({ ...item, out_path: out });
       this.store.log(item.key, 'the item changed while it was being translated; the result was discarded');
@@ -335,11 +354,11 @@ export class Worker {
         case 'now':
           return this.store.move(key, ['waiting', 'eligible'], 'eligible', { priority: 1, eligible_at: this.now() });
         case 'retry':
-          return this.store.move(key, ['failed'], 'eligible', { attempts: 0, eligible_at: this.now(), note: null });
+          return this.store.move(key, ['failed'], 'eligible', { attempts: 0, crashes: 0, eligible_at: this.now(), note: null });
         case 'skip':
           return this.store.move(key, ['waiting', 'eligible', 'failed', 'no_source'], 'skipped', { note: 'skipped by you' });
         case 'unskip':
-          return this.store.move(key, ['skipped'], 'waiting', { note: null, eligible_at: this.now() });
+          return this.store.move(key, ['skipped'], 'waiting', { note: null, crashes: 0, eligible_at: this.now() });
         default:
           return false;
       }
