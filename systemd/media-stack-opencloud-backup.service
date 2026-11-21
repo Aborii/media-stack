@@ -1,0 +1,23 @@
+[Unit]
+Description=Snapshot OpenCloud onto the NVMe, off its own disk
+# It stops and starts the opencloud container, so the daemon has to be up.
+After=docker.service
+Requires=docker.service
+# Its files are on the USB disk. The script refuses without them anyway, but
+# there is no point starting before the mount.
+RequiresMountsFor=/srv/storage
+
+[Service]
+Type=oneshot
+ExecStart=/home/aborii/media-stack/scripts/backup-opencloud.sh
+# aborii, not root. Every file OpenCloud writes belongs to aborii (it runs as
+# PUID 1000), the docker group covers the stop and start, and the destination
+# is created for aborii by install-opencloud-backup.sh. Root would buy nothing.
+User=aborii
+Group=aborii
+# Not IOSchedulingClass=idle like the nightly backup: OpenCloud is down for the
+# whole copy, so the copy should finish, not yield.
+Nice=10
+# A stop (or this limit) sends SIGTERM; the script then ends the copy and
+# starts OpenCloud again before it exits.
+TimeoutStartSec=2h

@@ -43,6 +43,13 @@ FLUSH_UNIT = "media-stack-offsite-flush.service"
 # service is allowed to write (see ReadWritePaths in the unit).
 TRIGGER = os.environ.get("BACKUP_TRIGGER", "/srv/storage/appdata/backup-trigger")
 
+# Written by backup-opencloud.sh after every run. Separate from the queue above:
+# OpenCloud's copy stays on this machine's NVMe and never travels to the PC.
+OPENCLOUD_STATUS = os.environ.get("OPENCLOUD_STATUS", "/srv/backups/opencloud/status.json")
+# The timer runs nightly. Past this, a run was missed even if the last one was
+# fine - the case that reads "ok" forever while nothing is being taken.
+OPENCLOUD_STALE_HOURS = 36
+
 TIMEOUT = 2          # the PC either answers at once or is asleep
 COOLDOWN = 300       # seconds between manual triggers
 
@@ -112,6 +119,45 @@ def receiver_state():
             return {}, False
 
 
+def opencloud_state():
+    """The OpenCloud snapshot's last run, from the file the script leaves.
+
+    The age comes from the newest KEPT snapshot, not the last run: a run that
+    failed every night still has a fresh run time, and only the snapshot says
+    when there was last something to restore.
+    """
+    try:
+        with open(OPENCLOUD_STATUS) as fh:
+            d = json.load(fh)
+    except FileNotFoundError:
+        return {"opencloud_state": "not set up"}
+    except (OSError, ValueError):
+        return {"opencloud_state": "unreadable"}
+    newest = d.get("newest")
+    last = None
+    if newest:
+        try:
+            last = time.mktime(time.strptime(newest, "%Y%m%d-%H%M%S"))
+        except ValueError:
+            pass
+    if d.get("result") != "ok":
+        state = "failed"
+    elif last is None or time.time() - last > OPENCLOUD_STALE_HOURS * 3600:
+        state = "stale"
+    else:
+        state = "ok"
+    problems = d.get("problems") or []
+    return {
+        "opencloud_state": state,
+        "opencloud_last": (time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(last))
+                           if last else None),
+        "opencloud_snapshots": d.get("snapshots", 0),
+        "opencloud_bytes": d.get("bytes", 0),
+        "opencloud_downtime_seconds": d.get("downtime_seconds", 0),
+        "opencloud_problem": problems[0] if problems else None,
+    }
+
+
 def build():
     pending, sent, bad, newest_at, newest_name = queue_state()
     rx, online = receiver_state()
@@ -159,6 +205,7 @@ def build():
         "upload_percent": rx.get("uploadPercent", 0) if uploading else 0,
         "upload_received": rx.get("uploadReceived", 0) if uploading else 0,
         "upload_total": rx.get("uploadTotal", 0) if uploading else 0,
+        **opencloud_state(),
     }
 
 

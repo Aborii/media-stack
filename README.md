@@ -199,6 +199,9 @@ Notable gluetun settings, and why:
 | `flush-offsite.sh` | Sends any archive the PC has not accepted yet, newest first. Also runs on its own timer every 30 minutes, because the PC is rarely awake at 03:30. Posts late deliveries, refusals, and archives still undelivered after two days. |
 | `notify-telegram.sh` | Sourced by the two above. Posts into `TELEGRAM_TOPIC_BACKUPS` with the shared bot, and never fails a backup because Telegram was unreachable. |
 | `install-offsite-flush.sh` | One-off. Installs and starts that timer. |
+| `backup-opencloud.sh` | Nightly at 03:10, as aborii. Stops OpenCloud, snapshots its files, metadata and config onto the NVMe, checks the copy, starts it again. See below. |
+| `restore-test-opencloud.sh` | Restores a snapshot into a scratch folder and a throwaway OpenCloud on localhost, and can fetch a file back through it. Never touches the live one. |
+| `install-opencloud-backup.sh` | One-off. Creates `/srv/backups/opencloud` and enables the timer. |
 | `tailscale-https.sh` | Puts every web UI behind a real certificate on the tailnet. |
 | `vpn-health.sh` | Tells a genuine VPN drop apart from a reboot. |
 | `qbit-port-sync.sh` | Pushes Proton's forwarded port into qBittorrent, which changes on every reconnect. |
@@ -242,6 +245,33 @@ make room - only if the queue passes 14, which means a fortnight offline and
 prints accordingly. An archive the receiver *refuses* (bad checksum, not a tar)
 gets a `.bad` marker and stops being retried, so one corrupt file cannot spend
 every half hour re-uploading itself.
+
+### OpenCloud
+
+OpenCloud's files live on the USB disk, so its copy goes to the NVMe instead:
+`/srv/backups/opencloud/<stamp>/`, 14 nightly snapshots hard-linked to each
+other, so only changed files take new space. Each one holds `data/` (the files,
+`.oc-nodes`, `idm`, `nats`, `search`), `config/` (the secrets they were written
+with) and `image` (the version that wrote them).
+
+OpenCloud is **stopped for the copy** - its docs say a consistent backup needs
+that, and there is no read-only mode. At today's size that is seconds; the
+Telegram message and the dashboard report how long. Extended attributes are
+kept (`rsync -X`): OpenCloud stores ids on its folders that way.
+
+A copy that does not match the source exactly (counted while OpenCloud is
+stopped), or that is less than half the last snapshot, is not kept and nothing
+is rotated. `ALLOW_SHRINK=1` once after a real mass delete.
+
+Restoring, to try it:
+
+    RESTORE_USER=<you> RESTORE_PASSWORD=<yours> RESTORE_FILE=<path in your files> \
+      scripts/restore-test-opencloud.sh
+
+To restore for real: stop OpenCloud, move `/srv/storage/data/opencloud` and
+`/srv/appdata/opencloud/config` aside, `rsync -aHAX` the snapshot's `data/` and
+`config/` back to those paths, check the image in `image` matches the compose
+file, and start it.
 
 ## Remote access
 
