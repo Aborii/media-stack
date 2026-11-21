@@ -35,6 +35,10 @@ switch, logs and request log.
     and paperless-gpt does not retry one. After 2 minutes idle the model
     unloads, so the next document has the whole GPU.
   - Both stop while storychat's chat model is loaded.
+- **RAM:** a loaded model sits on the GPU; its runner keeps about 1.2 GB of
+  the PC's RAM. llama.cpp's prompt cache, which would keep every finished
+  batch or page in RAM up to 8 GB, is off (`LLAMA_ARG_CACHE_RAM=0` in
+  `run-ollama.ps1`): nothing here sends the same text twice.
 - **With subfill's PC node.** It is in `stacks/subfill` from
   Aborii/media-stack#116 on.
 - **PC off or asleep:** nothing answers.

@@ -78,3 +78,14 @@ Describe 'Stop-Ollama' {
     }
   }
 }
+
+Describe 'the environment each Ollama starts with' {
+  # Ollama passes it on to llama-server, which then keeps no prompt cache in
+  # RAM (up to 8 GB otherwise; see the comment where it is set).
+  $text = Get-Content -LiteralPath $script -Raw
+  It 'turns the runner''s prompt cache off before Ollama is started' {
+    $set = $text.IndexOf("`$env:LLAMA_ARG_CACHE_RAM = '0'")
+    $set | Should BeGreaterThan -1
+    $set | Should BeLessThan $text.IndexOf('Start-Process -FilePath $exe')
+  }
+}

@@ -81,6 +81,13 @@ $env:OLLAMA_MODELS = Join-Path $Base 'models'
 $env:OLLAMA_MAX_LOADED_MODELS = '1'
 $env:OLLAMA_NUM_PARALLEL = '1'
 $env:OLLAMA_KEEP_ALIVE = '2m'
+# No prompt cache in RAM. llama.cpp's llama-server keeps every finished
+# prompt's state in RAM by default, up to 8 GB, in case the same text comes
+# again. Here it never does: each subtitle batch is new lines, each document
+# new pages. On the PC the subtitle runner grew from 1.2 GB to about 7 GB
+# within one episode. The runner inherits this from Ollama (its --cache-ram);
+# with it, the runner stays at about 1.2 GB, and is just as fast.
+$env:LLAMA_ARG_CACHE_RAM = '0'
 # Every Ollama prunes the models folder's unused files when it starts. The two
 # share that folder, and the second restarts after every pause and yield; a
 # prune landing during a pull through the first could delete a layer not yet
