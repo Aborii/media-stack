@@ -52,7 +52,11 @@ def main() -> int:
     changed = 0
     for nfo in sorted(args.movies.glob("*/*.nfo")):
         raw = nfo.read_bytes()
-        text = raw.decode("utf-8-sig")
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            print(f"SKIP\t{nfo}\tnot UTF-8")
+            continue
         m = TITLE_RE.search(text)
         if not m or "[" not in m.group(1):
             continue
