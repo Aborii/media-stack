@@ -1,6 +1,6 @@
 # Tests for run-ollama.ps1's runner checks, the ones the subtitle Ollama's
 # yield to paperless depends on. Run with the Pester that ships in Windows:
-#   powershell -NoProfile -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"
 #
 # The script itself is a loop that never returns, so only its functions are
 # loaded: they are read out of the file by the parser, and the port and

@@ -26,9 +26,11 @@ switch, logs and request log.
     loaded. It starts again once paperless has had no model loaded for 30 s,
     which is 2 minutes after paperless's last page, plus that 30 s.
   - A document that arrives while subtitles hold the GPU loads its model with
-    the GPU nearly full. So when the subtitles Ollama stops for it, it asks
-    paperless to load once more (`unload\paperless`), on the freed GPU. The
-    page cut off is read again.
+    the GPU nearly full, so part of it lands on the CPU. The subtitles Ollama
+    stops within 2 s, and that document finishes on the model as loaded,
+    slower. It is not reloaded on the freed GPU: that would cut off the
+    reading, and paperless-gpt does not retry one. After 2 minutes idle the
+    model unloads, so the next document has the whole GPU.
   - Both stop while storychat's chat model is loaded.
 - **With subfill's PC node.** It is in `stacks/subfill` from
   Aborii/media-stack#116 on.
@@ -71,7 +73,9 @@ Per model, the menu also has:
     paused, switched off, or not running.
 - **Unload the chat / paperless / subtitle model now:** the model stops at
   once, even mid-reply, mid-page or mid-batch. The next message, document or
-  batch loads it again, and the cut-off part is done again.
+  batch loads it again. A cut-off reply or subtitle batch is done again; a
+  cut-off Paperless document fails its AI reading (paperless-gpt does not
+  retry it), so run it again with `rerun-ai.py`.
 - **Chat / Paperless / Subtitle model can load:** untick one to keep that
   model from loading until you tick it again. A loaded model unloads within a
   few seconds. What happens to the work meanwhile:
@@ -123,8 +127,10 @@ closes the icon; the AI keeps running. Windows may tuck a new icon under the
     while the subtitle model still holds the GPU for those seconds.
   - Making storychat-server wait for both is its own change.
 
-Pausing takes a few seconds. A page or a batch that was being worked on when
-it paused is done again later.
+Pausing takes a few seconds. A subtitle batch or chat reply that was being
+worked on when it paused is done again later. A Paperless document that was
+being read fails its AI reading, since paperless-gpt does not retry it; run it
+again with `rerun-ai.py`.
 
 ## Install
 
@@ -142,7 +148,8 @@ It does five things:
 - pulls `qwen2.5vl:7b`, `qwen2.5:14b` and `translategemma:12b` (about 23 GB,
   in `I:\AI\ollama\models`), trying each up to three times. It ends with
   "Done." only when all three are there; otherwise it says which did not
-  download, in red, and exits with 1.
+  download, in red, and exits with 1. A model already there that could not be
+  checked for a newer version (no internet) gets a yellow note and is kept.
 
 It is safe to run again on a PC that has only the paperless one: it adds the
 second without touching the first's download or models. A model already
@@ -155,7 +162,7 @@ paperless depends on, with the port and process lookups faked. It uses the
 Pester that ships with Windows:
 
 ```powershell
-powershell -NoProfile -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"
 ```
 
 `uninstall.ps1` removes both tasks, both rules and the shortcuts, and keeps the

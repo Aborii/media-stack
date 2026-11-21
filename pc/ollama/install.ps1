@@ -140,7 +140,17 @@ if (-not $up) {
 # Pulled through the paperless Ollama; the subtitles one reads the same
 # models folder, so it sees them too. A few tries each: the first install hit
 # a moment where the registry's name did not resolve, and every pull failed.
-# A model already there is only checked, so running this again costs little.
+# A model already there is only checked, so running this again costs little;
+# with no internet that check fails too, so a model the Ollama already has is
+# kept as it is rather than counted as missing. Asked over HTTP: a native
+# command's error output would stop this script ($ErrorActionPreference).
+function Test-ModelThere([string]$model) {
+  try {
+    $body = @{ model = $model } | ConvertTo-Json
+    Invoke-RestMethod -Method Post -Uri "http://$Listen/api/show" -Body $body -ContentType 'application/json' -TimeoutSec 10 | Out-Null
+    return $true
+  } catch { return $false }
+}
 $failed = @()
 foreach ($m in $Models + $SubtitleModels) {
   $pulled = $false
@@ -153,7 +163,12 @@ foreach ($m in $Models + $SubtitleModels) {
     & $exe pull $m
     $pulled = $LASTEXITCODE -eq 0
   }
-  if (-not $pulled) { $failed += $m }
+  if ($pulled) { continue }
+  if (Test-ModelThere $m) {
+    Write-Host "   $m is already here; it could not be checked for a newer version." -ForegroundColor Yellow
+  } else {
+    $failed += $m
+  }
 }
 if ($failed.Count -gt 0) {
   Write-Host "Not done: could not download $($failed -join ', '). Check the PC's internet, then run this again; it keeps what is there." -ForegroundColor Red
