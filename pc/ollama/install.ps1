@@ -33,6 +33,8 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
   throw 'Run this from an elevated (Administrator) PowerShell.'
 }
 $here = $PSScriptRoot
+# Stop-Tree, which kills without letting taskkill's complaints stop this script.
+. (Join-Path $here 'runners.ps1')
 $exe = Join-Path $Base 'ollama.exe'
 $port = [int]($Listen -split ':')[-1]
 $subtitlesPort = [int]($SubtitlesListen -split ':')[-1]
@@ -50,7 +52,7 @@ if ((Test-Path -LiteralPath $exe) -and (Test-Path -LiteralPath $stamp) -and ((Ge
   Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
   # The whole tree: a model runner left behind keeps files under lib\ locked.
   Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
-    ForEach-Object { & taskkill.exe /PID $_.Id /T /F 2>&1 | Out-Null }
+    ForEach-Object { Stop-Tree $_.Id }
   Expand-Archive -LiteralPath $zip -DestinationPath $Base -Force
   Remove-Item -LiteralPath $zip -Force
   $Version | Set-Content -LiteralPath $stamp -Encoding ascii

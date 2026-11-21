@@ -48,6 +48,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Get-OllamaServer and Get-ModelRunners, shared with run-ollama.ps1.
+. (Join-Path $PSScriptRoot 'runners.ps1')
 $pauseDir = Join-Path $Base 'pause'
 $userFile = Join-Path $pauseDir 'user'
 $offFiles = @{
@@ -96,14 +98,13 @@ function Get-AiState {
   if ($files.Count -gt 0) {
     return @{ Kind = 'chat'; Text = "Paused by $(($files | ForEach-Object Name) -join ', ')" }
   }
-  $port = ([uri]$Url).Port
-  $server = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  $server = Get-OllamaServer ([uri]$Url).Port
   if (-not $server) {
     return @{ Kind = 'off'; Text = 'Not running (starting, or the task is stopped)' }
   }
-  # A loaded model is a llama-server runner under the Ollama that owns the port.
-  $runner = Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$($server.OwningProcess)" -ErrorAction SilentlyContinue
-  if ($runner) {
+  # A loaded model is a runner under the Ollama that owns the port, not the
+  # GPU check a just-started Ollama runs (runners.ps1).
+  if (@(Get-ModelRunners $server.OwningProcess).Count -gt 0) {
     return @{ Kind = 'busy'; Text = 'Working: a model is loaded' }
   }
   return @{ Kind = 'ready'; Text = 'Ready for documents' }
@@ -117,13 +118,14 @@ function Get-SubtitleState([hashtable]$paperless) {
   if ($state.Off) { return $state + @{ Text = 'Subtitle model: switched off' } }
   if ($files -contains 'user') { return $state + @{ Text = 'Subtitle model: paused with the rest' } }
   if ($files -contains 'storychat') { return $state + @{ Text = 'Subtitle model: paused while storychat uses the GPU' } }
-  $server = Get-NetTCPConnection -LocalPort ([uri]$SubtitlesUrl).Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+  $server = Get-OllamaServer ([uri]$SubtitlesUrl).Port
   if (-not $server) {
     $text = if ($paperless.Kind -eq 'busy') { 'Subtitle model: waiting while paperless works' } else { 'Subtitle model: not running' }
     return $state + @{ Text = $text }
   }
-  $runner = Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$($server.OwningProcess)" -ErrorAction SilentlyContinue
-  if ($runner) { return @{ Loaded = $true; Off = $false; Text = 'Subtitle model: translating' } }
+  if (@(Get-ModelRunners $server.OwningProcess).Count -gt 0) {
+    return @{ Loaded = $true; Off = $false; Text = 'Subtitle model: translating' }
+  }
   return $state + @{ Text = 'Subtitle model: ready' }
 }
 

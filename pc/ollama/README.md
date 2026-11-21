@@ -25,12 +25,15 @@ switch, logs and request log.
   - The subtitles Ollama stays stopped while the paperless one has a model
     loaded. It starts again once paperless has had no model loaded for 30 s,
     which is 2 minutes after paperless's last page, plus that 30 s.
-  - A document that arrives while subtitles hold the GPU loads its model with
-    the GPU nearly full, so part of it lands on the CPU. The subtitles Ollama
-    stops within 2 s, and that document finishes on the model as loaded,
-    slower. It is not reloaded on the freed GPU: that would cut off the
-    reading, and paperless-gpt does not retry one. After 2 minutes idle the
-    model unloads, so the next document has the whole GPU.
+  - A document that arrives while subtitles hold the GPU makes the subtitles
+    Ollama stop within 2 s, usually before paperless has sized the GPU, so
+    paperless gets all of it. If paperless's Ollama started under 5 s
+    earlier, its model is only seen after 5 s, since a starting Ollama runs a
+    second-long GPU check that looks the same (`runners.ps1`). Whatever part
+    of the model lands on the CPU stays there for that document, slower: it
+    is not reloaded on the freed GPU, since that would cut off the reading,
+    and paperless-gpt does not retry one. After 2 minutes idle the model
+    unloads, so the next document has the whole GPU.
   - Both stop while storychat's chat model is loaded.
 - **With subfill's PC node.** It is in `stacks/subfill` from
   Aborii/media-stack#116 on.
@@ -157,9 +160,12 @@ there is only checked, not downloaded again.
 
 ## Tests
 
-`run-ollama.Tests.ps1` checks the runner checks the subtitle Ollama's yield to
-paperless depends on, with the port and process lookups faked. It uses the
-Pester that ships with Windows:
+`runners.ps1` holds what the scripts share about Ollama's processes: which
+`llama-server` is a loaded model and which is the GPU check a just-started
+Ollama runs for a second or two, and killing a process tree. Its tests,
+`runners.Tests.ps1`, fake the port and process lookups. `run-ollama.Tests.ps1`
+and `install.Tests.ps1` test those scripts' own functions the same way. They
+use the Pester that ships with Windows:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"

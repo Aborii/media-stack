@@ -6,6 +6,8 @@ $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   throw 'Run this from an elevated (Administrator) PowerShell.'
 }
+# Stop-Tree, which kills without letting taskkill's complaints stop this script.
+. (Join-Path $PSScriptRoot 'runners.ps1')
 
 foreach ($task in 'ollama', 'ollama-subtitles') {
   Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
@@ -13,7 +15,7 @@ foreach ($task in 'ollama', 'ollama-subtitles') {
 # Unregistering ends run-ollama.ps1 but not the Ollama it started. The whole
 # tree goes: the model runner under it is what holds the GPU.
 Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
-  ForEach-Object { & taskkill.exe /PID $_.Id /T /F 2>&1 | Out-Null }
+  ForEach-Object { Stop-Tree $_.Id }
 foreach ($rule in 'ollama (from the mini)', 'ollama subtitles (from the mini)') {
   Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 }
