@@ -1,0 +1,30 @@
+[Unit]
+Description=Snapshot Immich's photos and database onto the NVMe, off their disk
+# It stops and starts immich_server and dumps immich_postgres, so the daemon
+# has to be up.
+After=docker.service
+Requires=docker.service
+# The photos are on the USB disk. The script refuses without them anyway, but
+# there is no point starting before the mount.
+RequiresMountsFor=/srv/storage
+
+[Service]
+Type=oneshot
+ExecStart=/home/aborii/media-stack/scripts/backup-immich.sh
+# aborii, not root. Immich runs as root, but every file it writes is readable
+# by others (644), the docker group covers the stop and start, and the
+# destination is created for aborii by install-immich-backup.sh. A file it
+# cannot read fails the run loudly rather than being skipped. Owners in the copy
+# become aborii, which Immich, running as root, reads the same after a restore.
+User=aborii
+Group=aborii
+# Not IOSchedulingClass=idle like the nightly backup: Immich is down for the
+# second copy, so it should finish, not yield.
+Nice=10
+# A stop (or this limit) sends SIGTERM; the script then ends the copy and
+# starts Immich again before it exits. The first run copies the whole library
+# while Immich runs, so this is generous.
+TimeoutStartSec=4h
+# The stop path still waits for Immich to answer (up to about 6 minutes)
+# and then reports. The 90s default would SIGKILL it before the report.
+TimeoutStopSec=10min

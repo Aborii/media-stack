@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly Immich snapshot
+
+[Timer]
+# 02:30: after Immich's own database dump at 02:00, and finished before the
+# nightly backup at 03:30 reads the same USB disk.
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

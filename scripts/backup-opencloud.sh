@@ -82,6 +82,9 @@ problems=()
 alerts=()
 problem() { note "$*"; problems+=("$*"); }
 alert() { note "$*"; alerts+=("$*"); }
+# Refusing before anything started: the reason goes into the report too, not
+# only to stderr, so Telegram and the dashboard say why.
+refuse() { problems+=("$*"); echo "$*" >&2; exit 1; }
 stopped_by_us=0
 down_at=0
 downtime=0
@@ -126,7 +129,9 @@ MARK="$DEST/.stopped-by-backup"
 running() { [ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null)" = "true" ]; }
 restart_if_ours() {
   [ "$stopped_by_us" = "1" ] || return 0
-  stopped_by_us=0
+  # stopped_by_us stays 1 until the container is confirmed running: a signal
+  # that kills `docker start` before the daemon acts must leave the trap
+  # something to retry.
   local up=0
   # Twice: a SIGTERM during `docker stop` ends the client but not the stop the
   # daemon is carrying out, so the first start can land on a container that is
@@ -145,9 +150,11 @@ restart_if_ours() {
   done
   downtime=$(( $(date +%s) - down_at ))
   if ! running; then
+    stopped_by_us=0
     alert "$CONTAINER DID NOT START AGAIN - start it: docker start $CONTAINER"
     return 0
   fi
+  stopped_by_us=0
   rm -f -- "$MARK"
   if [ "$up" = "1" ]; then
     note "$CONTAINER answering again after ${downtime}s"
@@ -207,18 +214,14 @@ PY
 probe=$DEST
 while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); done
 if [ "$(stat -c %d "$probe")" = "$(stat -c %d "$SRC_DATA" 2>/dev/null || echo none)" ]; then
-  echo "$DEST is on the same disk as $SRC_DATA - refusing, that protects nothing" >&2
-  exit 1
+  refuse "$DEST is on the same disk as $SRC_DATA - refusing, that protects nothing"
 fi
 
 # An unmounted data disk leaves an empty directory (or none) at SRC_DATA.
 # Snapshotting that would "succeed", and fourteen of them would rotate every
 # real snapshot away. These two exist in any OpenCloud that has ever started.
 for need in idm/idm.boltdb storage/users; do
-  [ -e "$SRC_DATA/$need" ] || {
-    echo "$SRC_DATA/$need is missing - is /srv/storage mounted? refusing" >&2
-    exit 1
-  }
+  [ -e "$SRC_DATA/$need" ] || refuse "$SRC_DATA/$need is missing - is /srv/storage mounted? refusing"
 done
 
 mkdir -p "$DEST"
@@ -252,25 +255,23 @@ mkdir -p "$WORK"
 prev_bytes=""
 [ -n "$PREV" ] && prev_bytes=$(tree_stats "$PREV/data" | cut -d' ' -f2)
 
-# Room for what is new since the last snapshot (the rest is hard-linked), plus
-# the floor. Checked before the stop, so a full disk costs no downtime either.
+# Room for the WHOLE source plus the floor, not just what grew: --link-dest
+# matches by path, so a folder moved in OpenCloud is copied in full while the
+# total has not changed. Checked before the stop, so a full disk costs no
+# downtime either.
 stage="checking free space"
 src_bytes=$(tree_stats "$SRC_DATA" | cut -d' ' -f2)
-growth=$(( src_bytes - ${prev_bytes:-0} ))
-[ "$growth" -gt 0 ] || growth=0
 avail=$(df --output=avail -B1 "$DEST" | tail -1 | tr -d ' ')
-need=$(( growth + MIN_FREE_GB * 1024 * 1024 * 1024 ))
+need=$(( src_bytes + MIN_FREE_GB * 1024 * 1024 * 1024 ))
 if [ "$avail" -lt "$need" ]; then
-  problems+=("NOT ENOUGH SPACE on $DEST: $(numfmt --to=iec "$avail") free, needs $(numfmt --to=iec "$need") ($(numfmt --to=iec "$growth") new plus ${MIN_FREE_GB}G kept free) - OpenCloud was not stopped")
-  echo "${problems[-1]}" >&2
-  exit 1
+  refuse "NOT ENOUGH SPACE on $DEST: $(numfmt --to=iec "$avail") free, needs $(numfmt --to=iec "$need") (the whole $(numfmt --to=iec "$src_bytes") plus ${MIN_FREE_GB}G kept free) - OpenCloud was not stopped"
 fi
 
 # ------------------------------------------------------------------- stop
 stage="stopping $CONTAINER"
 echo "== OpenCloud snapshot $STAMP =="
 image=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)
-[ -n "$image" ] || { echo "no container named $CONTAINER" >&2; exit 1; }
+[ -n "$image" ] || refuse "no container named $CONTAINER"
 printf '%s\n' "$image" > "$WORK/image"
 if running; then
   down_at=$(date +%s)
