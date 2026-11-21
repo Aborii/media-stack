@@ -34,7 +34,9 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   re-run.
 - Runs of spaces in a title become one space. The title prompt's examples
   carry a note after a few spaces, and the model copies the gap
-  ("... – 2016   (Arabic)").
+  ("... – 2016   (Arabic)"). An empty part goes too: with no date to give,
+  the model sometimes keeps the dash before it ("Identity Card – Asam
+  Shalbi – (Arabic)", "Transcript – … –").
 - A title's date is removed when a year in it is not in the document's text.
   Undated letters came back with a made-up date ("May 2023") though the
   prompt says never to invent one. Years are looked for as written (also in
@@ -294,6 +296,14 @@ def text_of(doc) -> str:
         return doc.content
     latest = Document.global_objects.filter(root_document=doc).order_by("-version_index").first()
     return (latest.content if latest else "") or ""
+
+
+def tidy_title(title: str) -> str:
+    """The title with runs of spaces made one and empty " – " parts dropped."""
+    title = re.sub(r"\s+", " ", title).strip()
+    title = re.sub(r"(?: –)+ (?=\()", " ", title)  # "… – (Arabic)": no date before the suffix
+    title = re.sub(r" –(?= –)", "", title)  # "A – – B": an empty middle part
+    return re.sub(r"(?: –)+$", "", title)  # "A – B –": nothing after the last dash
 
 
 def title_date(title: str):
@@ -586,9 +596,11 @@ def main() -> None:
             doc.tags.remove(drop_tag)
             print(f"after-ai: document {doc.pk}: removed tag {drop} (it is tagged {keep}).")
 
-    spaced = Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG, title__regex=r"\s\s")
-    for doc in spaced:
-        title = re.sub(r"\s+", " ", doc.title).strip()
+    untidy = Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG, title__regex=r"\s\s|–\s*\(|–\s*$|–\s*–")
+    for doc in untidy:
+        title = tidy_title(doc.title)
+        if title == doc.title:
+            continue
         print(f"after-ai: document {doc.pk}: title {doc.title!r} -> {title!r}.")
         doc.title = title
         doc.save(update_fields=["title"])
