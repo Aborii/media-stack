@@ -260,8 +260,11 @@ Telegram message and the dashboard report how long. Extended attributes are
 kept (`rsync -X`): OpenCloud stores ids on its folders that way.
 
 A copy that does not match the source exactly (counted while OpenCloud is
-stopped), or that is less than half the last snapshot, is not kept and nothing
-is rotated. `ALLOW_SHRINK=1` once after a real mass delete.
+stopped), or that is under half the last snapshot and over 1 GB smaller, is not
+kept and nothing is rotated. `ALLOW_SHRINK=1` once after a real mass delete. The
+run refuses before stopping anything when the NVMe would be left with under
+50 GB free, and if a run dies with OpenCloud stopped, the next one starts it
+and says so.
 
 Restoring, to try it:
 

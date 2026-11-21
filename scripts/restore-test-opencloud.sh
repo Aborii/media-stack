@@ -54,6 +54,9 @@ cleanup() {
   rm -rf -- "$scratch_abs"
 }
 trap cleanup EXIT
+# bash skips the EXIT trap on a signal it does not handle, which would leave
+# the container and this copy of the secrets behind after a timeout.
+trap 'exit 143' TERM INT HUP
 
 image=$(cat "$SNAPSHOT/image")
 echo "== restore test of $(basename "$SNAPSHOT") with $image =="
@@ -134,7 +137,7 @@ if [ -n "${RESTORE_USER:-}" ] && [ -n "${RESTORE_FILE:-}" ]; then
   [ "$code" = "200" ] || { rm -f "$fetched"; die "fetching $RESTORE_FILE through the restored OpenCloud: http $code"; }
   # The same file as it sits in the snapshot. Files are stored under their own
   # names in the user's folder, so this is a plain path.
-  orig=$(find "$SNAPSHOT/data/storage/users/users" -path "*/$RESTORE_FILE" -type f | head -1)
+  orig=$(find "$SNAPSHOT/data/storage/users/users" -path "*/$RESTORE_FILE" -type f -print -quit)
   [ -n "$orig" ] || { rm -f "$fetched"; die "$RESTORE_FILE not found in the snapshot"; }
   if cmp -s "$fetched" "$orig"; then
     note "$RESTORE_FILE fetched through OpenCloud matches the snapshot ($(stat -c %s "$fetched") bytes)"

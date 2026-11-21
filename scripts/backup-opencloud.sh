@@ -53,6 +53,13 @@ CONTAINER=${CONTAINER:-opencloud}
 KEEP=${KEEP:-14}
 STOP_TIMEOUT=${STOP_TIMEOUT:-60}
 STATUS_URL=${STATUS_URL:-http://127.0.0.1:9200/status.php}
+# The NVMe also holds Docker and every database. A copy that fills it takes
+# them down too, so the run refuses before it starts if less than this would
+# be left.
+MIN_FREE_GB=${MIN_FREE_GB:-50}
+# The shrink guard below only trips on a drop at least this large, so deleting
+# a few files from a small OpenCloud does not stop every later snapshot.
+SHRINK_MIN_BYTES=${SHRINK_MIN_BYTES:-$((1024 * 1024 * 1024))}
 STAMP=$(date +%Y%m%d-%H%M%S)
 HOST=$(hostname)
 
@@ -68,8 +75,13 @@ else
 fi
 
 stage="checking the destination"
+# Two lists. A problem means the copy cannot be trusted, so it is not kept. An
+# alert fails the report but keeps a copy that passed every check - a slow
+# restart afterwards says nothing about the copy taken while it was stopped.
 problems=()
+alerts=()
 problem() { note "$*"; problems+=("$*"); }
+alert() { note "$*"; alerts+=("$*"); }
 stopped_by_us=0
 down_at=0
 downtime=0
@@ -84,7 +96,7 @@ write_status() {
   local result=$1
   [ -d "$DEST" ] || return 0
   RESULT=$result STAMP=$STAMP SNAP=$snap_name DOWNTIME=$downtime \
-  STATS=$stats_line DEST=$DEST PROBLEMS=$(printf '%s\n' "${problems[@]+"${problems[@]}"}") \
+  STATS=$stats_line DEST=$DEST PROBLEMS=$(printf '%s\n' "${problems[@]+"${problems[@]}"}" "${alerts[@]+"${alerts[@]}"}") \
   python3 -I - <<'PY' > "$DEST/.status.json.tmp" && mv -f "$DEST/.status.json.tmp" "$DEST/status.json"
 import json, os, re
 e = os.environ
@@ -105,25 +117,42 @@ PY
 
 # The one thing this script must never do is leave OpenCloud stopped. set -e
 # can end the run anywhere, so the EXIT trap starts it again, and reports.
+#
+# Memory is not enough for that: a power cut or a SIGKILL between the stop and
+# the start skips every trap, and the container's unless-stopped policy then
+# keeps it down through the reboot. So the stop is also written to disk
+# (MARK), and the next run finishes the job - see "left stopped" below.
+MARK="$DEST/.stopped-by-backup"
+running() { [ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null)" = "true" ]; }
 restart_if_ours() {
   [ "$stopped_by_us" = "1" ] || return 0
-  if docker start "$CONTAINER" >/dev/null; then
-    stopped_by_us=0
+  stopped_by_us=0
+  local up=0
+  # Twice: a SIGTERM during `docker stop` ends the client but not the stop the
+  # daemon is carrying out, so the first start can land on a container that is
+  # still running and about to go down. Checking afterwards catches that.
+  for _ in 1 2; do
+    docker start "$CONTAINER" >/dev/null 2>&1 || true
     # Downtime runs until it answers again, not until the container starts:
     # OpenCloud takes several seconds more to come up.
-    local up=0
     for _ in $(seq 1 60); do
       if curl -ksf --max-time 3 "$STATUS_URL" >/dev/null; then up=1; break; fi
+      running || break
       sleep 2
     done
-    downtime=$(( $(date +%s) - down_at ))
-    if [ "$up" = "1" ]; then
-      note "$CONTAINER answering again after ${downtime}s"
-    else
-      problem "$CONTAINER started but not answering at $STATUS_URL after ${downtime}s"
-    fi
+    running && break
+    up=0
+  done
+  downtime=$(( $(date +%s) - down_at ))
+  if ! running; then
+    alert "$CONTAINER DID NOT START AGAIN - start it: docker start $CONTAINER"
+    return 0
+  fi
+  rm -f -- "$MARK"
+  if [ "$up" = "1" ]; then
+    note "$CONTAINER answering again after ${downtime}s"
   else
-    problem "$CONTAINER DID NOT START AGAIN - start it: docker start $CONTAINER"
+    alert "$CONTAINER started but not answering at $STATUS_URL after ${downtime}s"
   fi
 }
 on_exit() {
@@ -134,10 +163,13 @@ on_exit() {
   fi
   restart_if_ours
   [ "$reported" = "1" ] && return
+  # A copy that never reached its checks is litter, not a snapshot, and on the
+  # NVMe it is space Docker and the databases need.
+  [ -n "${WORK:-}" ] && rm -rf -- "$WORK"
   problems+=("stopped early (exit $rc) while $stage")
   write_status failed || true
   tg_backup "OpenCloud backup FAILED on $HOST - stopped early (exit $rc) while $stage.
-Run $STAMP.${problems[0]:+ ${problems[0]}}"
+Run $STAMP.${problems[0]:+ ${problems[0]}}${alerts[0]:+ ${alerts[0]}}"
 }
 trap on_exit EXIT
 # bash skips the EXIT trap when a signal it does not handle kills it, and
@@ -199,6 +231,19 @@ flock -n 9 || { echo "another OpenCloud backup is running - leaving it"; reporte
 # Leftovers from a run that died. Never complete, so never a snapshot.
 find "$DEST" -maxdepth 1 -mindepth 1 -type d -name '.partial-*' -exec rm -rf -- {} +
 
+# Left stopped: an earlier run stopped OpenCloud and died before starting it.
+if [ -f "$MARK" ]; then
+  if running; then
+    rm -f -- "$MARK"
+  else
+    stage="starting $CONTAINER, left stopped by an earlier run"
+    down_at=$(stat -c %Y "$MARK")
+    stopped_by_us=1
+    restart_if_ours
+    alert "$CONTAINER had been left stopped by an earlier run that died - started it again"
+  fi
+fi
+
 PREV=$(find "$DEST" -maxdepth 1 -mindepth 1 -type d -regextype posix-extended \
   -regex '.*/[0-9]{8}-[0-9]{6}' | sort | tail -1 || true)
 WORK="$DEST/.partial-$STAMP"
@@ -207,21 +252,37 @@ mkdir -p "$WORK"
 prev_bytes=""
 [ -n "$PREV" ] && prev_bytes=$(tree_stats "$PREV/data" | cut -d' ' -f2)
 
+# Room for what is new since the last snapshot (the rest is hard-linked), plus
+# the floor. Checked before the stop, so a full disk costs no downtime either.
+stage="checking free space"
+src_bytes=$(tree_stats "$SRC_DATA" | cut -d' ' -f2)
+growth=$(( src_bytes - ${prev_bytes:-0} ))
+[ "$growth" -gt 0 ] || growth=0
+avail=$(df --output=avail -B1 "$DEST" | tail -1 | tr -d ' ')
+need=$(( growth + MIN_FREE_GB * 1024 * 1024 * 1024 ))
+if [ "$avail" -lt "$need" ]; then
+  problems+=("NOT ENOUGH SPACE on $DEST: $(numfmt --to=iec "$avail") free, needs $(numfmt --to=iec "$need") ($(numfmt --to=iec "$growth") new plus ${MIN_FREE_GB}G kept free) - OpenCloud was not stopped")
+  echo "${problems[-1]}" >&2
+  exit 1
+fi
+
 # ------------------------------------------------------------------- stop
 stage="stopping $CONTAINER"
 echo "== OpenCloud snapshot $STAMP =="
 image=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)
 [ -n "$image" ] || { echo "no container named $CONTAINER" >&2; exit 1; }
 printf '%s\n' "$image" > "$WORK/image"
-if [ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}')" = "true" ]; then
+if running; then
   down_at=$(date +%s)
+  : > "$MARK"
   stopped_by_us=1
   docker stop --time "$STOP_TIMEOUT" "$CONTAINER" >/dev/null
   note "$CONTAINER stopped"
 else
-  # Someone stopped it on purpose. The copy is just as consistent, and it is
-  # not this script's place to bring it back.
-  note "$CONTAINER was already stopped - copying, and leaving it stopped"
+  # Someone stopped it on purpose, so it is not this script's place to bring
+  # it back. The copy is just as consistent - but an OpenCloud that is down
+  # must not read as a quiet "OK" night after night.
+  alert "$CONTAINER was already stopped - copied, and left stopped"
 fi
 
 # ------------------------------------------------------------------- copy
@@ -259,12 +320,15 @@ stage="starting $CONTAINER again"
 restart_if_ours
 
 # A copy far smaller than the last kept snapshot is more likely a disk that
-# came up empty or half-mounted than a real mass delete. It is not kept as a
-# snapshot and nothing is rotated, so it cannot push the good ones out. Measured
-# from the snapshot itself, not from status.json, which a failed run rewrites.
+# came up half-mounted or a sync gone wrong than a real mass delete. It is not
+# kept as a snapshot and nothing is rotated, so it cannot push the good ones
+# out. Both halves must hold: less than half, AND a large drop - at a few MB,
+# deleting one file halves the size and must not stop every later snapshot.
+# Measured from the snapshot itself, not from status.json, which a failed run
+# rewrites.
 if [ -n "$prev_bytes" ] && [ "${ALLOW_SHRINK:-0}" != "1" ]; then
-  if [ "$prev_bytes" -gt 0 ] && [ "$bytes" -lt $(( prev_bytes / 2 )) ]; then
-    problem "SHRANK by more than half since the last snapshot ($(numfmt --to=iec "$prev_bytes") to $(numfmt --to=iec "$bytes")) - not kept, nothing rotated"
+  if [ "$bytes" -lt $(( prev_bytes / 2 )) ] && [ $(( prev_bytes - bytes )) -ge "$SHRINK_MIN_BYTES" ]; then
+    problem "SHRANK by more than half since the last snapshot ($(numfmt --to=iec "$prev_bytes") to $(numfmt --to=iec "$bytes")) - not kept, nothing rotated. If the delete was real, run once: sudo -u aborii ALLOW_SHRINK=1 $0"
   fi
 fi
 
@@ -285,13 +349,15 @@ if [ ${#problems[@]} -eq 0 ]; then
     note "${#snaps[@]} snapshot(s) kept"
   fi
 else
-  # Kept for a look, never counted as a snapshot. The next run clears it.
-  note "snapshot NOT kept - left in $(basename "$WORK") until the next run"
+  # Deleted now rather than left for the next run: it shares the NVMe with
+  # Docker and the databases, and the journal already says what was wrong.
+  rm -rf -- "$WORK"
+  note "snapshot NOT kept"
 fi
 
 # ------------------------------------------------------------------ report
 reported=1
-if [ ${#problems[@]} -eq 0 ]; then
+if [ ${#problems[@]} -eq 0 ] && [ ${#alerts[@]} -eq 0 ]; then
   write_status ok
   tg_backup "OpenCloud backup OK on $HOST - snapshot $STAMP
 $files files, $(numfmt --to=iec "$bytes"), OpenCloud down ${downtime}s"
@@ -299,7 +365,8 @@ $files files, $(numfmt --to=iec "$bytes"), OpenCloud down ${downtime}s"
 else
   write_status failed
   msg="OpenCloud backup FAILED on $HOST - run $STAMP"
-  for p in "${problems[@]}"; do msg+=$'\n- '"$p"; done
+  [ -n "$snap_name" ] && msg+=$'\nThe snapshot itself was kept: '"$snap_name"
+  for p in "${problems[@]}" "${alerts[@]}"; do [ -n "$p" ] && msg+=$'\n- '"$p"; done
   msg+=$'\nDetails: journalctl -u media-stack-opencloud-backup.service'
   tg_backup "$msg"
   echo "  FINISHED WITH ERRORS" >&2

@@ -21,3 +21,6 @@ Nice=10
 # A stop (or this limit) sends SIGTERM; the script then ends the copy and
 # starts OpenCloud again before it exits.
 TimeoutStartSec=2h
+# The stop path still waits for OpenCloud to answer (up to about 5 minutes)
+# and then reports. The 90s default would SIGKILL it before the report.
+TimeoutStopSec=10min
