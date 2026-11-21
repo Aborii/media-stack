@@ -35,10 +35,13 @@ switch, logs and request log.
     and paperless-gpt does not retry one. After 2 minutes idle the model
     unloads, so the next document has the whole GPU.
   - Both stop while storychat's chat model is loaded.
-- **RAM:** a loaded model sits on the GPU; its runner keeps about 1.2 GB of
-  the PC's RAM. llama.cpp's prompt cache, which would keep every finished
-  batch or page in RAM up to 8 GB, is off (`LLAMA_ARG_CACHE_RAM=0` in
-  `run-ollama.ps1`): nothing here sends the same text twice.
+- **RAM:** when the whole subtitle model fits on the GPU, its runner keeps
+  about 1.2 GB of the PC's RAM. llama.cpp's prompt cache, which would keep
+  every finished batch in RAM up to 8 GB, is off for the subtitle Ollama
+  (`LLAMA_ARG_CACHE_RAM=0` in `run-ollama.ps1`), since no batch can reuse
+  another. The paperless Ollama keeps it, for its naming prompts' long fixed
+  instructions. A change to these settings takes effect only when the tasks
+  start again: re-run `install.ps1`, or restart the PC.
 - **With subfill's PC node.** It is in `stacks/subfill` from
   Aborii/media-stack#116 on.
 - **PC off or asleep:** nothing answers.
