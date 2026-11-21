@@ -174,8 +174,9 @@ export function rebuild(parsed: Parsed, segments: Segment[], translations: strin
 }
 
 /** The right-to-left mark: invisible, and strongly right-to-left. */
-export const RLM = '‏';
-const RTL_LETTER = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+export const RLM = '\u200f';
+// Hebrew and Arabic, with their presentation forms.
+const RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 const POSITION = /^((?:\{\\[^}]*\})*)/;
 
 // Many players, Jellyfin among them, lay every subtitle line out left to
