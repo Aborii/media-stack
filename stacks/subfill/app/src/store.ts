@@ -12,6 +12,7 @@
 //   skipped      the owner said not to translate this one
 //   no_source    Arabic is missing but there is no usable subtitle to translate from
 import { DatabaseSync } from 'node:sqlite';
+import { CRASH_PHRASES } from './ollama.ts';
 
 export const STATES = [
   'waiting',
@@ -65,8 +66,8 @@ const ADDED_COLUMNS: [string, string][] = [
 ];
 
 // What a failure from a runner crash said, before crashes stopped counting as
-// attempts (Ollama's own words, kept in the note).
-const CRASH_NOTES = ['%model runner has unexpectedly stopped%', '%unexpected EOF%'];
+// attempts: Ollama's 5xx answer, kept in the note, in Ollama's own words.
+const CRASH_NOTES = CRASH_PHRASES.map((p) => `%${p}%`);
 
 export class Store {
   readonly db: DatabaseSync;
@@ -138,7 +139,7 @@ export class Store {
   // with their attempts cleared. Returns their keys. A later failure says
   // something else in its note, so this finds nothing once they have run.
   requeueCrashFailures(): string[] {
-    const where = `state = 'failed' AND (${CRASH_NOTES.map(() => 'note LIKE ?').join(' OR ')})`;
+    const where = `state = 'failed' AND note LIKE 'Ollama answered 5%' AND (${CRASH_NOTES.map(() => 'note LIKE ?').join(' OR ')})`;
     const keys = (this.db.prepare(`SELECT key FROM items WHERE ${where}`).all(...CRASH_NOTES) as { key: string }[]).map((r) => r.key);
     this.db
       .prepare(
@@ -224,8 +225,11 @@ export class Store {
     this.db.prepare('DELETE FROM log WHERE item_key = ?').run(key);
   }
 
-  // The next item to translate: a "translate now" first, then the newest
-  // video. An item that failed waits out its retry delay first. An item held
+  // The next item to translate: a "translate now" first, then the one that
+  // crashed the model fewest times, then the newest video. Crashes last: when
+  // the machine keeps crashing (the mini short of memory), each crash lands on
+  // a different episode instead of five in a row failing the same one, and
+  // only an episode that really does crash the model reaches MAX_CRASHES. An item that failed waits out its retry delay first. An item held
   // for the PC is the PC's first pick, and the mini's only once the hold ends.
   // A video another node is already translating is skipped: the episodes of a
   // two-episode file share one subtitle, which the first to finish writes.
@@ -235,7 +239,7 @@ export class Store {
         `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
            AND (held_until IS NULL OR held_until <= ? OR ?)
            AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
-         ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, eligible_at DESC LIMIT 1`,
+         ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, crashes ASC, eligible_at DESC LIMIT 1`,
       )
       .get(now, now, takesHeld ? 1 : 0, now) as Item | undefined;
   }

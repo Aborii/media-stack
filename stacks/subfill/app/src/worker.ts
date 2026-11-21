@@ -336,7 +336,7 @@ export class Worker {
     const minutes = Math.round((this.now() - startedAt) / 60_000);
     const untranslated = kept ? `, ${kept} left in ${languageOf(item.source_lang ?? 'en').name}` : '';
     const note = `${source.cues.length} cues in ${minutes} min on the ${node.name}${untranslated}`;
-    if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note })) {
+    if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note, crashes: 0 })) {
       // The row changed under us, so nothing would ever clean this file up.
       await this.deleteOurs({ ...item, out_path: out });
       this.store.log(item.key, 'the item changed while it was being translated; the result was discarded');
@@ -358,7 +358,7 @@ export class Worker {
         case 'skip':
           return this.store.move(key, ['waiting', 'eligible', 'failed', 'no_source'], 'skipped', { note: 'skipped by you' });
         case 'unskip':
-          return this.store.move(key, ['skipped'], 'waiting', { note: null, eligible_at: this.now() });
+          return this.store.move(key, ['skipped'], 'waiting', { note: null, crashes: 0, eligible_at: this.now() });
         default:
           return false;
       }

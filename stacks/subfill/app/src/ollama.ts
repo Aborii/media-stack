@@ -15,8 +15,19 @@ export class OllamaDown extends Unavailable {}
 // episode, in case one episode is what keeps crashing it (MAX_CRASHES).
 export class OllamaCrash extends Unavailable {}
 
-// Ollama's words for a runner that went away mid-request.
-const CRASHED = /model runner has unexpectedly stopped|unexpected EOF|llama-server process (has )?(terminated|no longer running)/i;
+// Ollama's words for a runner that went away: mid-request, or while it was
+// loading the model. The store reads the same list to find old failures that
+// were only crashes (Store.requeueCrashFailures), so the two cannot drift.
+export const CRASH_PHRASES = [
+  'model runner has unexpectedly stopped',
+  'unexpected EOF',
+  'llama runner process has terminated',
+  'llama runner process no longer running',
+  'llama-server process has terminated',
+  'llama-server process no longer running',
+] as const;
+// Plain words, no regex characters in them, so they join as they are.
+const CRASHED = new RegExp(CRASH_PHRASES.join('|'), 'i');
 
 export class Ollama {
   private readonly base: string;
