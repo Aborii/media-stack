@@ -32,6 +32,7 @@ export const NODE_STATES = ['working', 'idle', 'offline', 'paused', 'outside_hou
 export type NodeState = (typeof NODE_STATES)[number];
 
 export const MAX_BACKOFF_MS = 15 * 60_000;
+export const SEEN_SAVE_MS = 10 * 60_000;
 
 export type NodeStatus = {
   name: string;
@@ -42,7 +43,7 @@ export type NodeStatus = {
   problem: string | null;
   current: Current | null;
   lease: LeaseState | null;
-  // When its Ollama last answered.
+  // When its Ollama last answered, across restarts; null if it never has.
   lastSeen: number | null;
 };
 
@@ -90,6 +91,20 @@ export class NodeRunner {
     this.takesHeld = opts.takesHeld ?? false;
     this.waitMs = opts.waitMs ?? { idle: 60_000, offline: 30_000, paused: 15_000 };
     this.now = opts.now ?? Date.now;
+    const saved = Number(this.store.getMeta(`seen:${this.name}`));
+    this.lastSeen = saved > 0 ? saved : null;
+  }
+
+  // When its Ollama last answered, kept in the database so a restart still
+  // knows the node has worked. Malak asks to wake the PC only for a PC node
+  // that has answered at least once: before the PC's subtitle Ollama is
+  // installed, waking the PC would do nothing. Written at most every
+  // SEEN_SAVE_MS, since a node answers every minute.
+  private markSeen(): void {
+    const now = this.now();
+    const saved = Number(this.store.getMeta(`seen:${this.name}`) ?? 0);
+    if (now - saved >= SEEN_SAVE_MS) this.store.setMeta(`seen:${this.name}`, String(now));
+    this.lastSeen = now;
   }
 
   // The owner's pause, kept in the database so it survives a restart.
@@ -140,7 +155,7 @@ export class NodeRunner {
       await this.letGo();
       return this.waitMs.offline;
     }
-    this.lastSeen = this.now();
+    this.markSeen();
     if (!this.store.next(this.now(), this.takesHeld)) {
       this.state = 'idle';
       this.misses = 0;
