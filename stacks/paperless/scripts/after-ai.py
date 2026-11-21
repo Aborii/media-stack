@@ -178,8 +178,18 @@ STATEMENT_TAGS = {"bank", "finance"}
 # Words that do not tell one bank from another.
 BANK_FILLER = {"bank", "the", "pjsc", "psc", "llc", "finance"}
 # Short or cut names of one bank, by their squashed() form, that spelling
-# alone cannot tie together.
-BANK_ALIASES = {"amcb": "almaryahcommunity", "almaryahcomm": "almaryahcommunity", "enbd": "emiratesnbd"}
+# alone cannot tie together. "m" is "Mbank" with its "bank" taken off: the
+# owner's mbank statements are Al Maryah Community Bank's. CBD is Commercial
+# Bank of Dubai.
+BANK_ALIASES = {
+    "amcb": "almaryahcommunity",
+    "almaryahcomm": "almaryahcommunity",
+    "almaryah": "almaryahcommunity",
+    "m": "almaryahcommunity",
+    "enbd": "emiratesnbd",
+    "cbd": "commercial",
+    "commercialbankofdubai": "commercial",
+}
 # Tags a statement keeps: they say how it was stored, not what it is about.
 KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG} | MAIL_TAGS
 # title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
