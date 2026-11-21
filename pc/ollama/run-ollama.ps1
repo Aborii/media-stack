@@ -61,8 +61,12 @@ $requestLog = Join-Path $Base "ollama$tag-requests.log"
 $requestHistory = Join-Path $Base "ollama$tag-requests-history.log"
 New-Item -ItemType Directory -Force -Path $pauseDir, (Join-Path $Base 'models'), (Split-Path $offFile), (Split-Path $unloadFile) | Out-Null
 
+# Never throws: a log that cannot be written (disk full, file locked) must not
+# stop the loop, which logs a pause before it acts on it.
 function Write-Log([string]$message) {
-  "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $message" | Out-File -FilePath $log -Append -Encoding utf8
+  try {
+    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $message" | Out-File -FilePath $log -Append -Encoding utf8
+  } catch { }
 }
 
 if ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 5MB) {
@@ -92,6 +96,13 @@ function Stop-Ollama {
   if ($script:proc -and -not $script:proc.HasExited) { $ids += $script:proc.Id }
   $ids += @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object OwningProcess)
   foreach ($id in ($ids | Select-Object -Unique)) { Stop-Tree $id }
+  # True once nothing listens on the port: a kill can fail (an Ollama this
+  # user may not end), and then the GPU is not free.
+  for ($i = 0; $i -lt 6; $i++) {
+    if (-not (Get-OllamaServer $port)) { return $true }
+    Start-Sleep -Milliseconds 500
+  }
+  return $false
 }
 
 function Save-RequestHistory {
@@ -140,8 +151,9 @@ function Stop-Runner([int]$serverPid) {
 }
 
 # An Ollama left from a stopped task (stopping the task ends this script but
-# not its child) is a stale copy: start clean.
-Stop-Ollama
+# not its child) is a stale copy: start clean. If it cannot be stopped, the
+# loop's start fails on the taken port, and says so in ollama-serve.log.
+$null = Stop-Ollama
 Write-Log "Started ($Name). Listening on $Listen when not paused$(if ($YieldPort) { "; stops while port $YieldPort has a model loaded" })."
 
 $proc = $null
@@ -176,9 +188,13 @@ while ($true) {
       # on the freed GPU would fail the request it is working on, and
       # paperless-gpt does not retry a reading (OCR_MAX_RETRIES 1). It unloads
       # after 2 minutes idle, so its next load has the whole GPU.
-      Stop-Ollama
-      $proc = $null
-      Write-Log 'Stopped Ollama; the GPU is free.'
+      if (Stop-Ollama) {
+        $proc = $null
+        Write-Log 'Stopped Ollama; the GPU is free.'
+      } else {
+        # $proc is kept, so the next turn tries again.
+        throw "could not stop the Ollama on port $port; it still holds the GPU"
+      }
     } elseif (-not $paused -and -not $running) {
       if ($proc) {
         Write-Log "Ollama exited (code $($proc.ExitCode)); see ollama-serve.log."
@@ -187,11 +203,15 @@ while ($true) {
       # Not more than once every 30 s: with the cable unplugged the address is
       # missing, and Ollama exits straight away until it is back.
       if (((Get-Date) - $lastStart).TotalSeconds -ge 30) {
-        if (Test-Path -LiteralPath $serveLog) { Move-Item -LiteralPath $serveLog -Destination "$serveLog.1" -Force }
+        # Counted before trying, so a start that fails also waits 30 s, and
+        # does not move the empty log it left over the one that says why.
+        $lastStart = Get-Date
+        if ((Test-Path -LiteralPath $serveLog) -and (Get-Item -LiteralPath $serveLog).Length -gt 0) {
+          Move-Item -LiteralPath $serveLog -Destination "$serveLog.1" -Force
+        }
         Save-RequestHistory
         $proc = Start-Process -FilePath $exe -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
           -RedirectStandardError $serveLog -RedirectStandardOutput $requestLog
-        $lastStart = Get-Date
         Write-Log "Started Ollama (pid $($proc.Id))."
       }
     }

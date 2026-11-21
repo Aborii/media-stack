@@ -29,6 +29,23 @@ Describe 'Get-ModelRunners' {
     }
   }
 
+  Context 'a model loaded just after the check''s window' {
+    Mock Get-CimInstance { New-Proc 4242 $t0 'ollama.exe' } -ParameterFilter $serverQuery
+    Mock Get-CimInstance { New-Proc 7 $t0.AddSeconds(5) } -ParameterFilter $runnerQuery
+    It 'counts at once' {
+      @(Get-ModelRunners 4242 $t0.AddSeconds(6)).Count | Should Be 1
+    }
+  }
+
+  Context 'a model loaded inside the check''s window' {
+    Mock Get-CimInstance { New-Proc 4242 $t0 'ollama.exe' } -ParameterFilter $serverQuery
+    Mock Get-CimInstance { New-Proc 7 $t0.AddSeconds(4) } -ParameterFilter $runnerQuery
+    It 'is hidden for its first 5 s only' {
+      @(Get-ModelRunners 4242 $t0.AddSeconds(6)).Count | Should Be 0
+      @(Get-ModelRunners 4242 $t0.AddSeconds(9.5)).Count | Should Be 1
+    }
+  }
+
   Context 'a model loaded later in the server''s life' {
     Mock Get-CimInstance { New-Proc 4242 $t0 'ollama.exe' } -ParameterFilter $serverQuery
     Mock Get-CimInstance { New-Proc 7 $t0.AddMinutes(5) } -ParameterFilter $runnerQuery
@@ -90,10 +107,11 @@ Describe 'Test-Loaded' {
     }
   }
 
-  Context 'runners under another server' {
+  Context 'a model under another server' {
     Mock Get-NetTCPConnection { [pscustomobject]@{ OwningProcess = 4242 } }
-    Mock Get-CimInstance { }
-    It 'counts only the runners of the server on that port' {
+    Mock Get-CimInstance { } -ParameterFilter $runnerQuery
+    Mock Get-CimInstance { New-Proc 7 ((Get-Date).AddMinutes(-1)) } -ParameterFilter { $Filter -eq "Name='llama-server.exe' AND ParentProcessId=999" }
+    It 'is not counted for the server on this port' {
       Test-Loaded 11434 | Should Be $false
       Assert-MockCalled Get-CimInstance -Times 1 -Exactly -ParameterFilter $runnerQuery
     }
@@ -105,5 +123,18 @@ Describe 'Stop-Tree' {
     $ErrorActionPreference = 'Stop'
     # The largest multiple of 4 an [int] holds; Windows never hands it out.
     { Stop-Tree 2147483644 } | Should Not Throw
+    $ErrorActionPreference | Should Be 'Stop'
+  }
+
+  It 'kills a process and what it started' {
+    # A process of the test's own: cmd waiting on a 30 s ping under it.
+    $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList '/d /c ping -n 30 127.0.0.1 >nul' -WindowStyle Hidden -PassThru
+    Start-Sleep -Milliseconds 500
+    $child = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" | Select-Object -First 1
+    $child | Should Not BeNullOrEmpty
+    Stop-Tree $p.Id
+    $p.WaitForExit(5000) | Should Be $true
+    Start-Sleep -Milliseconds 500
+    Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue | Should BeNullOrEmpty
   }
 }

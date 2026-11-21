@@ -37,3 +37,44 @@ Describe 'Stop-Runner' {
     }
   }
 }
+
+foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
+  if ($fn.Name -in 'Write-Log', 'Stop-Ollama') { . ([scriptblock]::Create($fn.Extent.Text)) }
+}
+$log = Join-Path $env:TEMP 'run-ollama-tests.log'
+$port = 11434
+
+Describe 'Write-Log' {
+  Context 'the log cannot be written' {
+    Mock Out-File { throw 'There is not enough space on the disk.' }
+    It 'does not stop the caller, even one that stops on errors' {
+      $ErrorActionPreference = 'Stop'
+      { Write-Log 'Paused by: user.' } | Should Not Throw
+    }
+  }
+}
+
+Describe 'Stop-Ollama' {
+  Context 'the Ollama goes' {
+    $script:proc = $null
+    $script:asked = 0
+    # Listening when asked what to kill, gone after.
+    Mock Get-NetTCPConnection { $script:asked++; if ($script:asked -eq 1) { [pscustomobject]@{ OwningProcess = 4242 } } }
+    Mock Stop-Tree { }
+    Mock Start-Sleep { }
+    It 'kills it and says the port is free' {
+      Stop-Ollama | Should Be $true
+      Assert-MockCalled Stop-Tree -Times 1 -Exactly -ParameterFilter { $id -eq 4242 }
+    }
+  }
+
+  Context 'the Ollama will not go' {
+    $script:proc = $null
+    Mock Get-NetTCPConnection { [pscustomobject]@{ OwningProcess = 4242 } }
+    Mock Stop-Tree { }
+    Mock Start-Sleep { }
+    It 'says so, so the loop does not call the GPU free' {
+      Stop-Ollama | Should Be $false
+    }
+  }
+}
