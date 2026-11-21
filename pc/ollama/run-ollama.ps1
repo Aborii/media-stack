@@ -131,6 +131,9 @@ function Get-PauseReasons {
 }
 
 # The model runners under a server, each a llama-server holding a loaded model.
+# Always count them as @(Get-Runners ...).Count: PowerShell unwraps a one-item
+# array on return, and .Count on a single process object is empty in Windows
+# PowerShell 5.1, so one loaded model would read as none (run-ollama.Tests.ps1).
 function Get-Runners([int]$serverPid) {
   @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$serverPid" -ErrorAction SilentlyContinue)
 }
@@ -138,12 +141,12 @@ function Get-Runners([int]$serverPid) {
 # True when the Ollama listening on that port has a model loaded.
 function Test-Loaded([int]$onPort) {
   $server = Get-NetTCPConnection -LocalPort $onPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-  return [bool]($server -and (Get-Runners $server.OwningProcess).Count -gt 0)
+  return [bool]($server -and @(Get-Runners $server.OwningProcess).Count -gt 0)
 }
 
 # Kills the runner holding the loaded model, not the server itself.
 function Stop-Runner([int]$serverPid) {
-  $runners = Get-Runners $serverPid
+  $runners = @(Get-Runners $serverPid)
   foreach ($r in $runners) { & taskkill.exe /PID $r.ProcessId /T /F 2>&1 | Out-Null }
   return $runners.Count
 }
@@ -178,7 +181,7 @@ while ($true) {
     # while this one still filled it, and put most of its model on the CPU.
     # Once this one is gone, it is asked to load again, on the freed GPU; the
     # page cut off is read again, as for the tray's unload.
-    $reloadOther = ($reasons -contains $yieldReason) -and (Get-Runners $proc.Id).Count -gt 0
+    $reloadOther = ($reasons -contains $yieldReason) -and @(Get-Runners $proc.Id).Count -gt 0
     Stop-Ollama
     $proc = $null
     Write-Log 'Stopped Ollama; the GPU is free.'

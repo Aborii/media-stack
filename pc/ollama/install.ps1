@@ -134,13 +134,29 @@ do {
   try { $up = (Invoke-WebRequest -Uri "http://$Listen/api/version" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 } catch { $up = $false }
 } until ($up -or (Get-Date) -gt $deadline)
 if (-not $up) {
-  Write-Host "   Ollama is not answering on $Listen. Is it paused, or the cable out? Log: $Base\run-ollama.log"
-  return
+  Write-Host "Not done: Ollama is not answering on $Listen, so no models were downloaded. Is it paused, or the cable out? Log: $Base\run-ollama.log" -ForegroundColor Red
+  exit 1
 }
 # Pulled through the paperless Ollama; the subtitles one reads the same
-# models folder, so it sees them too.
+# models folder, so it sees them too. A few tries each: the first install hit
+# a moment where the registry's name did not resolve, and every pull failed.
+# A model already there is only checked, so running this again costs little.
+$failed = @()
 foreach ($m in $Models + $SubtitleModels) {
-  Write-Host "   Pulling $m"
-  & $exe pull $m
+  $pulled = $false
+  for ($try = 1; $try -le 3 -and -not $pulled; $try++) {
+    if ($try -gt 1) {
+      Write-Host "   Trying $m again in 15 s ($try of 3)"
+      Start-Sleep -Seconds 15
+    }
+    Write-Host "   Pulling $m"
+    & $exe pull $m
+    $pulled = $LASTEXITCODE -eq 0
+  }
+  if (-not $pulled) { $failed += $m }
+}
+if ($failed.Count -gt 0) {
+  Write-Host "Not done: could not download $($failed -join ', '). Check the PC's internet, then run this again; it keeps what is there." -ForegroundColor Red
+  exit 1
 }
 Write-Host 'Done. "Pause AI" on the desktop frees the GPU; "Resume AI" gives it back.'

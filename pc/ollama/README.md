@@ -140,10 +140,23 @@ It does five things:
 - adds a firewall rule for each port, and the shortcuts;
 - restarts the tray icon, so it runs the new script;
 - pulls `qwen2.5vl:7b`, `qwen2.5:14b` and `translategemma:12b` (about 23 GB,
-  in `I:\AI\ollama\models`).
+  in `I:\AI\ollama\models`), trying each up to three times. It ends with
+  "Done." only when all three are there; otherwise it says which did not
+  download, in red, and exits with 1.
 
 It is safe to run again on a PC that has only the paperless one: it adds the
-second without touching the first's download or models.
+second without touching the first's download or models. A model already
+there is only checked, not downloaded again.
+
+## Tests
+
+`run-ollama.Tests.ps1` checks the runner checks the subtitle Ollama's yield to
+paperless depends on, with the port and process lookups faked. It uses the
+Pester that ships with Windows:
+
+```powershell
+powershell -NoProfile -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"
+```
 
 `uninstall.ps1` removes both tasks, both rules and the shortcuts, and keeps the
 download and the models.
