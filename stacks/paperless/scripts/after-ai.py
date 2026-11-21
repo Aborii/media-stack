@@ -68,10 +68,13 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   type. The tag model tagged what a statement lists: VAT as "tax", card
   purchases as "shopping", a salary credit as "salary" and "work", a premium
   as "insurance". Its correspondent is the bank its title names ("Mashreq
-  7933" is Mashreq): an existing correspondent with that name, or one that
-  differs only in spacing, case or a "Bank" ("Emirates Islamic Bank"), or a
-  new one by that name. The correspondent model wrote one bank three ways
-  ("Mashreq", "mashreqbank", "Mashreqbank"). Once per document, with a note.
+  7933" is Mashreq): the existing correspondent for that bank, or a new one
+  by that name. The same bank is a name that differs only in spacing, case
+  or a "Bank" ("Emirates Islamic Bank", "EmiratesNBD"), or one BANK_ALIASES
+  ties to it ("AMCB"); with several, the one holding the most documents wins,
+  and the title is written with that name too. The models wrote one bank
+  three ways ("Mashreq", "mashreqbank", "Mashreqbank"), and titles split
+  "Emirates NBD" and "EmiratesNBD". Once per document, with a note.
 - A statement title's account or card digits ("Mashreq 7933") stay only when
   the statement's text or its file's name shows them at the end of a number
   ("...7933", "XXXXXX7933"); otherwise they are taken out of the title. The model copied the prompt's example digits
@@ -174,6 +177,9 @@ STATEMENT_TYPES = {"Bank Statement": "Bank statement", "Card Statement": "Credit
 STATEMENT_TAGS = {"bank", "finance"}
 # Words that do not tell one bank from another.
 BANK_FILLER = {"bank", "the", "pjsc", "psc", "llc", "finance"}
+# Short or cut names of one bank, by their squashed() form, that spelling
+# alone cannot tie together.
+BANK_ALIASES = {"amcb": "almaryahcommunity", "almaryahcomm": "almaryahcommunity", "enbd": "emiratesnbd"}
 # Tags a statement keeps: they say how it was stored, not what it is about.
 KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG} | MAIL_TAGS
 # title_prompt.tmpl's kind 12: dated by the trip, not by the paper.
@@ -422,15 +428,20 @@ def statement_bank(title: str) -> str | None:
     return bank or None
 
 
-def statement_correspondent(bank: str, current: str | None, names: list[str]) -> str:
-    """The correspondent a statement from this bank belongs under."""
-    exact = [n for n in names if n.lower() == bank.lower()]
-    if exact:
-        return exact[0]
-    if current and squashed(current) == squashed(bank):
-        return current
-    alike = [n for n in names if squashed(n) == squashed(bank)]
-    return alike[0] if len(alike) == 1 else bank
+def bank_key(name: str) -> str:
+    """One key per bank, whatever way its name is written."""
+    key = squashed(name)
+    return BANK_ALIASES.get(key, key)
+
+
+def statement_correspondent(bank: str, counts: dict[str, int]) -> str:
+    """The correspondent a statement from this bank belongs under: of the
+    existing ones for the same bank, the one holding the most documents (the
+    title's own spelling wins a tie), else a new one by the title's name."""
+    alike = [n for n in counts if bank_key(n) == bank_key(bank)]
+    if not alike:
+        return bank
+    return max(alike, key=lambda n: (counts[n], n.lower() == bank.lower()))
 
 
 def date_of_title(title: str):
@@ -674,6 +685,8 @@ def main() -> None:
         doc.title = title
         doc.save(update_fields=["title"])
 
+    from django.db.models import Count
+
     from documents.models import DocumentType
 
     for kind, type_name in STATEMENT_TYPES.items():
@@ -698,13 +711,22 @@ def main() -> None:
             bank = statement_bank(doc.title)
             current = doc.correspondent.name if doc.correspondent else None
             if bank:
-                name = statement_correspondent(bank, current, list(Correspondent.objects.values_list("name", flat=True)))
+                counts = dict(Correspondent.objects.annotate(n=Count("documents")).values_list("name", "n"))
+                name = statement_correspondent(bank, counts)
                 if name != current:
                     doc.correspondent = Correspondent.objects.get_or_create(
                         name=name, defaults={"matching_algorithm": 0, "owner": doc.owner}
                     )[0]
                     doc.save(update_fields=["correspondent"])
                     changes.append(f"correspondent {name} (was {current or 'none'})")
+                # The title names the bank the same way as every other one.
+                parts = doc.title.split(" – ")
+                if name != bank and parts[1].startswith(bank):
+                    old_title = doc.title
+                    parts[1] = name + parts[1][len(bank):]
+                    doc.title = " – ".join(parts)
+                    doc.save(update_fields=["title"])
+                    changes.append(f"title {old_title!r} -> {doc.title!r}")
             # Even with nothing to change: each statement is decided once, so a
             # tag the owner adds later is never taken off again.
             Note.objects.create(
