@@ -7,9 +7,13 @@ Jellyfin trusts a local .nfo over TMDB for the title, so that string becomes
 the movie's name. It also copies it into its own movie.nfo, so editing the
 name inside Jellyfin alone does not stick.
 
-What it does: in every <movies>/*/*.nfo whose <title> contains "[", it drops
-every [...] group and a trailing (year). Nothing else in the file changes,
-and a UTF-8 BOM is kept if the file had one.
+What it does: in every <movies>/*/*.nfo whose <title> carries release tags,
+it drops every [...] group, bare tags at the end ("1080p", "WEBRip", "x265"),
+and then a trailing (year). Release names also lose punctuation ("Dont Look
+Up", "A Quiet Place Day One"), so when the result differs from <originaltitle>
+only in punctuation, spacing or case, the official <originaltitle> is used.
+That last rule runs on every title, tagged or not. Nothing else in the file
+changes, and a UTF-8 BOM is kept if the file had one.
 
 Without --apply it only prints "old -> new" lines. With --apply it first
 copies each file it changes into --backup (same folder layout), then
@@ -24,6 +28,7 @@ Run on the host as the media user (PUID 1000):
 """
 
 import argparse
+import html
 import re
 import shutil
 import sys
@@ -31,11 +36,32 @@ import time
 from pathlib import Path
 
 TITLE_RE = re.compile(r"<title>([^<]*)</title>")
+ORIGINAL_RE = re.compile(r"<originaltitle>([^<]*)</originaltitle>")
 BOM = b"\xef\xbb\xbf"
+# Release tags that also turn up without brackets, as in "Snakes on a Plane
+# (2006) 1080p". Only matched at the end of a title, so a word like "BluRay"
+# in the middle of a real name is left alone.
+BARE_TAGS_RE = re.compile(
+    r"(\s+(\d{3,4}p|4K|UHD|BluRay|Blu-ray|BRRip|WEBRip|WEB-?DL|HDTV|DVDRip"
+    r"|x26[45]|[Hh]\.?26[45]|HEVC|10bit|YTS(\.\w+)?|YIFY))+\s*$",
+    re.IGNORECASE)
+
+
+def letters(s: str) -> str:
+    return "".join(c for c in html.unescape(s).casefold() if c.isalnum())
+
+
+def same_letters(a: str, b: str) -> bool:
+    return bool(letters(a)) and letters(a) == letters(b)
+
+
+def needs_cleaning(title: str) -> bool:
+    return "[" in title or bool(BARE_TAGS_RE.search(title))
 
 
 def clean(title: str) -> str:
     t = re.sub(r"\s*\[[^\]]*\]", "", title)
+    t = BARE_TAGS_RE.sub("", t)
     t = re.sub(r"\s*\((19|20)\d{2}\)\s*$", "", t)
     return re.sub(r"\s{2,}", " ", t).strip()
 
@@ -58,11 +84,17 @@ def main() -> int:
             print(f"SKIP\t{nfo}\tnot UTF-8")
             continue
         m = TITLE_RE.search(text)
-        if not m or "[" not in m.group(1):
+        if not m:
             continue
-        new = clean(m.group(1))
-        if not new or new == m.group(1):
-            print(f"SKIP\t{nfo}\t{m.group(1)!r}")
+        title = m.group(1)
+        new = clean(title) if needs_cleaning(title) else title
+        if not new:
+            print(f"SKIP\t{nfo}\t{title!r}")
+            continue
+        om = ORIGINAL_RE.search(text)
+        if om and same_letters(om.group(1), new):
+            new = om.group(1)
+        if new == title:
             continue
         changed += 1
         print(f"{m.group(1)}\t->\t{new}")
