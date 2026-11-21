@@ -38,6 +38,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Get-Runners, Get-ModelRunners, Test-Loaded and Stop-Tree.
+. (Join-Path $PSScriptRoot 'runners.ps1')
 $exe = Join-Path $Base 'ollama.exe'
 $port = [int]($Listen -split ':')[-1]
 $tag = if ($Name -eq 'paperless') { '' } else { "-$Name" }
@@ -89,7 +91,7 @@ function Stop-Ollama {
   $ids = @()
   if ($script:proc -and -not $script:proc.HasExited) { $ids += $script:proc.Id }
   $ids += @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object OwningProcess)
-  foreach ($id in ($ids | Select-Object -Unique)) { & taskkill.exe /PID $id /T /F 2>&1 | Out-Null }
+  foreach ($id in ($ids | Select-Object -Unique)) { Stop-Tree $id }
 }
 
 function Save-RequestHistory {
@@ -130,24 +132,10 @@ function Get-PauseReasons {
   return $reasons
 }
 
-# The model runners under a server, each a llama-server holding a loaded model.
-# Always count them as @(Get-Runners ...).Count: PowerShell unwraps a one-item
-# array on return, and .Count on a single process object is empty in Windows
-# PowerShell 5.1, so one loaded model would read as none (run-ollama.Tests.ps1).
-function Get-Runners([int]$serverPid) {
-  @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe' AND ParentProcessId=$serverPid" -ErrorAction SilentlyContinue)
-}
-
-# True when the Ollama listening on that port has a model loaded.
-function Test-Loaded([int]$onPort) {
-  $server = Get-NetTCPConnection -LocalPort $onPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-  return [bool]($server -and @(Get-Runners $server.OwningProcess).Count -gt 0)
-}
-
 # Kills the runner holding the loaded model, not the server itself.
 function Stop-Runner([int]$serverPid) {
   $runners = @(Get-Runners $serverPid)
-  foreach ($r in $runners) { & taskkill.exe /PID $r.ProcessId /T /F 2>&1 | Out-Null }
+  foreach ($r in $runners) { Stop-Tree $r.ProcessId }
   return $runners.Count
 }
 
@@ -159,48 +147,60 @@ Write-Log "Started ($Name). Listening on $Listen when not paused$(if ($YieldPort
 $proc = $null
 $lastStart = [datetime]::MinValue
 $wasPaused = $null
+$lastError = $null
 while ($true) {
-  $reasons = @(Get-PauseReasons)
-  $paused = $reasons.Count -gt 0
-  $running = $proc -and -not $proc.HasExited
+  # An error in one turn is logged and the next turn goes on. Unhandled, it
+  # ended this script, and with it the yield, the pause and the switches,
+  # until the task's 5-minute check started it again.
+  try {
+    $reasons = @(Get-PauseReasons)
+    $paused = $reasons.Count -gt 0
+    $running = $proc -and -not $proc.HasExited
 
-  if (Test-Path -LiteralPath $unloadFile) {
-    Remove-Item -LiteralPath $unloadFile -Force -ErrorAction SilentlyContinue
-    $killed = if ($running) { Stop-Runner $proc.Id } else { 0 }
-    if ($killed -gt 0) { Write-Log "Unloaded the $Name model, as asked (the tray icon)." }
-    else { Write-Log "Asked to unload the $Name model, but none was loaded." }
-  }
+    if (Test-Path -LiteralPath $unloadFile) {
+      Remove-Item -LiteralPath $unloadFile -Force -ErrorAction SilentlyContinue
+      $killed = if ($running) { Stop-Runner $proc.Id } else { 0 }
+      if ($killed -gt 0) { Write-Log "Unloaded the $Name model, as asked (the tray icon)." }
+      else { Write-Log "Asked to unload the $Name model, but none was loaded." }
+    }
 
-  if ($paused -ne $wasPaused) {
-    if ($paused) { Write-Log "Paused by: $($reasons -join ', ')." } else { Write-Log 'Not paused.' }
-    $wasPaused = $paused
-  }
+    if ($paused -ne $wasPaused) {
+      if ($paused) { Write-Log "Paused by: $($reasons -join ', ')." } else { Write-Log 'Not paused.' }
+      $wasPaused = $paused
+    }
 
-  if ($paused -and $running) {
-    # Yielding with a model loaded means the other Ollama measured the GPU
-    # while this one still filled it, and put part of its model on the CPU.
-    # It is left to finish that way, slower: killing its runner to load again
-    # on the freed GPU would fail the request it is working on, and
-    # paperless-gpt does not retry a reading (OCR_MAX_RETRIES 1). It unloads
-    # after 2 minutes idle, so its next load has the whole GPU.
-    Stop-Ollama
-    $proc = $null
-    Write-Log 'Stopped Ollama; the GPU is free.'
-  } elseif (-not $paused -and -not $running) {
-    if ($proc) {
-      Write-Log "Ollama exited (code $($proc.ExitCode)); see ollama-serve.log."
+    if ($paused -and $running) {
+      # Yielding with a model loaded means the other Ollama measured the GPU
+      # while this one still filled it, and put part of its model on the CPU.
+      # It is left to finish that way, slower: killing its runner to load again
+      # on the freed GPU would fail the request it is working on, and
+      # paperless-gpt does not retry a reading (OCR_MAX_RETRIES 1). It unloads
+      # after 2 minutes idle, so its next load has the whole GPU.
+      Stop-Ollama
       $proc = $null
+      Write-Log 'Stopped Ollama; the GPU is free.'
+    } elseif (-not $paused -and -not $running) {
+      if ($proc) {
+        Write-Log "Ollama exited (code $($proc.ExitCode)); see ollama-serve.log."
+        $proc = $null
+      }
+      # Not more than once every 30 s: with the cable unplugged the address is
+      # missing, and Ollama exits straight away until it is back.
+      if (((Get-Date) - $lastStart).TotalSeconds -ge 30) {
+        if (Test-Path -LiteralPath $serveLog) { Move-Item -LiteralPath $serveLog -Destination "$serveLog.1" -Force }
+        Save-RequestHistory
+        $proc = Start-Process -FilePath $exe -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
+          -RedirectStandardError $serveLog -RedirectStandardOutput $requestLog
+        $lastStart = Get-Date
+        Write-Log "Started Ollama (pid $($proc.Id))."
+      }
     }
-    # Not more than once every 30 s: with the cable unplugged the address is
-    # missing, and Ollama exits straight away until it is back.
-    if (((Get-Date) - $lastStart).TotalSeconds -ge 30) {
-      if (Test-Path -LiteralPath $serveLog) { Move-Item -LiteralPath $serveLog -Destination "$serveLog.1" -Force }
-      Save-RequestHistory
-      $proc = Start-Process -FilePath $exe -ArgumentList 'serve' -WindowStyle Hidden -PassThru `
-        -RedirectStandardError $serveLog -RedirectStandardOutput $requestLog
-      $lastStart = Get-Date
-      Write-Log "Started Ollama (pid $($proc.Id))."
-    }
+    $lastError = $null
+  } catch {
+    # Once per new error, so one that repeats every turn does not fill the log.
+    $message = $_.Exception.Message
+    if ($message -ne $lastError) { Write-Log "Error, carrying on: $message" }
+    $lastError = $message
   }
   Start-Sleep -Seconds 2
 }

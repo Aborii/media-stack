@@ -157,9 +157,12 @@ there is only checked, not downloaded again.
 
 ## Tests
 
-`run-ollama.Tests.ps1` checks the runner checks the subtitle Ollama's yield to
-paperless depends on, with the port and process lookups faked. It uses the
-Pester that ships with Windows:
+`runners.ps1` holds what the scripts share about Ollama's processes: which
+`llama-server` is a loaded model and which is the GPU check a just-started
+Ollama runs for a second or two, and killing a process tree. Its tests,
+`runners.Tests.ps1`, fake the port and process lookups. `run-ollama.Tests.ps1`
+and `install.Tests.ps1` test those scripts' own functions the same way. They
+use the Pester that ships with Windows:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Pester I:\Projects\media-stack\pc\ollama"
