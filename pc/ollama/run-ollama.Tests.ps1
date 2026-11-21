@@ -78,3 +78,30 @@ Describe 'Stop-Ollama' {
     }
   }
 }
+
+Describe 'the environment each Ollama starts with' {
+  # Ollama passes it on to llama-server, which then keeps no prompt cache in
+  # RAM (up to 8 GB otherwise; see the comment where it is set). The real
+  # statement is found by the parser, so a commented-out one does not count,
+  # and run for each name.
+  $statements = @($ast.EndBlock.Statements | Where-Object { $_.Extent.Text -match 'LLAMA_ARG_CACHE_RAM' })
+  $start = $ast.FindAll({ param($n) $n.Extent.Text -like 'Start-Process -FilePath $exe*' }, $true) | Select-Object -First 1
+  function Get-CacheSetting([string]$Name) {
+    Remove-Item Env:\LLAMA_ARG_CACHE_RAM -ErrorAction SilentlyContinue
+    try {
+      . ([scriptblock]::Create($statements[0].Extent.Text))
+      $env:LLAMA_ARG_CACHE_RAM
+    } finally { Remove-Item Env:\LLAMA_ARG_CACHE_RAM -ErrorAction SilentlyContinue }
+  }
+
+  It 'is set in one top-level statement, before Ollama is started' {
+    $statements.Count | Should Be 1
+    $statements[0].Extent.StartOffset | Should BeLessThan $start.Extent.StartOffset
+  }
+  It 'turns the subtitle runner''s prompt cache off' {
+    Get-CacheSetting 'subtitles' | Should Be '0'
+  }
+  It 'leaves the paperless runner''s as it was' {
+    Get-CacheSetting 'paperless' | Should BeNullOrEmpty
+  }
+}
