@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkAligned, parseSrt, rebuild, segmentsOf, serializeSrt, wrap } from '../src/srt.ts';
+import { checkAligned, markRtl, parseSrt, rebuild, RLM, segmentsOf, serializeSrt, wrap } from '../src/srt.ts';
 
 // Shaped like the real Malcolm in the Middle file the model was tested on:
 // CRLF, a speaker label, a sound cue, a song marker, two-line cues.
@@ -164,4 +164,21 @@ test('an LF file stays LF', () => {
   const p = parseSrt('1\n00:00:01,000 --> 00:00:02,000\nHello\n');
   assert.equal(p.newline, '\n');
   assert.equal(serializeSrt(p), '1\n00:00:01,000 --> 00:00:02,000\nHello\n');
+});
+
+test('Arabic lines get a right-to-left mark at each end, so players keep the full stop on the left', () => {
+  const p = parseSrt(
+    '1\n00:00:01,000 --> 00:00:02,000\nونحن منسيون بالفعل.\n\n2\n00:00:03,000 --> 00:00:04,000\n- مرحبا.\n- أهلا.\n\n3\n00:00:05,000 --> 00:00:06,000\n{\\an8}<i>فوق</i>\n\n4\n00:00:07,000 --> 00:00:08,000\nFBI!\n',
+  );
+  const out = markRtl(p);
+  assert.deepEqual(out.cues[0].lines, [`${RLM}ونحن منسيون بالفعل.${RLM}`]);
+  assert.deepEqual(out.cues[1].lines, [`${RLM}- مرحبا.${RLM}`, `${RLM}- أهلا.${RLM}`]);
+  // A position override stays first, where players look for it.
+  assert.deepEqual(out.cues[2].lines, [`{\\an8}${RLM}<i>فوق</i>${RLM}`]);
+  // A line left in English is not touched.
+  assert.deepEqual(out.cues[3].lines, ['FBI!']);
+  // Only the words' lines change: index and timing stay byte for byte.
+  assert.equal(checkAligned(p, out), null);
+  // Marking twice does not stack the marks.
+  assert.deepEqual(markRtl(out), out);
 });

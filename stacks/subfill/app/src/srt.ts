@@ -173,6 +173,35 @@ export function rebuild(parsed: Parsed, segments: Segment[], translations: strin
   return { cues, newline: parsed.newline };
 }
 
+/** The right-to-left mark: invisible, and strongly right-to-left. */
+export const RLM = '‏';
+const RTL_LETTER = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+const POSITION = /^((?:\{\\[^}]*\})*)/;
+
+// Many players, Jellyfin among them, lay every subtitle line out left to
+// right. An Arabic line then keeps its words in the right order, but the
+// punctuation at either end takes the line's direction: the full stop of
+// "ونحن منسيون بالفعل." shows at the right, where an Arabic reader starts,
+// and a dialogue dash moves to the end. An RLM at each end of the line gives
+// that punctuation a right-to-left neighbour, so it stays where Arabic puts
+// it, whatever the player decides. Lines with no right-to-left letters (a
+// name or "FBI!" left in English) are left alone, and a leading {\an8} stays
+// first so players still read it as a position.
+export function markRtl(parsed: Parsed): Parsed {
+  return {
+    newline: parsed.newline,
+    cues: parsed.cues.map((c) => ({
+      ...c,
+      lines: c.lines.map((line) => {
+        if (!RTL_LETTER.test(line)) return line;
+        const bare = line.split(RLM).join('');
+        const position = bare.match(POSITION)?.[0] ?? '';
+        return position + RLM + bare.slice(position.length) + RLM;
+      }),
+    })),
+  };
+}
+
 // The output must line up with the source cue for cue: same count, the same
 // index and timing lines, and no cue left empty.
 export function checkAligned(source: Parsed, output: Parsed): string | null {

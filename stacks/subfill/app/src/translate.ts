@@ -9,9 +9,10 @@
 
 export type Generate = (prompt: string) => Promise<string>;
 
-export type Language = { name: string; code: string };
+// `rtl`: written right to left, so its subtitle lines get direction marks (srt.ts markRtl).
+export type Language = { name: string; code: string; rtl?: boolean };
 
-export const ARABIC: Language = { name: 'Arabic', code: 'ar' };
+export const ARABIC: Language = { name: 'Arabic', code: 'ar', rtl: true };
 
 const NAMES: Record<string, string> = {
   en: 'English',

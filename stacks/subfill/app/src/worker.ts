@@ -10,7 +10,7 @@ import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Bazarr, Media, Wanted } from './bazarr.ts';
 import { Unavailable } from './errors.ts';
-import { checkAligned, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
+import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
 import type { Item, State, Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
 
@@ -303,7 +303,8 @@ export class Worker {
         },
       },
     );
-    const result = rebuild(source, segments, translations);
+    const rebuilt = rebuild(source, segments, translations);
+    const result = target.rtl ? markRtl(rebuilt) : rebuilt;
     const problem = checkAligned(source, result);
     if (problem) throw new Error(problem);
 

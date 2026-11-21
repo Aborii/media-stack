@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { parseSrt } from '../src/srt.ts';
+import { parseSrt, RLM } from '../src/srt.ts';
 import { ARABIC } from '../src/translate.ts';
 import { decode, outPathFor } from '../src/worker.ts';
 import { arabicModel, episode, episodeOnDisk, mediaDir, setup, SRT, type FakeMedia } from './helpers.ts';
@@ -26,7 +26,7 @@ test('an episode Bazarr has no Arabic for is translated beside the video, timing
     written.cues.map((c) => [c.index, c.timing]),
     source.cues.map((c) => [c.index, c.timing]),
   );
-  assert.deepEqual(written.cues[1].lines, ['- ترجمة Who is it?', '- ترجمة Me.']);
+  assert.deepEqual(written.cues[1].lines, [`${RLM}- ترجمة Who is it?${RLM}`, `${RLM}- ترجمة Me.${RLM}`]);
   assert.equal(existsSync(`${out}.part`), false);
   assert.equal(await worker.translateNext(), false);
 });
