@@ -202,6 +202,9 @@ Notable gluetun settings, and why:
 | `backup-opencloud.sh` | Nightly at 03:10, as aborii. Stops OpenCloud, snapshots its files, metadata and config onto the NVMe, checks the copy, starts it again. See below. |
 | `restore-test-opencloud.sh` | Restores a snapshot into a scratch folder and a throwaway OpenCloud on localhost, and can fetch a file back through it. Never touches the live one. |
 | `install-opencloud-backup.sh` | One-off. Creates `/srv/backups/opencloud` and enables the timer. |
+| `backup-immich.sh` | Nightly at 02:30, as aborii. Copies Immich's photos while it runs, then stops it for seconds, dumps the database and copies what changed. See below. |
+| `restore-test-immich.sh` | Boots a throwaway Immich on a snapshot (photos mounted under a scratch overlay, never copied or written) and can fetch a photo back through it. |
+| `install-immich-backup.sh` | One-off. Creates `/srv/backups/immich` and enables the timer. |
 | `tailscale-https.sh` | Puts every web UI behind a real certificate on the tailnet. |
 | `vpn-health.sh` | Tells a genuine VPN drop apart from a reboot. |
 | `qbit-port-sync.sh` | Pushes Proton's forwarded port into qBittorrent, which changes on every reconnect. |
@@ -275,6 +278,31 @@ To restore for real: stop OpenCloud, move `/srv/storage/data/opencloud` and
 `/srv/appdata/opencloud/config` aside, `rsync -aHAX` the snapshot's `data/` and
 `config/` back to those paths, check the image in `image` matches the compose
 file, and start it.
+
+### Immich
+
+The same shape as OpenCloud, in `/srv/backups/immich/<stamp>/`: `library/`
+(the photos, from the USB disk), `upload/`, `profile/`, `db/immich-db.sql.gz`,
+and the two images that wrote them. 14 nights, hard-linked, so a night with no
+new photos costs about the size of the database dump (~50 MB).
+
+Immich is stopped only for the second of two copies. The first runs while it
+is up and moves nearly everything; then the server stops, the database is
+dumped, the few files that changed are copied, everything is counted, and it
+starts again. The database container stays up throughout.
+
+Thumbnails and transcoded videos (24 GB) are left out: Immich rebuilds them.
+After a restore, run Administration > Jobs > Generate Thumbnails and Transcode
+Videos.
+
+Trying a restore (the API key must exist in the snapshot's database - make one
+under Account Settings > API Keys):
+
+    RESTORE_API_KEY=<key> scripts/restore-test-immich.sh
+
+To restore for real, follow Immich's own command-line restore with the
+snapshot's dump: fresh database, `gunzip | psql --single-transaction`, then
+`rsync -aH` `library/`, `upload/` and `profile/` back to their paths.
 
 ## Remote access
 
