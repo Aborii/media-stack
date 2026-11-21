@@ -204,7 +204,7 @@ Notable gluetun settings, and why:
 | `qbit-port-sync.sh` | Pushes Proton's forwarded port into qBittorrent, which changes on every reconnect. |
 | `post-boot-check.sh` | What to run after a reboot, since services take ~8 minutes to fully answer. |
 | `uptime-kuma-*.py` | Recreate the monitors, notifications and status page. |
-| `jellyfin-nfo-titles.py` | Fixes movies that show a release name like "Ella Enchanted (2004) [BluRay] [720p]" in Jellyfin. The title comes from the download's `.nfo`, which Jellyfin trusts over TMDB. Strips the `[...]` tags and year from those titles. Dry run by default, `--apply` backs up then rewrites. Refresh the Movies library afterwards ("Search for missing metadata"). |
+| `jellyfin-nfo-titles.py` | Fixes movies that show a release name like "Ella Enchanted (2004) [BluRay] [720p]" in Jellyfin. The title comes from the download's `.nfo`, which Jellyfin trusts over TMDB. Strips the `[...]` tags, bare tags at the end like `1080p`, and the year from those titles. Dry run by default, `--apply` backs up then rewrites. Refresh the Movies library afterwards ("Search for missing metadata"). |
 | `reorganise-media.sh` | One-off, reshapes a migrated media tree into the layout above. `--dry-run`, and refuses to run during a transfer. |
 
 **`backup.sh` must run as root.** `appdata/immich/postgres` and
