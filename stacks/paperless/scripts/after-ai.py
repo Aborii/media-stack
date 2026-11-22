@@ -84,6 +84,11 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   no Bank or Card Statement: the tag model put "bank" on invoices paid by
   card (six from Cloudflare). A bank's own receipts and transfer advices
   keep it. Once per document, with a note.
+- A correspondent no document uses (the trash included) is deleted when it is
+  a mail address or another spelling of a bank that has documents. Those
+  are what the pipeline leaves behind: the mail rule files a mail under its
+  sender's address until the AI names it, and the bank rule moves a
+  statement off the AI's spelling. Any other empty correspondent stays.
 - The document's own date is set from its title's date when the two disagree
   on the year. Paperless reads the date from the text when a paper arrives,
   and on half the papers it found none (the upload day was kept) or the wrong
@@ -835,6 +840,31 @@ def main() -> None:
             continue
         print(f"after-ai: document {doc.pk}: cleared due date {due.value_date} (document date {doc.created}, no due date printed).")
         due.delete()
+
+    remove_empty_leftovers()
+
+
+def remove_empty_leftovers() -> None:
+    """Deletes correspondents the pipeline left empty: no document uses them,
+    the trash included, and either the name is a mail address (the mail rule
+    files a mail under its sender until the AI names it) or bank_key() makes
+    it the same name as a correspondent that has documents ("Mashreqbank"
+    beside "Mashreq", "First Abu Dhabi Bank" beside "FAB")."""
+    from django.db.models import Count
+
+    from documents.models import Correspondent, Document
+
+    counts = dict(Correspondent.objects.annotate(n=Count("documents")).values_list("name", "n"))
+    in_use = {bank_key(n) for n, c in counts.items() if c}
+    for c in Correspondent.objects.annotate(n=Count("documents")).filter(n=0):
+        if Document.global_objects.filter(correspondent=c).exists():
+            continue
+        mail_address = "@" in c.name
+        bank_spelling = bank_key(c.name) in in_use
+        if not (mail_address or bank_spelling):
+            continue
+        print(f"after-ai: deleted empty correspondent {c.name!r} ({'a mail address' if mail_address else 'another spelling of a bank'}).")
+        c.delete()
 
 
 if __name__ == "__main__":
