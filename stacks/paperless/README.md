@@ -60,8 +60,9 @@ ssh mini docker exec -u paperless paperless python3 /usr/src/paperless/scripts/r
 
 Put the document ids at the end. This resets the title to the file name and
 clears the AI's tags, correspondent, type and bill fields. It keeps `locked`,
-`unlocked`, `gmail`, and your Languages and Related documents. Tags you added
-by hand are removed, so add them back afterwards. Always run it with
+`unlocked`, `gmail`, your Languages and Related documents, and the mail
+fields (Sent by, Sent on, Recipient). Tags you added by hand are removed, so
+add them back afterwards. Always run it with
 `-u paperless`; it refuses to run as root.
 
 ### A document is tagged `paperless-gpt-failed`
