@@ -128,6 +128,10 @@
 			}
 		}
 	}
+	# The Android app's server address. Its in-app browser tunnels with CONNECT,
+	# which this proxy does not pass on, so the app sends that to the same name
+	# on the port GET /browse-proxy/config reports (4001), straight to the API.
+	import app coming-api 4001
 	import app aldafter 4100
 	import app aldafter-api 4101
 	import app storychat 8101
