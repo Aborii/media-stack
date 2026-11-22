@@ -179,16 +179,21 @@ STATEMENT_TAGS = {"bank", "finance"}
 BANK_FILLER = {"bank", "the", "pjsc", "psc", "llc", "finance"}
 # Short or cut names of one bank, by their squashed() form, that spelling
 # alone cannot tie together. "m" is "Mbank" with its "bank" taken off: the
-# owner's mbank statements are Al Maryah Community Bank's. CBD is Commercial
-# Bank of Dubai.
+# owner's mbank statements are Al Maryah Community Bank's (one was titled
+# "MCB"). CBD is Commercial Bank of Dubai. Jumeirah Pay is a card FAB issues
+# under another brand: its statements come from estatement@bankfab.com.
 BANK_ALIASES = {
     "amcb": "almaryahcommunity",
     "almaryahcomm": "almaryahcommunity",
     "almaryah": "almaryahcommunity",
     "m": "almaryahcommunity",
+    "mcb": "almaryahcommunity",
     "enbd": "emiratesnbd",
     "cbd": "commercial",
     "commercialbankofdubai": "commercial",
+    "jumeirahpay": "fab",
+    "jumeirahpayxcashbackcard": "fab",
+    "firstabudhabi": "fab",
 }
 # Tags a statement keeps: they say how it was stored, not what it is about.
 KEPT_TAGS = {"unlocked", "locked", "translation", READ_TAG, NAME_TAG} | MAIL_TAGS
