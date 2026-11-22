@@ -128,6 +128,8 @@ EXCLUDES=(
   'karakeep/meilisearch/'         # search index, rebuilt from Karakeep's admin page
   'searxng/cache/'                # favicons
   'stirling-pdf/logs/'
+  'grafana/plugins/'              # 580M Grafana installs these itself at startup
+  'jellyfin/data/data/introskipper/' # 580M intro fingerprints, rebuilt by the plugin's scan
   'convertx/uploads/'             # files mid-conversion, deleted after a day anyway
   'convertx/output/'
 )
@@ -342,24 +344,42 @@ else
   note "no dumps for this run - archiving the snapshot only"
 fi
 
-# .vscode-server alone is 1.7G of regenerable remote-server install; it would
-# dominate both the archive and the nightly upload for no benefit. The kuma
-# venv and the caches rebuild themselves too. media-stack itself is only 4M
-# and is deliberately kept - it carries docker-compose.env, which is gitignored
-# and therefore exists nowhere else.
+# Installs, package stores and caches in the login home rebuild themselves, and
+# on the mini they made the archive outgrow the PC's 8G limit: node_modules in
+# ~/dev (~5G), the pnpm store (3.8G), code-server (3.2G), Node under nvm and
+# Claude Code's old versions. The sources, git history, .claude and
+# media-stack's gitignored docker-compose.env all stay.
+# 'home/aborii/*/node_modules': tar's * crosses slashes, so this is every
+# node_modules under home at any depth, and none anywhere else.
 sys_excludes=(
   --exclude=home/aborii/.vscode-server
   --exclude=home/aborii/.venv-kuma
   --exclude=home/aborii/.cache
   --exclude=home/aborii/.npm
   --exclude=home/aborii/.local/share/Trash
+  --exclude='home/aborii/*/node_modules'
+  --exclude=home/aborii/.local/share/pnpm
+  --exclude=home/aborii/.local/share/code-server
+  --exclude='home/aborii/.local/lib/code-server-*'
+  --exclude=home/aborii/.local/share/claude/versions
+  --exclude=home/aborii/.nvm
+  --exclude=home/aborii/scratch
 )
-# --warning=no-file-changed: /home is live and files WILL move under tar. That
-# is a warning, not a failure, and letting it set a non-zero exit would hide
-# the failures that do matter.
+# Built under a name the flush does not look at, and renamed only once its
+# checksum exists. Written straight to the final name, the 30-minute flush
+# found a half-written archive with no checksum and marked it bad for good
+# (21 November).
+BUILDING="$OFFSITE/.building-$(basename "$ARCHIVE")"
+rm -f -- "$OFFSITE"/.building-*
 archive_line="not built"
-if tar czf "$ARCHIVE" "${sys_excludes[@]}" --warning=no-file-changed "${tar_args[@]}" 2>/dev/null; then
-  sha256sum "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
+# Exit 1 is "some files changed while being read", even with that warning
+# silenced. /home is live at 03:30, so that happens most nights, and treating
+# it as a failure threw away every archive from 21 November on. 2 and up are
+# real failures. stderr is left alone so those reach the journal.
+rc=0
+tar czf "$BUILDING" "${sys_excludes[@]}" --warning=no-file-changed --warning=no-file-removed "${tar_args[@]}" || rc=$?
+if [ "$rc" -le 1 ] && sha256sum "$BUILDING" | awk '{print $1}' > "$ARCHIVE.sha256" && mv -- "$BUILDING" "$ARCHIVE"; then
+  [ "$rc" -eq 1 ] && note "some files changed while being archived - normal for a live /home"
   chown "$OWNER":"$OWNER" "$ARCHIVE" "$ARCHIVE.sha256"
   chmod 640 "$ARCHIVE"; chmod 644 "$ARCHIVE.sha256"
   size=$(stat -c %s "$ARCHIVE")
@@ -371,10 +391,11 @@ if tar czf "$ARCHIVE" "${sys_excludes[@]}" --warning=no-file-changed "${tar_args
     note "ARCHIVE IS OVER $(numfmt --to=iec "$WARN_BYTES") - find what grew"
     tg_backup "Backup WARNING on $HOST: the archive is $(numfmt --to=iec "$size"), over the $(numfmt --to=iec "$WARN_BYTES") line.
 $(basename "$ARCHIVE")
-It will still be delivered - the PC accepts up to 8G - but something in appdata grew. Compare it with an older archive and exclude whatever its app can rebuild."
+It will still be delivered - the PC accepts up to 8G - but something in appdata or the login home grew. Compare it with an older archive and exclude whatever rebuilds itself."
   fi
 else
-  problem "ARCHIVE FAILED"
+  rm -f -- "$BUILDING" "$ARCHIVE.sha256"
+  problem "ARCHIVE FAILED (tar exit $rc)"
 fi
 
 # --- hand it to the offsite flush -------------------------------------------
