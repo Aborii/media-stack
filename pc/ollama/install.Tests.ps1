@@ -38,44 +38,53 @@ Describe 'Test-ModelThere' {
 
 # Each fake writes what it was asked to do into $calls, so a case can check
 # the order: a task left running would start ollama.exe again mid-unpack.
+# The Ollama folder is a real one in Pester's TestDrive, so the pause file is
+# really written and removed; "paused" in $calls means it was there then.
 Describe 'Install-OllamaZip' {
   $tasks = @('ollama', 'ollama-subtitles')
+  $base = Join-Path $TestDrive 'ollama'
+  $pause = Join-Path $base 'pause\install'
+  New-Item -ItemType Directory -Force -Path (Join-Path $base 'pause') | Out-Null
+  function Get-Paused { if (Test-Path -LiteralPath $pause) { 'paused' } else { 'not paused' } }
 
   Context 'both tasks running' {
     $calls = New-Object System.Collections.ArrayList
-    Mock Disable-ScheduledTask { [void]$calls.Add("disable $TaskName") }
-    Mock Stop-ScheduledTask { [void]$calls.Add("stop $TaskName") }
-    Mock Enable-ScheduledTask { [void]$calls.Add("enable $TaskName") }
+    $script:pauseUntil = $null
+    Mock Stop-ScheduledTask {
+      [void]$calls.Add("stop $TaskName, $(Get-Paused)")
+      $script:pauseUntil = [datetime]::Parse((Get-Content -LiteralPath $pause | Select-Object -First 1))
+    }
     Mock Get-Process { [pscustomobject]@{ Id = 11 }; [pscustomobject]@{ Id = 12 } }
-    Mock Stop-Tree { [void]$calls.Add("kill $id") }
-    Mock Expand-Archive { [void]$calls.Add("unpack $LiteralPath") }
-    Install-OllamaZip 'C:\t\o.zip' 'I:\AI\ollama' $tasks
+    Mock Stop-Tree { [void]$calls.Add("kill $id, $(Get-Paused)") }
+    Mock Expand-Archive { [void]$calls.Add("unpack $LiteralPath, $(Get-Paused)") }
+    $before = Get-Date
+    Install-OllamaZip 'C:\t\o.zip' $base $tasks
 
-    It 'disables and stops both tasks before it kills or unpacks anything' {
-      ($calls[0..3] -join ', ') | Should Be 'disable ollama, stop ollama, disable ollama-subtitles, stop ollama-subtitles'
-      ($calls[4..6] -join ', ') | Should Be 'kill 11, kill 12, unpack C:\t\o.zip'
+    It 'pauses and stops both tasks before it kills or unpacks anything' {
+      ($calls -join '; ') | Should Be ('stop ollama, paused; stop ollama-subtitles, paused; ' +
+        'kill 11, paused; kill 12, paused; unpack C:\t\o.zip, paused')
     }
     It 'unpacks into the Ollama folder' {
-      Assert-MockCalled Expand-Archive -Times 1 -Exactly -ParameterFilter { $DestinationPath -eq 'I:\AI\ollama' -and $Force }
+      Assert-MockCalled Expand-Archive -Times 1 -Exactly -ParameterFilter { $DestinationPath -eq $base -and $Force }
     }
-    It 'enables both again once it is done' {
-      ($calls[7..8] -join ', ') | Should Be 'enable ollama, enable ollama-subtitles'
-      $calls.Count | Should Be 9
+    It 'pauses for an hour, so a cut-off install does not keep the Ollamas off for good' {
+      ($script:pauseUntil - $before).TotalMinutes | Should BeGreaterThan 59
+      ($script:pauseUntil - $before).TotalMinutes | Should BeLessThan 61
+    }
+    It 'lifts the pause once it is done' {
+      Get-Paused | Should Be 'not paused'
     }
   }
 
   Context 'the unpack fails' {
-    $calls = New-Object System.Collections.ArrayList
-    Mock Disable-ScheduledTask { }
     Mock Stop-ScheduledTask { }
-    Mock Enable-ScheduledTask { [void]$calls.Add("enable $TaskName") }
     Mock Get-Process { }
     Mock Stop-Tree { }
     Mock Expand-Archive { throw 'The process cannot access the file ollama.exe because it is being used by another process.' }
 
-    It 'fails the install, and leaves both tasks enabled' {
-      { Install-OllamaZip 'C:\t\o.zip' 'I:\AI\ollama' $tasks } | Should Throw 'being used by another process'
-      ($calls -join ', ') | Should Be 'enable ollama, enable ollama-subtitles'
+    It 'fails the install, and lifts the pause' {
+      { Install-OllamaZip 'C:\t\o.zip' $base $tasks } | Should Throw 'being used by another process'
+      Get-Paused | Should Be 'not paused'
     }
   }
 }
