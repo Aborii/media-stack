@@ -96,6 +96,13 @@ while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe=$(dirname "$probe"); do
   exit 1
 }
 
+# One run at a time. The timer cannot overlap itself, but a manual run can
+# overlap the timer's, and the second would delete the first's half-built
+# archive. After the mount check, so DEST is never created on the root disk.
+mkdir -p "$DEST"
+exec 8>"$DEST/.backup.lock"
+flock -n 8 || { echo "another backup is running - leaving it"; reported=1; exit 0; }
+
 # Regenerable, and large. Every one of these is rebuilt by its own application
 # from the originals on the media disk.
 # Patterns here are shared with du via du_args below, and the two tools
@@ -129,7 +136,9 @@ EXCLUDES=(
   'searxng/cache/'                # favicons
   'stirling-pdf/logs/'
   'grafana/plugins/'              # 580M Grafana installs these itself at startup
-  'jellyfin/data/data/introskipper/' # 580M intro fingerprints, rebuilt by the plugin's scan
+  # 580M of audio fingerprints, rebuilt by the plugin's scan. Only the cache:
+  # introskipper-v2.db beside it holds the detected segments and manual edits.
+  'jellyfin/data/data/introskipper/introskipper-cache.db'
   'convertx/uploads/'             # files mid-conversion, deleted after a day anyway
   'convertx/output/'
 )
@@ -321,6 +330,11 @@ dpkg --get-selections > "$STATE/dpkg-selections.txt" 2>/dev/null || true
 # The boot order lives in EEPROM, not on any filesystem. A card image alone
 # would not record that NVMe boot had ever been configured.
 command -v rpi-eeprom-config >/dev/null 2>&1 && rpi-eeprom-config > "$STATE/eeprom-config.txt" 2>/dev/null
+# code-server's extensions are left out of the archive below; the list of them
+# reinstalls them all.
+if command -v code-server >/dev/null 2>&1 || [ -x /home/aborii/.local/bin/code-server ]; then
+  runuser -u aborii -- "$(command -v code-server || echo /home/aborii/.local/bin/code-server)" --list-extensions --show-versions > "$STATE/code-server-extensions.txt" 2>/dev/null || true
+fi
 # UUIDs and PARTUUIDs, needed to rebuild fstab and cmdline.txt correctly.
 lsblk -o NAME,SIZE,FSTYPE,UUID,PARTUUID,MOUNTPOINT > "$STATE/blkid.txt" 2>/dev/null || true
 
@@ -346,9 +360,11 @@ fi
 
 # Installs, package stores and caches in the login home rebuild themselves, and
 # on the mini they made the archive outgrow the PC's 8G limit: node_modules in
-# ~/dev (~5G), the pnpm store (3.8G), code-server (3.2G), Node under nvm and
-# Claude Code's old versions. The sources, git history, .claude and
-# media-stack's gitignored docker-compose.env all stay.
+# ~/dev (~5G), the pnpm store (3.8G), code-server's install and extensions
+# (3G), Node under nvm and Claude Code's old versions. The sources, git
+# history, .claude, ~/scratch, code-server's User/ (settings, keybindings,
+# local history) and media-stack's gitignored docker-compose.env all stay; the
+# extension list is kept in system-state.
 # 'home/aborii/*/node_modules': tar's * crosses slashes, so this is every
 # node_modules under home at any depth, and none anywhere else.
 sys_excludes=(
@@ -359,11 +375,12 @@ sys_excludes=(
   --exclude=home/aborii/.local/share/Trash
   --exclude='home/aborii/*/node_modules'
   --exclude=home/aborii/.local/share/pnpm
-  --exclude=home/aborii/.local/share/code-server
+  --exclude=home/aborii/.local/share/code-server/extensions
+  --exclude=home/aborii/.local/share/code-server/CachedExtensionVSIXs
+  --exclude=home/aborii/.local/share/code-server/coder-logs
   --exclude='home/aborii/.local/lib/code-server-*'
   --exclude=home/aborii/.local/share/claude/versions
   --exclude=home/aborii/.nvm
-  --exclude=home/aborii/scratch
 )
 # Built under a name the flush does not look at, and renamed only once its
 # checksum exists. Written straight to the final name, the 30-minute flush
@@ -433,9 +450,8 @@ fi
 
 # Read from the markers the flush leaves, rather than from its exit code: 0
 # covers both "delivered" and "the PC is off", and those are different news.
-# A failed tar is checked first: it leaves a partial archive with no checksum,
-# which the flush marks bad, and reading that marker would blame the PC for a
-# file it never saw.
+# A failed tar is checked first: it leaves no archive at all, and this makes
+# the summary say so rather than read whatever markers an older run left.
 if [ "$archive_line" = "not built" ]; then
   delivery="Nothing delivered - the archive was not built."
 elif [ -f "$ARCHIVE.sent" ]; then
