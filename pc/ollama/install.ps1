@@ -7,6 +7,7 @@
 # the firewall rules and the shortcuts are replaced.
 #
 #  1. Downloads Ollama (the standalone build, no tray app) into I:\AI\ollama.
+#     For a new version, both tasks are stopped while it unpacks.
 #  2. Registers two tasks, each running run-ollama.ps1 as you at boot, signed
 #     in or not (no stored password), restarted every 5 min if it died:
 #       "ollama"            paperless, port 11434
@@ -39,6 +40,29 @@ $exe = Join-Path $Base 'ollama.exe'
 $port = [int]($Listen -split ':')[-1]
 $subtitlesPort = [int]($SubtitlesListen -split ':')[-1]
 
+# Puts a downloaded Ollama in place of the one there. The tasks go first:
+# their run-ollama.ps1 starts ollama.exe again within 2 s of it dying, which
+# would land in the middle of Expand-Archive and leave a file it must replace
+# in use. They are disabled too, so their 5-minute repeat cannot start one
+# while the 1.5 GB unpacks, and enabled again however that ends. Steps 2 and
+# 5 then register and start them. A task not there yet is skipped.
+function Install-OllamaZip([string]$zip, [string]$base, [string[]]$tasks) {
+  foreach ($task in $tasks) {
+    Disable-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue | Out-Null
+    Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+  }
+  try {
+    # The whole tree: a model runner left behind keeps files under lib\ locked.
+    Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
+      ForEach-Object { Stop-Tree $_.Id }
+    Expand-Archive -LiteralPath $zip -DestinationPath $base -Force
+  } finally {
+    foreach ($task in $tasks) {
+      Enable-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue | Out-Null
+    }
+  }
+}
+
 Write-Host "1. Ollama $Version in $Base"
 New-Item -ItemType Directory -Force -Path $Base, (Join-Path $Base 'pause'), (Join-Path $Base 'models') | Out-Null
 $stamp = Join-Path $Base 'VERSION'
@@ -50,10 +74,7 @@ if ((Test-Path -LiteralPath $exe) -and (Test-Path -LiteralPath $stamp) -and ((Ge
   Write-Host "   Downloading $url (about 1.5 GB)"
   $ProgressPreference = 'SilentlyContinue'
   Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-  # The whole tree: a model runner left behind keeps files under lib\ locked.
-  Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue |
-    ForEach-Object { Stop-Tree $_.Id }
-  Expand-Archive -LiteralPath $zip -DestinationPath $Base -Force
+  Install-OllamaZip $zip $Base @('ollama', 'ollama-subtitles')
   Remove-Item -LiteralPath $zip -Force
   $Version | Set-Content -LiteralPath $stamp -Encoding ascii
 }

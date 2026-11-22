@@ -165,6 +165,12 @@ It is safe to run again on a PC that has only the paperless one: it adds the
 second without touching the first's download or models. A model already
 there is only checked, not downloaded again.
 
+To move to a new Ollama, change `-Version` (or its default in `install.ps1`)
+and run it again. Both tasks are stopped and disabled before the old files are
+replaced, since their loop would start `ollama.exe` again mid-unpack and leave
+it in use. Both Ollamas are down until the new one starts; the mini's work
+waits as when paused. The same version skips this step.
+
 ## Tests
 
 `runners.ps1` holds what the scripts share about Ollama's processes: which
