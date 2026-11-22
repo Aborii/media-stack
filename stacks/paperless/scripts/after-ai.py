@@ -80,6 +80,10 @@ After naming, it fixes what the naming gets wrong in a way a rule can catch:
   ("...7933", "XXXXXX7933"); otherwise they are taken out of the title. The model copied the prompt's example digits
   onto a card whose number it could not read, and wrote a masked "36**".
   Once per document, with a note; it checks the text in code, nobody reads it.
+- "bank" comes off a paper whose correspondent is not a bank, meaning it has
+  no Bank or Card Statement: the tag model put "bank" on invoices paid by
+  card (six from Cloudflare). A bank's own receipts and transfer advices
+  keep it. Once per document, with a note.
 - The document's own date is set from its title's date when the two disagree
   on the year. Paperless reads the date from the text when a paper arrives,
   and on half the papers it found none (the upload day was kept) or the wrong
@@ -161,6 +165,7 @@ LANGUAGE_NOTE = "after-ai: corrected the language"
 DATE_NOTE = "after-ai: set the document date"
 STATEMENT_NOTE = "after-ai: filed as a statement"
 DIGITS_NOTE = "after-ai: checked the account digits"
+BANK_TAG_NOTE = "after-ai: removed the bank tag"
 SENT_BY_FIELD = "Sent by"
 SENT_ON_FIELD = "Sent on"
 RECIPIENT_FIELD = "Recipient"
@@ -751,6 +756,31 @@ def main() -> None:
             )
             if changes:
                 print(f"after-ai: document {doc.pk}: statement, {'; '.join(changes)}.")
+
+    # A bank is a correspondent with at least one statement.
+    banks = set(
+        Document.objects.filter(root_document__isnull=True, title__regex=r"^(Bank|Card) Statement – ")
+        .exclude(correspondent=None)
+        .values_list("correspondent_id", flat=True)
+    )
+    bank_tag = Tag.objects.filter(name="bank").first()
+    if bank_tag is not None:
+        for doc in (
+            # Two filters: in one, both would have to match the same tag.
+            Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG)
+            .filter(tags=bank_tag)
+            .exclude(correspondent_id__in=banks)
+            .exclude(title__regex=r"^(Bank|Card) Statement – ")
+        ):
+            if Note.objects.filter(document=doc, note__startswith=BANK_TAG_NOTE).exists():
+                continue
+            doc.tags.remove(bank_tag)
+            Note.objects.create(
+                document=doc,
+                user=doc.owner,
+                note=f"{BANK_TAG_NOTE}: {doc.correspondent or 'no correspondent'} is not a bank (it has no statements). Edits made after this are kept.",
+            )
+            print(f"after-ai: document {doc.pk}: removed tag bank ({doc.correspondent} is not a bank).")
 
     for kind in STATEMENT_TYPES:
         for doc in Document.objects.filter(root_document__isnull=True, tags__name=DONE_TAG, title__startswith=f"{kind} – "):
