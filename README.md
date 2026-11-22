@@ -83,7 +83,7 @@ docker compose down
 | | syncthing | 8384 | folder sync with the phone and PC; host network, files in `data/sync` |
 | | vaultwarden | 8222 | passwords for the Bitwarden apps; use `https://vault.home.almofleh.dev` |
 | **Network** | adguard | 3053 | ad and tracker blocking DNS on port 53; HTTPS mirror on 13053 |
-| **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox` |
+| **Documents** | paperless | 8000 | scanned and digital documents, OCR in English and Arabic; inbox at `data/paperless-inbox`; day-to-day use in `stacks/paperless/README.md` |
 | | paperless-gpt | 8001 (this host only) | reads each new document with a vision model on the PC's GPU, then names and tags it; runs only while the PC is on and not paused; see `pc/ollama/README.md` |
 | | opencloud | 19200 | files in the browser, with its own sign-in; HTTPS only, at `https://cloud.home.almofleh.dev`; files in `data/opencloud` |
 | | euro-office | 18095 | edits Word, Excel and PowerPoint files inside OpenCloud; opened from there |
