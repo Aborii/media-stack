@@ -63,7 +63,12 @@ fi
 # and trimmed while there is still room. Both earlier times the archive grew
 # past 4 GB (a Docker registry cache, then Jellyfin's caches) it was only
 # noticed when the receiver was about to refuse it.
-WARN_BYTES=${WARN_BYTES:-$((4 * 1024 * 1024 * 1024))}
+#
+# 6.5G since the move to the mini, where the archive also carries a busier
+# login home and is about 5.6G after trimming. At 4G it warned every night,
+# and a warning that always fires is one nobody reads. 6.5G still leaves 1.5G
+# of growth to notice before the 8G cap refuses it.
+WARN_BYTES=${WARN_BYTES:-$((6656 * 1024 * 1024))}
 HOST=$(hostname)
 stage="checking the destination"
 problems=()
@@ -394,7 +399,7 @@ archive_line="not built"
 # it as a failure threw away every archive from 21 November on. 2 and up are
 # real failures. stderr is left alone so those reach the journal.
 rc=0
-tar czf "$BUILDING" "${sys_excludes[@]}" --warning=no-file-changed --warning=no-file-removed "${tar_args[@]}" || rc=$?
+tar czf "$BUILDING" "${sys_excludes[@]}" --warning=no-file-changed --warning=no-file-removed --warning=no-file-ignored "${tar_args[@]}" || rc=$?
 if [ "$rc" -le 1 ] && sha256sum "$BUILDING" | awk '{print $1}' > "$ARCHIVE.sha256" && mv -- "$BUILDING" "$ARCHIVE"; then
   [ "$rc" -eq 1 ] && note "some files changed while being archived - normal for a live /home"
   chown "$OWNER":"$OWNER" "$ARCHIVE" "$ARCHIVE.sha256"
