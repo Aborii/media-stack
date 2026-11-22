@@ -852,7 +852,15 @@ def remove_empty_leftovers() -> None:
     beside "Mashreq", "First Abu Dhabi Bank" beside "FAB")."""
     from django.db.models import Count
 
-    from documents.models import Correspondent, Document
+    from documents.models import Correspondent, Document, PaperlessTask
+
+    # The mail rule makes the sender's correspondent during the fetch and the
+    # consume task only uses it minutes later: while either runs, an empty
+    # mail-address correspondent may be one a mail is about to be filed under.
+    if PaperlessTask.objects.filter(
+        task_type__in=["consume_file", "mail_fetch"], status__in=["pending", "started"]
+    ).exists():
+        return
 
     counts = dict(Correspondent.objects.annotate(n=Count("documents")).values_list("name", "n"))
     in_use = {bank_key(n) for n, c in counts.items() if c}
