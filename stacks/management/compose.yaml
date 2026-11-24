@@ -72,6 +72,13 @@ services:
       - serverIP=0.0.0.0
       - serverPort=${TDARR_SERVER_PORT:?err}
       - webUIPort=${WEBUI_PORT_TDARR:?err}
+      # Login on. seededApiKey is created at startup, so nobody can claim the
+      # first account before you; apiKey is the same key for the internal
+      # node. The desktop node needs it too, in its tray's API Key field, or
+      # it stops connecting.
+      - auth=true
+      - seededApiKey=${TDARR_API_KEY:?err}
+      - apiKey=${TDARR_API_KEY:?err}
       - internalNode=true
       - nodeName=aboriis-mini
       - inContainer=true

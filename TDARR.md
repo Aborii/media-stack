@@ -85,6 +85,8 @@ Open Tdarr in a browser: <http://aboriis-mini:8265>
 
 On the **Home** page, find the **Nodes** section. There should be a row for `aborii-pc`, with
 **Transcode GPU** set to `1`. If there is no row, the node is not connected. Go back to step 1.
+If the node is running but has no row, it is probably missing the API key. See
+[If the node is ever reinstalled](#if-the-node-is-ever-reinstalled).
 
 Also on the Home page, make sure **Pause all nodes** is switched off.
 
@@ -383,6 +385,7 @@ to the big version is to download it again through Sonarr. That is what Part 2 i
 | Thing | Value |
 |---|---|
 | Tdarr web page | <http://aboriis-mini:8265> |
+| Tdarr login | user `admin`, password is `TDARR_API_KEY` in `docker-compose.env` |
 | Port the node talks to | `8266` |
 | Node install folder | `C:\Tdarr\Tdarr_Node` |
 | Node settings file | `C:\Tdarr\configs\Tdarr_Node_Config.json` |
@@ -405,6 +408,10 @@ The node settings file needs these path translators, or the node will not find a
 
 It also needs `"nodeType": "mapped"`, `"serverPort": "8266"`, and `serverIP` set to the mini's
 address.
+
+The Tdarr login is on, so the node also needs `"apiKey"` set to `TDARR_API_KEY` from
+`docker-compose.env` on the mini (or paste it into the tray's **Configuration** tab, **API Key**,
+then **Save & Restart**). Without it the node never shows up.
 
 The node's version must match the server's. The version is shown at the top of the Tdarr web
 page.
