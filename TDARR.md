@@ -33,16 +33,18 @@ each node uses its own GPU. A flow set to `nvenc` fails on the mini's node.
 **Each node gets GPU transcode workers only** (Transcode CPU `0`). On a CPU worker, `auto` falls
 back to software encoding, which is slow and loads every core.
 
-The desktop node reads and writes the files through the Samba share, which is mapped as `T:` on
-the desktop. So the server and that node see the same folders under different names:
+The desktop node reads and writes the files through the Samba share at `\\10.10.10.3\storage`.
+It uses the network path, not a drive letter, because it runs before anyone signs in and drive
+letters like `T:` only exist after sign-in. So the server and that node see the same folders under
+different names:
 
-| What Tdarr shows (the mini) | The same folder on the desktop |
-|---|---|
-| `/media` | `T:\media\library` |
-| `/temp` | `T:\media\tdarr-cache` |
+| What Tdarr shows (the mini) | The same folder for the desktop node | In Explorer |
+|---|---|---|
+| `/media` | `\\10.10.10.3\storage\media\library` | `T:\media\library` |
+| `/temp` | `\\10.10.10.3\storage\media\tdarr-cache` | `T:\media\tdarr-cache` |
 
 When Tdarr shows `/media/tv/Hawaii Five-0/Season 07`, that is
-`T:\media\library\tv\Hawaii Five-0\Season 07` on the desktop.
+`T:\media\library\tv\Hawaii Five-0\Season 07` in Explorer on the desktop.
 
 The desktop does not have to be on: the mini's node keeps working without it.
 
@@ -68,16 +70,17 @@ Go through this every time, before converting anything.
 
 ### 1. The desktop is on and the node is running
 
-Look for the **Tdarr tray icon** in the Windows system tray, near the clock.
+The node starts by itself a minute after the desktop boots, even if nobody signs in. It is the
+scheduled task **Tdarr Node**, set to "Run whether user is logged on or not" with your Windows
+password saved in it. It runs `C:\Tdarr\Tdarr_Node\Tdarr_Node.exe` in the background, so there
+is no tray icon and no window. Step 2 is how to see it is running.
 
-If it is not there, start it by double-clicking:
+If it is not running, open **Task Scheduler**, right-click **Tdarr Node** and choose **Run**.
 
-```
-C:\Tdarr\Tdarr_Node\Tdarr_Node_Tray.exe
-```
+Do not also start `Tdarr_Node_Tray.exe`: it would start a second node with the same name.
 
-To make it start with Windows: press **Windows + R**, type `shell:startup`, press Enter, and
-put a shortcut to `Tdarr_Node_Tray.exe` in the folder that opens.
+If you change your Windows password, open the task, click **OK** and type the new one, or the
+node stops starting.
 
 ### 2. Tdarr can see the node
 
@@ -303,7 +306,7 @@ Jellyfin notices the changed files on its next library scan. Nothing needs doing
 Check these in order:
 
 1. Is the desktop on and awake?
-2. Is the Tdarr tray icon running? See
+2. Is the node running? See
    [the checklist](#1-the-desktop-is-on-and-the-node-is-running).
 3. Does the Home page show `aborii-pc` under **Nodes**?
 4. Is **Pause all nodes** switched off?
@@ -394,6 +397,7 @@ to the big version is to download it again through Sonarr. That is what Part 2 i
 | Library for tests | **H50 720p test**, folder `/media/_tdarr-test` |
 | Main library, never convert from here | **Media**, folder `/media` |
 | Cache folder | `/temp`, which is `T:\media\tdarr-cache` |
+| What starts the node | Scheduled task **Tdarr Node**, at boot |
 
 ### If the node is ever reinstalled
 
@@ -401,8 +405,8 @@ The node settings file needs these path translators, or the node will not find a
 
 ```json
 "pathTranslators": [
-  { "server": "/media", "node": "T:/media/library" },
-  { "server": "/temp",  "node": "T:/media/tdarr-cache" }
+  { "server": "/media", "node": "//10.10.10.3/storage/media/library" },
+  { "server": "/temp",  "node": "//10.10.10.3/storage/media/tdarr-cache" }
 ]
 ```
 
@@ -410,8 +414,7 @@ It also needs `"nodeType": "mapped"`, `"serverPort": "8266"`, and `serverIP` set
 address.
 
 The Tdarr login is on, so the node also needs `"apiKey"` set to `TDARR_API_KEY` from
-`docker-compose.env` on the mini (or paste it into the tray's **Configuration** tab, **API Key**,
-then **Save & Restart**). Without it the node never shows up.
+`docker-compose.env` on the mini. Without it the node never shows up.
 
 The node's version must match the server's. The version is shown at the top of the Tdarr web
 page.
