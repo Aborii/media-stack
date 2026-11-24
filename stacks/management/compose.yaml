@@ -72,9 +72,10 @@ services:
       - serverIP=0.0.0.0
       - serverPort=${TDARR_SERVER_PORT:?err}
       - webUIPort=${WEBUI_PORT_TDARR:?err}
-      # Login on. seededApiKey is created at startup, so nobody can claim the
-      # first account before you; apiKey is the same key for the internal
-      # node. The desktop node needs it too, in its tray's API Key field, or
+      # Login on. seededApiKey is created at startup and apiKey hands the same
+      # key to the internal node. 2.86 does not make the first account from
+      # it (newer versions do), so on a fresh install sign up as admin at
+      # once: until then anyone who reaches the page can. The desktop node needs it too, in its tray's API Key field, or
       # it stops connecting.
       - auth=true
       - seededApiKey=${TDARR_API_KEY:?err}

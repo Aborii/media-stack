@@ -385,7 +385,7 @@ to the big version is to download it again through Sonarr. That is what Part 2 i
 | Thing | Value |
 |---|---|
 | Tdarr web page | <http://aboriis-mini:8265> |
-| Tdarr login | user `admin`, password is `TDARR_API_KEY` in `docker-compose.env` |
+| Tdarr login | user `admin`, password is `TDARR_ADMIN_PASSWORD` in `docker-compose.env` on the mini |
 | Port the node talks to | `8266` |
 | Node install folder | `C:\Tdarr\Tdarr_Node` |
 | Node settings file | `C:\Tdarr\configs\Tdarr_Node_Config.json` |
