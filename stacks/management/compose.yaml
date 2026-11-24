@@ -75,8 +75,9 @@ services:
       # Login on. seededApiKey is created at startup and apiKey hands the same
       # key to the internal node. 2.86 does not make the first account from
       # it (newer versions do), so on a fresh install sign up as admin at
-      # once: until then anyone who reaches the page can. The desktop node needs it too, in its tray's API Key field, or
-      # it stops connecting.
+      # once: until then anyone who reaches the page can. The desktop node
+      # needs the key too, in its tray's API Key field, or it stops
+      # connecting.
       - auth=true
       - seededApiKey=${TDARR_API_KEY:?err}
       - apiKey=${TDARR_API_KEY:?err}
