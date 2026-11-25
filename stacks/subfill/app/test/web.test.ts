@@ -361,6 +361,9 @@ test('every page has the sidebar: its menu marks the page, counts the failed, an
   assert.match(r.body, /href="\/items">.*All items<span class="n bad" title="failed">1<\/span>/);
   assert.match(r.body, /data-live="side"><div class="sn"><span class="dot working"><\/span><span class="sn-name">Mini \(CPU\)<\/span><span class="sn-state">30%</);
   assert.match(r.body, /href="\/logout"/);
+  // A show's title in its page header is escaped like everywhere else.
+  const show = await call('/show?id=7', { cookie: 'subfill_session=good' });
+  assert.match(show.body, /<h1>Show &#60;b&#62;bold&#60;\/b&#62;/);
   const live = JSON.parse((await call('/live?parts=side', { cookie: 'subfill_session=good' })).body) as { side: string };
   assert.match(live.side, /PC \(GPU\)<\/span><span class="sn-state">offline/);
 });

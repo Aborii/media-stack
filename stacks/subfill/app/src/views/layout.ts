@@ -163,6 +163,7 @@ export const TABS = [
 export type Tab = (typeof TABS)[number][0];
 
 // A page's title row: the title, a line under it, and anything on the right.
+// All three are HTML, so any text in them must already be through esc().
 export function pageHeader(title: string, sub = '', right = ''): string {
   return `<div class="ph"><div><h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div>${right ? `<div class="ph-right">${right}</div>` : ''}</div>`;
 }
