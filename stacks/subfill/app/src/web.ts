@@ -17,7 +17,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { LibraryStore } from './library.ts';
 import type { Store } from './store.ts';
-import { esc, page, problemPage } from './views/layout.ts';
+import { esc, page, problemPage, renderSideNodes } from './views/layout.ts';
 import { renderActivity, renderItem, renderItems, renderMovies } from './views/lists.ts';
 import { renderKpis, renderNodes, renderOverview } from './views/overview.ts';
 import { renderQueue } from './views/queue.ts';
@@ -43,7 +43,7 @@ export type WebDeps = {
 
 // The parts of a page /live can send fresh, and the page asking, for the
 // buttons inside them to return to.
-const LIVE_PARTS: Record<string, (v: View, back: string) => string> = { nodes: renderNodes, kpis: renderKpis };
+const LIVE_PARTS: Record<string, (v: View, back: string) => string> = { nodes: renderNodes, kpis: renderKpis, side: renderSideNodes };
 
 // What Malak reads to decide whether to ask about waking the PC.
 export function summary(deps: WebDeps): Record<string, unknown> {

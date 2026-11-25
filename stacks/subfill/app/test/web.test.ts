@@ -143,7 +143,7 @@ test('signed in, the overview shows the nodes, problems and the library', async 
   assert.ok(r.body.includes('Show &#60;b&#62;1x01&#60;/b&#62;'));
   assert.ok(!r.body.includes('<b>1x01</b>'));
   assert.match(r.body, />Retry</);
-  assert.match(r.body, /<\/i>1 Arabic</);
+  assert.match(r.body, /<\/i><b>1<\/b>Arabic</);
 });
 
 test('the item list keeps its filters, and the old page address leads to it', async () => {
@@ -169,8 +169,8 @@ test('the shows list names each show, escaped, with its counts', async () => {
   assert.ok(r.body.includes('Show &#60;b&#62;bold&#60;/b&#62;'));
   assert.ok(!r.body.includes('<b>bold</b>'));
   assert.match(r.body, /1 of 2 have Arabic/);
-  assert.match(r.body, /Missing Arabic 1/);
-  assert.match(r.body, /Complete 0/);
+  assert.match(r.body, /Missing Arabic<span class="c">1</);
+  assert.match(r.body, /Complete<span class="c">0</);
   const none = await call('/shows?f=complete', { cookie: 'subfill_session=good' });
   assert.match(none.body, /No show matches/);
   const searched = await call('/shows?q=nothing-like-it', { cookie: 'subfill_session=good' });
@@ -250,7 +250,7 @@ test('the live refresh sends fresh nodes and counters, behind the sign-in', asyn
   assert.equal(r.status, 200);
   const j = JSON.parse(r.body) as { nodes: string; kpis: string };
   assert.match(j.nodes, /PC \(GPU\)/);
-  assert.match(j.kpis, /ready in the queue/);
+  assert.match(j.kpis, /Ready in the queue/);
   // Only the parts asked for, and none that do not exist.
   const one = JSON.parse((await call('/live?parts=nodes,nope', { cookie: 'subfill_session=good' })).body) as Record<string, string>;
   assert.deepEqual(Object.keys(one), ['nodes']);
@@ -353,4 +353,14 @@ test('Pause and Resume return to the page they were pressed on, live refresh inc
   const evil = JSON.parse((await call('/live?parts=nodes&back=https%3A%2F%2Fevil.example', { cookie: 'subfill_session=good' })).body) as { nodes: string };
   assert.ok(!evil.nodes.includes('evil.example'));
   assert.match(evil.nodes, /name="back" value="\/"/);
+});
+
+test('every page has the sidebar: its menu marks the page, counts the failed, and lists the nodes live', async () => {
+  const r = await call('/shows', { cookie: 'subfill_session=good' });
+  assert.match(r.body, /<a href="\/shows" class="on" aria-current="page">/);
+  assert.match(r.body, /href="\/items">.*All items<span class="n bad" title="failed">1<\/span>/);
+  assert.match(r.body, /data-live="side"><div class="sn"><span class="dot working"><\/span><span class="sn-name">Mini \(CPU\)<\/span><span class="sn-state">30%</);
+  assert.match(r.body, /href="\/logout"/);
+  const live = JSON.parse((await call('/live?parts=side', { cookie: 'subfill_session=good' })).body) as { side: string };
+  assert.match(live.side, /PC \(GPU\)<\/span><span class="sn-state">offline/);
 });

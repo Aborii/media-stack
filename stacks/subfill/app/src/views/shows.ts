@@ -11,6 +11,7 @@ import {
   GROUPS,
   legend,
   page,
+  pageHeader,
   subtitleChips,
   sum,
 } from './layout.ts';
@@ -52,7 +53,7 @@ export function renderShows(v: View, query: URLSearchParams): string {
   };
   let shows = all.filter((s) => (!folder || s.folder === folder) && (!q || s.title.toLowerCase().includes(q.toLowerCase())));
   const chips = (Object.keys(FILTERS) as Filter[])
-    .map((f) => `<a class="${f === filter ? 'on' : ''}" href="${esc(link({ f }))}">${FILTERS[f][0]} ${shows.filter(FILTERS[f][1]).length}</a>`)
+    .map((f) => `<a class="${f === filter ? 'on' : ''}" href="${esc(link({ f }))}">${FILTERS[f][0]}<span class="c">${shows.filter(FILTERS[f][1]).length}</span></a>`)
     .join('');
   shows = shows.filter(FILTERS[filter][1]);
   if (sort === 'missing') shows.sort((a, b) => sum(b.counts, GROUPS.needs) - sum(a.counts, GROUPS.needs) || a.title.localeCompare(b.title));
@@ -63,20 +64,20 @@ export function renderShows(v: View, query: URLSearchParams): string {
       const wanted = s.episodes - s.counts.not_wanted;
       const needs = sum(s.counts, GROUPS.needs);
       const queued = sum(s.counts, GROUPS.queue);
-      return `<tr><td><a class="show-title" href="/show?id=${s.id}">${esc(s.title)}</a>${s.year ? ` <span class="dim">${esc(s.year)}</span>` : ''}<span class="tag">${esc(s.folder)}</span></td>
-<td style="min-width:180px">${coverageBar(s.counts)}<small class="dim">${wanted ? `${has} of ${wanted} have Arabic` : 'Arabic not wanted'}</small></td>
+      return `<tr><td><a href="/show?id=${s.id}">${esc(s.title)}</a>${s.year ? ` <span class="dim">${esc(s.year)}</span>` : ''}<span class="tag">${esc(s.folder)}</span></td>
+<td style="min-width:200px">${coverageBar(s.counts)}<span class="cov-sub">${wanted ? `${has} of ${wanted} have Arabic` : 'Arabic not wanted'}</span></td>
 <td class="num" data-label="Episodes">${s.episodes}</td><td class="num" data-label="Human">${s.counts.human}</td><td class="num" data-label="Machine">${s.counts.machine}</td>
-<td class="num" data-label="Queued">${queued || '<span class="dim">0</span>'}</td><td class="num" data-label="Missing">${needs ? `<b style="color:var(--missing)">${needs}</b>` : '<span class="dim">0</span>'}</td></tr>`;
+<td class="num" data-label="Queued">${queued || '<span class="dim">0</span>'}</td><td class="num" data-label="Missing">${needs ? `<span style="color:var(--missing);font-weight:600">${needs}</span>` : '<span class="dim">0</span>'}</td></tr>`;
     })
     .join('');
 
-  const folderChips = folders.length > 1 ? `<div class="chips">${['', ...folders].map((f) => `<a class="${f === folder ? 'on' : ''}" href="${esc(link({ folder: f }))}">${f ? esc(f) : 'every folder'}</a>`).join('')}</div>` : '';
-  const body = `<h1>Shows</h1><p class="dim">${all.length} shows. Each bar is one show's episodes by Arabic subtitle: green has a human one, violet ours, blue and grey are in the queue, orange and red have none.</p>
+  const folderChips = folders.length > 1 ? `<div class="seg">${['', ...folders].map((f) => `<a class="${f === folder ? 'on' : ''}" href="${esc(link({ folder: f }))}">${f ? esc(f) : 'All folders'}</a>`).join('')}</div>` : '';
+  const body = `${pageHeader('Shows', `${all.length} shows. Each bar splits a show's episodes by their Arabic subtitle.`)}
 ${libraryNote(v)}
-<form class="row" method="get" action="/shows">${filter ? `<input type="hidden" name="f" value="${esc(filter)}">` : ''}${folder ? `<input type="hidden" name="folder" value="${esc(folder)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search shows"><select name="sort" onchange="this.form.submit()"><option value="name"${sort === 'name' ? ' selected' : ''}>By name</option><option value="missing"${sort === 'missing' ? ' selected' : ''}>Most missing first</option></select><button>Search</button></form>
-<div class="chips">${chips}</div>${folderChips}
+<div class="toolbar"><form class="row" method="get" action="/shows">${filter ? `<input type="hidden" name="f" value="${esc(filter)}">` : ''}${folder ? `<input type="hidden" name="folder" value="${esc(folder)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search shows"><select name="sort" onchange="this.form.submit()"><option value="name"${sort === 'name' ? ' selected' : ''}>Sort by name</option><option value="missing"${sort === 'missing' ? ' selected' : ''}>Most missing first</option></select></form>${folderChips}</div>
+<div class="toolbar"><div class="seg">${chips}</div></div>
 <div class="card flush wrap"><table class="stack"><thead><tr><th>Show</th><th>Arabic</th><th class="num">Episodes</th><th class="num">Human</th><th class="num">Machine</th><th class="num">Queued</th><th class="num">Missing</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="dim">${all.length ? 'No show matches.' : 'No shows yet.'}</td></tr>`}</tbody></table></div>`;
-  return page({ title: 'subfill - shows', tab: 'shows', body, queued: v.store.readyCount(v.now) });
+  return page({ title: 'subfill - shows', tab: 'shows', body, v });
 }
 
 export function entryRow(e: Entry, back: string, now: number, first: string): string {
@@ -101,13 +102,19 @@ export function renderShow(v: View, id: number): string | null {
       const rows = eps
         .map((e) => entryRow(e, back, v.now, `<td class="dim inl" style="white-space:nowrap">${epCode(e.season, e.episode)}</td><td class="inl">${esc(e.title || '-')}</td>`))
         .join('');
-      return `<h2>${season === 0 ? 'Specials' : `Season ${season}`} <span class="dim" style="font-weight:400;font-size:13px">${wanted ? `${has} of ${wanted} have Arabic` : `${eps.length} episodes`}</span></h2>
-<div class="card flush wrap"><table class="stack"><thead><tr><th>Episode</th><th>Title</th><th>Subtitles</th><th>Arabic</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      return `<h2>${season === 0 ? 'Specials' : `Season ${season}`} <span class="dim">${wanted ? `${has} of ${wanted} have Arabic` : `${eps.length} episodes`}</span></h2>
+<div class="card flush wrap"><table class="stack"><thead><tr><th style="width:90px">Episode</th><th>Title</th><th>Subtitles</th><th>Arabic</th><th class="num">Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     })
     .join('');
-  const body = `<p><a href="/shows">&larr; All shows</a></p><div class="row"><h1 class="grow">${esc(show.title)} ${show.year ? `<span class="dim" style="font-weight:400">${esc(show.year)}</span>` : ''}</h1><span class="tag">${esc(show.folder)}</span><span class="tag">${show.ended ? 'ended' : 'continuing'}</span></div>
+  const has = sum(show.counts, GROUPS.has);
+  const wanted = show.episodes - show.counts.not_wanted;
+  const tile = (label: string, value: string | number, c: string, sub = '') =>
+    `<div class="card kpi"><span class="l"><i class="s-${c}"></i>${label}</span><b>${value}</b>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
+  const body = `<p class="crumb"><a href="/shows">Shows</a> / ${esc(show.title)}</p>
+${pageHeader(`${esc(show.title)}${show.year ? ` <span class="dim">${esc(show.year)}</span>` : ''}`, '', `<span class="tag">${esc(show.folder)}</span><span class="tag">${show.ended ? 'ended' : 'continuing'}</span>`)}
 ${libraryNote(v)}
-<div class="card"><div class="row"><b class="grow">${show.episodes} episodes</b><span class="dim">${sum(show.counts, GROUPS.has)} have Arabic, ${sum(show.counts, GROUPS.queue)} in the queue, ${sum(show.counts, GROUPS.needs)} missing</span></div><div style="margin-top:8px">${coverageBar(show.counts)}</div>${legend(show.counts)}</div>
+<div class="kpis">${tile('Coverage', wanted ? `${Math.round((has / wanted) * 100)}%` : '-', 'human', `${has} of ${wanted} that want Arabic`)}${tile('Episodes', show.episodes, 'not_wanted')}${tile('Machine Arabic', show.counts.machine, 'machine')}${tile('In the queue', sum(show.counts, GROUPS.queue), 'ready')}${tile('Missing', sum(show.counts, GROUPS.needs), 'missing')}</div>
+<div class="card" style="margin-top:16px">${coverageBar(show.counts)}${legend(show.counts)}</div>
 ${sections || '<p class="dim">Bazarr lists no episode files for this show.</p>'}`;
-  return page({ title: `subfill - ${show.title}`, tab: 'shows', body, queued: v.store.readyCount(v.now) });
+  return page({ title: `subfill - ${show.title}`, tab: 'shows', body, v });
 }
