@@ -38,13 +38,15 @@ export type LibraryEntry = {
 
 export type Library = { series: Series[]; entries: LibraryEntry[] };
 
-export type Wanted ={ key: string; kind: 'episode' | 'movie'; id: number; title: string; missing: string[] };
+// seriesId is the show an episode belongs to; null for a film.
+export type Wanted = { key: string; kind: 'episode' | 'movie'; id: number; seriesId: number | null; title: string; missing: string[] };
 
 type RawSubtitle = { code2?: string; path?: string | null; forced?: boolean; hi?: boolean };
 type RawMissing = { code2?: string; forced?: boolean };
 
 export const episodeKey = (id: number) => `episode:${id}`;
 export const movieKey = (id: number) => `movie:${id}`;
+export const seriesKey = (id: number) => `series:${id}`;
 
 // Any failure to read Bazarr, a wrong key included, is Bazarr's problem and
 // not the item's.
@@ -92,11 +94,12 @@ export class Bazarr {
     for (const e of episodes) {
       const id = Number(e.sonarrEpisodeId);
       const title = `${e.seriesTitle} ${e.episode_number} ${e.episodeTitle ?? ''}`.trim();
-      out.push({ key: episodeKey(id), kind: 'episode', id, title, missing: codes(e.missing_subtitles) });
+      const seriesId = Number(e.sonarrSeriesId);
+      out.push({ key: episodeKey(id), kind: 'episode', id, seriesId: Number.isFinite(seriesId) ? seriesId : null, title, missing: codes(e.missing_subtitles) });
     }
     for (const m of movies) {
       const id = Number(m.radarrId);
-      out.push({ key: movieKey(id), kind: 'movie', id, title: String(m.title), missing: codes(m.missing_subtitles) });
+      out.push({ key: movieKey(id), kind: 'movie', id, seriesId: null, title: String(m.title), missing: codes(m.missing_subtitles) });
     }
     return out;
   }

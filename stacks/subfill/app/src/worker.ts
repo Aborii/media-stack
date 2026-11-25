@@ -8,11 +8,11 @@
 // arrives, the next sync sees Arabic is no longer missing and deletes ours.
 import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Bazarr, Media, Wanted } from './bazarr.ts';
+import { seriesKey, type Bazarr, type Media, type Wanted } from './bazarr.ts';
 import { Unavailable } from './errors.ts';
 import { OllamaCrash } from './ollama.ts';
 import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
-import type { Item, State, Store } from './store.ts';
+import { EXCLUDED_NOTE, type Item, type State, type Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
 
 export const MARKER = 'machine';
@@ -145,6 +145,7 @@ export class Worker {
     const wantedKeys = new Map<string, Wanted>(wanted.map((w) => [w.key, w]));
     const tracked = this.store.all();
     const done = tracked.filter((r) => r.state === 'done');
+    const excluded = this.store.excludedKeys();
     const details = await this.bazarr.details([...wanted, ...done.map((r) => ({ kind: r.kind, id: r.bazarr_id }))]);
 
     for (const row of done) {
@@ -174,8 +175,14 @@ export class Worker {
       } catch {
         note = 'video file not found';
       }
-      const state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
+      let state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
       note ??= source ? null : 'no external subtitle to translate from';
+      // A show or film the owner marked not to translate: set aside, new
+      // episodes included, until the mark is lifted.
+      if (excluded.has(w.seriesId !== null ? seriesKey(w.seriesId) : w.key)) {
+        state = 'skipped';
+        note = EXCLUDED_NOTE;
+      }
       const fields = {
         title: w.title,
         video_path: media.path,
@@ -343,6 +350,18 @@ export class Worker {
       return;
     }
     this.store.log(item.key, `wrote ${path.basename(out)} (${note})`);
+  }
+
+  // The owner marks a show ("series:<id>") or film ("movie:<id>") not to
+  // translate, or lifts the mark. `itemKeys` are its episodes, or the film.
+  exclude(key: string, on: boolean, itemKeys: string[]): string | null {
+    if (!/^(series|movie):\d+$/.test(key)) return 'not a show or film';
+    if (on === this.store.isExcluded(key)) return on ? 'it is already marked not to translate' : 'it is not marked';
+    const moved = this.store.setExcluded(key, on, itemKeys);
+    const word = on ? 'you marked it not to translate' : 'you lifted the mark: translate it again';
+    for (const k of itemKeys) if (this.store.get(k)) this.store.log(k, word);
+    console.log(`${key}: ${word} (${moved} item(s) moved)`);
+    return null;
   }
 
   // Owner actions from the page.

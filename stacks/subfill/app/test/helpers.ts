@@ -11,6 +11,7 @@ import { Worker, type Config } from '../src/worker.ts';
 export type FakeMedia = {
   kind: 'episode' | 'movie';
   id: number;
+  seriesId?: number;
   title: string;
   path: string;
   subtitles: { code2: string; path: string | null; forced?: boolean; hi?: boolean }[];
@@ -32,7 +33,7 @@ export function fakeBazarr(items: FakeMedia[], opts: { fail?: () => boolean; cal
     if (url.pathname === '/api/episodes/wanted') {
       const data = items
         .filter((m) => m.kind === 'episode' && m.missing.length)
-        .map((m) => ({ sonarrEpisodeId: m.id, seriesTitle: m.title, episode_number: '1x01', episodeTitle: 'Pilot', missing_subtitles: missing(m) }));
+        .map((m) => ({ sonarrEpisodeId: m.id, sonarrSeriesId: m.seriesId, seriesTitle: m.title, episode_number: '1x01', episodeTitle: 'Pilot', missing_subtitles: missing(m) }));
       return json({ data, total: data.length });
     }
     if (url.pathname === '/api/movies/wanted') {

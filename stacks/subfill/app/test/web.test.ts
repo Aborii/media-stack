@@ -39,6 +39,7 @@ const status: Status = {
   ],
 };
 const paused: [string, boolean][] = [];
+const marks: [string, boolean, string[]][] = [];
 const holds: number[] = [];
 const woken: number[] = [];
 let released = 0;
@@ -52,6 +53,7 @@ const server = startWeb(
       holdForPc: (minutes: number) => (holds.push(minutes), store.get('episode:1')),
       releaseHolds: () => void released++,
       markPcWoken: (minutes: number) => void woken.push(minutes),
+      exclude: (key: string, on: boolean, keys: string[]) => (marks.push([key, on, keys]), null),
     },
     status: () => status,
     setNodePaused: (name: string, p: boolean) => (paused.push([name, p]), name === 'nope' ? 'no node called nope' : null),
@@ -366,4 +368,20 @@ test('every page has the sidebar: its menu marks the page, counts the failed, an
   assert.match(show.body, /<h1>Show &#60;b&#62;bold&#60;\/b&#62;/);
   const live = JSON.parse((await call('/live?parts=side', { cookie: 'subfill_session=good' })).body) as { side: string };
   assert.match(live.side, /PC \(GPU\)<\/span><span class="sn-state">offline/);
+});
+
+test('a show and a film can be marked not to translate from their pages', async () => {
+  const show = await call('/show?id=7', { cookie: 'subfill_session=good' });
+  assert.match(show.body, /name="key" value="series:7"><input type="hidden" name="op" value="exclude">/);
+  assert.match(show.body, /Don&#39;t translate this show/);
+  const r = await call('/action', { method: 'POST', cookie: 'subfill_session=good', body: 'key=series%3A7&op=exclude&back=%2Fshow%3Fid%3D7' });
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.location, '/show?id=7');
+  // The mark covers every episode of the show.
+  assert.deepEqual(marks.at(-1), ['series:7', true, ['episode:1', 'episode:2']]);
+  await call('/action', { method: 'POST', cookie: 'subfill_session=good', body: 'key=movie%3A5&op=include' });
+  assert.deepEqual(marks.at(-1), ['movie:5', false, ['movie:5']]);
+  const films = await call('/movies', { cookie: 'subfill_session=good' });
+  assert.match(films.body, /name="key" value="movie:5"><input type="hidden" name="op" value="exclude">/);
+  assert.match(films.body, /Not translated<span class="c">0</);
 });
