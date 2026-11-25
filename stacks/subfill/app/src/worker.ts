@@ -165,10 +165,11 @@ export class Worker {
       const markKey = w.seriesId !== null ? seriesKey(w.seriesId) : w.key;
       // Hands off, except for what a mark should change: a row its lifted mark
       // left set aside comes back, and a marked row that failed is set aside.
+      // A row still under its mark is left as it is, so it does not churn.
       if (
         row &&
         HANDS_OFF.includes(row.state) &&
-        !(row.state === 'skipped' && row.note === EXCLUDED_NOTE) &&
+        !(row.state === 'skipped' && row.note === EXCLUDED_NOTE && !this.store.isExcluded(markKey)) &&
         !(row.state === 'failed' && this.store.isExcluded(markKey))
       ) {
         continue;

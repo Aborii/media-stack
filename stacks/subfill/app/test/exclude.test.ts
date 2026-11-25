@@ -50,6 +50,11 @@ test('a sync keeps a marked show set aside, new episodes included', async () => 
   assert.equal(store.get('episode:5')!.state, 'skipped');
   assert.equal(store.get('episode:5')!.note, EXCLUDED_NOTE);
   assert.equal(store.get('episode:1')!.state, 'skipped');
+  // A row still under its mark is left alone by the sync: it does not churn.
+  const before = store.get('episode:1')!.updated_at;
+  await new Promise((r) => setTimeout(r, 5));
+  await worker.sync();
+  assert.equal(store.get('episode:1')!.updated_at, before);
   // Nothing of the marked show gets translated.
   assert.equal(await worker.translateNext(), true);
   assert.equal(store.get('episode:4')!.state, 'done');
