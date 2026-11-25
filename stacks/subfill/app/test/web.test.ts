@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
+import { LibraryStore } from '../src/library.ts';
 import { Store } from '../src/store.ts';
 import { esc, startWeb, type Status } from '../src/web.ts';
 
 // The page runs on a loopback port; the sign-in gate is a fake fetch, so
 // nothing leaves the machine.
 const store = new Store(':memory:');
+const library = new LibraryStore(store.db);
 const acted: [string, string][] = [];
 let gateUp = true;
 
@@ -44,6 +46,7 @@ export const API_TOKEN = 'secret-token';
 const server = startWeb(
   {
     store,
+    library,
     worker: {
       act: (key: string, op: string) => (acted.push([key, op]), key === 'bad' ? 'cannot do that' : null),
       holdForPc: (minutes: number) => (holds.push(minutes), store.get('episode:1')),
@@ -65,6 +68,21 @@ before(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   store.insert({ key: 'episode:1', kind: 'episode', bazarr_id: 1, title: 'Show <b>1x01</b>', video_path: '/data/v.mkv', source_path: null, source_lang: null, out_path: null, state: 'failed', note: 'boom', eligible_at: 0 });
   store.log('episode:1', 'failed, giving up: boom');
+  const sub = (code2: string, path: string | null) => ({ code2, path, forced: false, hi: false });
+  library.replace(
+    {
+      series: [
+        { id: 7, title: 'Show <b>bold</b>', year: '2020', path: '/data/library/tv/Show', ended: false },
+        { id: 8, title: 'Empty', year: null, path: '/data/library/a<b/Empty', ended: true },
+      ],
+      entries: [
+        { key: 'episode:1', kind: 'episode', id: 1, seriesId: 7, season: 1, episode: 1, title: 'Pilot <i>x</i>', path: '/data/v.mkv', subtitles: [sub('en', '/data/v.en.srt')], missing: ['ar'] },
+        { key: 'episode:2', kind: 'episode', id: 2, seriesId: 7, season: 1, episode: 2, title: 'Second', path: '/data/v2.mkv', subtitles: [sub('ar', '/data/v2.ar.srt'), sub('en', null)], missing: [] },
+        { key: 'movie:5', kind: 'movie', id: 5, seriesId: null, season: null, episode: null, title: 'A Film (1999)', path: '/data/f.mkv', subtitles: [], missing: ['ar'] },
+      ],
+    },
+    'ar',
+  );
 });
 after(() => server.close());
 
@@ -112,23 +130,86 @@ test('the sign-in form and its answer pass through to the gate, cookie included'
   assert.match(String(r.headers['set-cookie']), /subfill_session=good/);
 });
 
-test('signed in, the page lists items with titles escaped and problems shown', async () => {
+test('signed in, the overview shows the nodes, problems and the library', async () => {
   const r = await call('/', { cookie: 'subfill_session=good' });
   assert.equal(r.status, 200);
-  assert.ok(r.body.includes('Show &#60;b&#62;1x01&#60;/b&#62;'));
-  assert.ok(!r.body.includes('<b>1x01</b>'));
   assert.match(r.body, /is not pulled into Ollama/);
-  assert.match(r.body, />Retry</);
   // The nodes panel: each node, its state, and what it is translating.
   assert.match(r.body, /Mini \(CPU\)/);
   assert.match(r.body, /PC \(GPU\)/);
   assert.ok(r.body.includes('Busy &#60;i&#62;one&#60;/i&#62;'));
   assert.match(r.body, /3 of 10 lines/);
-  const filtered = await call('/?state=done', { cookie: 'subfill_session=good' });
+  // The failed item needs a look, with its Retry.
+  assert.ok(r.body.includes('Show &#60;b&#62;1x01&#60;/b&#62;'));
+  assert.ok(!r.body.includes('<b>1x01</b>'));
+  assert.match(r.body, />Retry</);
+  assert.match(r.body, /<\/i>1 Arabic</);
+});
+
+test('the item list keeps its filters, and the old page address leads to it', async () => {
+  const r = await call('/items', { cookie: 'subfill_session=good' });
+  assert.ok(r.body.includes('Show &#60;b&#62;1x01&#60;/b&#62;'));
+  const filtered = await call('/items?state=done', { cookie: 'subfill_session=good' });
   assert.match(filtered.body, /Nothing here/);
+  const old = await call('/?state=done', { cookie: 'subfill_session=good' });
+  assert.equal(old.status, 302);
+  assert.equal(old.headers.location, '/items?state=done');
   const item = await call('/item?key=episode%3A1', { cookie: 'subfill_session=good' });
   assert.match(item.body, /failed, giving up: boom/);
+  // It knows its show, and the subtitles beside the video.
+  assert.match(item.body, /href="\/show\?id=7"/);
+  assert.match(item.body, /S01E01/);
+  assert.match(item.body, /class="chip" title="\/data\/v.en.srt">EN/);
   assert.equal((await call('/item?key=nope', { cookie: 'subfill_session=good' })).status, 404);
+});
+
+test('the shows list names each show, escaped, with its counts', async () => {
+  const r = await call('/shows', { cookie: 'subfill_session=good' });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.includes('Show &#60;b&#62;bold&#60;/b&#62;'));
+  assert.ok(!r.body.includes('<b>bold</b>'));
+  assert.match(r.body, /1 of 2 have Arabic/);
+  assert.match(r.body, /Missing Arabic 1/);
+  assert.match(r.body, /Complete 0/);
+  const none = await call('/shows?f=complete', { cookie: 'subfill_session=good' });
+  assert.match(none.body, /No show matches/);
+  const searched = await call('/shows?q=nothing-like-it', { cookie: 'subfill_session=good' });
+  assert.match(searched.body, /No show matches/);
+  const bySearch = await call('/shows?q=SHOW', { cookie: 'subfill_session=good' });
+  assert.match(bySearch.body, /href="\/show\?id=7"/);
+});
+
+test('a show page lists each episode with its subtitles and Arabic status', async () => {
+  const r = await call('/show?id=7', { cookie: 'subfill_session=good' });
+  assert.equal(r.status, 200);
+  assert.match(r.body, /Season 1/);
+  assert.ok(r.body.includes('Pilot &#60;i&#62;x&#60;/i&#62;'));
+  assert.match(r.body, /S01E02/);
+  // Episode 1: failed, with its Retry here too. Episode 2: human Arabic, English in the video.
+  assert.match(r.body, /class="badge s-failed">failed/);
+  assert.match(r.body, /class="badge s-human">Arabic/);
+  assert.match(r.body, /EN <small>in video<\/small>/);
+  assert.match(r.body, /name="back" value="\/show\?id=7"/);
+  for (const bad of ['/show?id=999', '/show?id=abc', '/show']) {
+    assert.equal((await call(bad, { cookie: 'subfill_session=good' })).status, 404, bad);
+  }
+});
+
+test('films are listed and filtered by their Arabic', async () => {
+  const r = await call('/movies', { cookie: 'subfill_session=good' });
+  assert.match(r.body, /A Film \(1999\)/);
+  assert.match(r.body, /missing, not looked at yet/);
+  assert.match((await call('/movies?f=human', { cookie: 'subfill_session=good' })).body, /No film matches/);
+  assert.match((await call('/movies?f=needs', { cookie: 'subfill_session=good' })).body, /A Film/);
+});
+
+test('the queue and the activity pages answer', async () => {
+  const q = await call('/queue', { cookie: 'subfill_session=good' });
+  assert.equal(q.status, 200);
+  assert.match(q.body, /Nothing is ready to translate/);
+  assert.match(q.body, /Failed/);
+  const a = await call('/activity', { cookie: 'subfill_session=good' });
+  assert.match(a.body, /failed, giving up: boom/);
 });
 
 test('actions run, and only send the browser back to this site', async () => {
@@ -167,9 +248,12 @@ test('the live refresh sends fresh nodes and counters, behind the sign-in', asyn
   assert.equal((await call('/live')).status, 302);
   const r = await call('/live', { cookie: 'subfill_session=good' });
   assert.equal(r.status, 200);
-  const j = JSON.parse(r.body) as { nodes: string; stats: string };
+  const j = JSON.parse(r.body) as { nodes: string; kpis: string };
   assert.match(j.nodes, /PC \(GPU\)/);
-  assert.match(j.stats, /Ready/);
+  assert.match(j.kpis, /ready in the queue/);
+  // Only the parts asked for, and none that do not exist.
+  const one = JSON.parse((await call('/live?parts=nodes,nope', { cookie: 'subfill_session=good' })).body) as Record<string, string>;
+  assert.deepEqual(Object.keys(one), ['nodes']);
 });
 
 test('a node is paused and resumed from the page', async () => {
@@ -235,4 +319,38 @@ test('Wake PC opens the lease window for half an hour', async () => {
   const before = woken.length;
   await call('/api/answer', { method: 'POST', token: API_TOKEN, json: true, body: JSON.stringify({ answer: 'wake' }) });
   assert.deepEqual(woken.slice(before), [30]);
+});
+
+test('subtitles of the same kind share one chip with a count, and ours is marked', async () => {
+  const { subtitleChips } = await import('../src/views/layout.ts');
+  const sub = (code2: string, path: string | null, hi = false) => ({ code2, path, forced: false, hi });
+  const html = subtitleChips([sub('en', '/a.en.srt'), sub('en', '/b.en.srt'), sub('en', '/c.en.hi.srt', true), sub('ar', null)], true);
+  assert.match(html, /title="\/a.en.srt\n\/b.en.srt">EN <small>&times;2<\/small>/);
+  assert.match(html, />EN <small>HI<\/small><\/span>/);
+  assert.match(html, /class="chip ar" title="a track inside the video">AR <small>in video<\/small>/);
+  assert.match(html, /AR <small>machine<\/small>/);
+  assert.equal(subtitleChips([], false), '<span class="dim">none</span>');
+});
+
+test('folder names are escaped, and odd filter names fall back to all instead of failing', async () => {
+  const r = await call('/shows', { cookie: 'subfill_session=good' });
+  assert.ok(r.body.includes('>a&#60;b</a>'));
+  assert.ok(!r.body.includes('a<b'));
+  for (const path of ['/shows?f=constructor', '/shows?f=__proto__', '/movies?f=toString', '/movies?f=constructor']) {
+    const page = await call(path, { cookie: 'subfill_session=good' });
+    assert.equal(page.status, 200, path);
+  }
+  const live = await call('/live?parts=constructor,__proto__,toString', { cookie: 'subfill_session=good' });
+  assert.equal(live.status, 200);
+  assert.deepEqual(JSON.parse(live.body), {});
+});
+
+test('Pause and Resume return to the page they were pressed on, live refresh included', async () => {
+  const q = await call('/queue', { cookie: 'subfill_session=good' });
+  assert.match(q.body, /name="op" value="pause-node"><input type="hidden" name="back" value="\/queue">/);
+  const live = JSON.parse((await call('/live?parts=nodes&back=%2Fqueue', { cookie: 'subfill_session=good' })).body) as { nodes: string };
+  assert.match(live.nodes, /name="back" value="\/queue"/);
+  const evil = JSON.parse((await call('/live?parts=nodes&back=https%3A%2F%2Fevil.example', { cookie: 'subfill_session=good' })).body) as { nodes: string };
+  assert.ok(!evil.nodes.includes('evil.example'));
+  assert.match(evil.nodes, /name="back" value="\/"/);
 });

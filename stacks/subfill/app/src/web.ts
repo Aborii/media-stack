@@ -1,6 +1,8 @@
-// subfill's page, Tdarr-style: the nodes and what each is doing, the queue,
-// and the buttons to pause a node, retry, skip or translate one now. The
-// nodes panel and the counters refresh themselves every few seconds.
+// subfill's page: an overview of the nodes and the library's Arabic, the
+// queue in the order it runs, every show with its episodes' subtitles, the
+// films, every tracked item with its log, and the activity across them, with
+// the buttons to pause a node, retry, skip or translate one now. The live
+// parts refresh themselves every few seconds. The pages are in views/.
 //
 // The sign-in is the same login.py gate as Glances and OmniTools, run as
 // subfill-login. Instead of a proxy in front, this server asks the gate itself:
@@ -13,20 +15,22 @@
 // token is not set.
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { NodeState, NodeStatus } from './nodes.ts';
-import type { Item, State, Store } from './store.ts';
-import { STATES } from './store.ts';
+import type { LibraryStore } from './library.ts';
+import type { Store } from './store.ts';
+import { esc, page, problemPage } from './views/layout.ts';
+import { renderActivity, renderItem, renderItems, renderMovies } from './views/lists.ts';
+import { renderKpis, renderNodes, renderOverview } from './views/overview.ts';
+import { renderQueue } from './views/queue.ts';
+import { renderShow, renderShows } from './views/shows.ts';
+import type { Status, View } from './views/view.ts';
 import type { Worker } from './worker.ts';
 
-export type Status = {
-  bazarrError: string | null;
-  lastSync: number | null;
-  nodes: NodeStatus[];
-  model: string;
-};
+export { esc };
+export type { Status };
 
 export type WebDeps = {
   store: Store;
+  library: LibraryStore;
   worker: Pick<Worker, 'act' | 'holdForPc' | 'releaseHolds' | 'markPcWoken'>;
   status: () => Status;
   // Pauses or resumes a node by name; returns a problem, or null.
@@ -37,199 +41,9 @@ export type WebDeps = {
   now?: () => number;
 };
 
-const LABEL: Record<State, string> = {
-  waiting: 'waiting for Bazarr',
-  eligible: 'ready',
-  translating: 'translating',
-  done: 'machine subtitle in use',
-  replaced: 'replaced by human',
-  gone: 'video gone',
-  failed: 'failed',
-  skipped: 'skipped',
-  no_source: 'nothing to translate from',
-};
-
-const NODE_LABEL: Record<NodeState, string> = {
-  working: 'translating',
-  idle: 'idle',
-  offline: 'offline',
-  paused: 'paused by you',
-  outside_hours: 'outside its hours',
-};
-
-export function esc(text: unknown): string {
-  return String(text ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
-
-function ago(ms: number | null, now: number): string {
-  if (!ms) return '-';
-  const s = Math.round((now - ms) / 1000);
-  if (s < 0) return `in ${when(-s)}`;
-  return `${when(s)} ago`;
-}
-
-function when(s: number): string {
-  if (s < 90) return `${s}s`;
-  if (s < 5400) return `${Math.round(s / 60)} min`;
-  if (s < 172800) return `${Math.round(s / 3600)} h`;
-  return `${Math.round(s / 86400)} days`;
-}
-
-const STYLE = `<style>
-:root{color-scheme:light dark;--bg:#0f1216;--card:#181c22;--line:#262c35;--text:#e6e8eb;--dim:#9aa3ad;--accent:#3b82f6;--bad:#ffb4b4;--badbg:#3a1d1d;--ok:#22c55e;--warn:#f59e0b;--off:#6b7280}
-@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--line:#dde1e6;--text:#16191d;--dim:#5b6470;--accent:#2563eb;--bad:#8a1f1f;--badbg:#fde8e8}}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
-h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:22px 0 8px}
-a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
-.dim{color:var(--dim)} .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-.nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin:14px 0}
-.node h3{margin:0;font-size:15px} .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--off)}
-.dot.working{background:var(--accent)} .dot.idle{background:var(--ok)} .dot.paused,.dot.outside_hours{background:var(--warn)}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
-.stat b{display:block;font-size:20px}
-.bad{background:var(--badbg);color:var(--bad);border-radius:8px;padding:8px 11px;margin:8px 0}
-.chips a{border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--text)}
-.chips a.on{border-color:var(--accent);color:var(--accent)}
-table{width:100%;border-collapse:collapse} td,th{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:12px;color:var(--dim);font-weight:600}
-.wrap{overflow-x:auto}
-button{font:inherit;padding:3px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
-input[type=search]{font:inherit;padding:5px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text);min-width:200px}
-progress{width:100%}
-pre{white-space:pre-wrap;margin:0}
-</style>`;
-
-// Replaces the nodes panel and the counters with fresh copies every 5 s. A
-// failed refresh leaves the last ones showing; the next one tries again.
-const LIVE = `<script>
-setInterval(async () => {
-  try {
-    const r = await fetch('/live', { headers: { accept: 'application/json' } });
-    if (!r.ok) return;
-    const j = await r.json();
-    document.getElementById('nodes').innerHTML = j.nodes;
-    document.getElementById('stats').innerHTML = j.stats;
-  } catch {}
-}, 5000);
-</script>`;
-
-function page(title: string, body: string, script = ''): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${STYLE}</head><body><main>${body}</main>${script}</body></html>`;
-}
-
-function button(key: string, op: string, label: string, back: string): string {
-  return `<form method="post" action="/action" style="display:inline"><input type="hidden" name="key" value="${esc(key)}"><input type="hidden" name="op" value="${esc(op)}"><input type="hidden" name="back" value="${esc(back)}"><button>${esc(label)}</button></form>`;
-}
-
-function actions(item: Item, back: string): string {
-  const ops: [string, string][] = [];
-  if (item.state === 'waiting' || item.state === 'eligible') ops.push(['now', 'Translate now']);
-  if (item.state === 'failed') ops.push(['retry', 'Retry']);
-  if (['waiting', 'eligible', 'failed', 'no_source'].includes(item.state)) ops.push(['skip', 'Skip']);
-  if (item.state === 'skipped') ops.push(['unskip', 'Undo skip']);
-  return ops.map(([op, label]) => button(item.key, op, label, back)).join(' ');
-}
-
-export function renderNodes(nodes: NodeStatus[], held: Item | undefined, now: number): string {
-  return nodes
-    .map((n) => {
-      const doing = n.current
-        ? `<div style="margin-top:8px"><b>${esc(n.current.title)}</b><br><progress max="${n.current.total}" value="${n.current.done}"></progress><span class="dim">${n.current.done} of ${n.current.total} lines, started ${ago(n.current.startedAt, now)}</span></div>`
-        : '';
-      const facts = [
-        n.state === 'offline' && n.problem ? esc(n.problem) : '',
-        n.lastSeen ? `last answered ${ago(n.lastSeen, now)}` : n.state === 'offline' ? 'has never answered' : '',
-        n.lease?.held ? 'keeping the PC awake while it works' : '',
-        n.name !== 'mini' && held ? `${esc(held.title)} is kept for it until ${new Date(held.held_until ?? 0).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : '',
-      ].filter(Boolean);
-      const problem = n.lease?.error ? `<div class="bad">${esc(n.lease.error)}</div>` : '';
-      const toggle = n.paused ? button(n.name, 'resume-node', 'Resume', '/') : button(n.name, 'pause-node', 'Pause', '/');
-      // A paused node still finishes the item it is on.
-      const label = n.paused && n.state === 'working' ? 'pauses after this item' : NODE_LABEL[n.state];
-      return `<div class="card node"><div class="row" style="justify-content:space-between"><h3><span class="dot ${n.state}"></span>${esc(n.label)}</h3>${toggle}</div><div class="dim">${esc(label)}${facts.length ? ` &middot; ${facts.join(' &middot; ')}` : ''}</div>${problem}${doing}</div>`;
-    })
-    .join('');
-}
-
-export function renderStats(store: Store, now: number): string {
-  const counts = store.counts();
-  const week = store.finishedSince(now - 7 * 86400_000);
-  return [
-    ['Machine subtitles in use', counts.done],
-    ['Translated this week', week.count],
-    ['Replaced by human', counts.replaced],
-    ['Average time', week.avgSeconds === null ? '-' : `${Math.round(week.avgSeconds / 60)} min`],
-    ['Ready', counts.eligible],
-    ['Waiting for Bazarr', counts.waiting],
-    ['Failed', counts.failed],
-  ]
-    .map(([label, value]) => `<div class="card stat"><b>${esc(value)}</b><span class="dim">${esc(label)}</span></div>`)
-    .join('');
-}
-
-export function renderHome(deps: WebDeps, query: URLSearchParams): string {
-  const now = (deps.now ?? Date.now)();
-  const s = deps.status();
-  const counts = deps.store.counts();
-  const state = STATES.find((x) => x === query.get('state'));
-  const q = (query.get('q') ?? '').slice(0, 100);
-  const { items, total } = deps.store.list({ state, q, limit: 200 });
-  const back = `/?${query.toString()}`;
-
-  const problems = s.bazarrError ? `<div class="bad">${esc(s.bazarrError)}</div>` : '';
-  const chip = (value: State | '', label: string, n: number) => {
-    const p = new URLSearchParams(q ? { q } : {});
-    if (value) p.set('state', value);
-    return `<a class="${(state ?? '') === value ? 'on' : ''}" href="/?${p.toString()}">${esc(label)} ${n}</a>`;
-  };
-  const all = Object.values(counts).reduce((a, b) => a + b, 0);
-  const chips = [chip('', 'all', all), ...STATES.map((x) => chip(x, LABEL[x], counts[x]))].join(' ');
-  const rows = items
-    .map(
-      (i) =>
-        `<tr><td><a href="/item?key=${encodeURIComponent(i.key)}">${esc(i.title)}</a><div class="dim">${esc(i.note ?? '')}</div></td><td>${esc(LABEL[i.state])}${i.node && i.state !== 'waiting' ? `<div class="dim">${esc(i.node)}</div>` : ''}</td><td class="dim">${ago(i.updated_at, now)}</td><td>${actions(i, back)}</td></tr>`,
-    )
-    .join('');
-
-  return page(
-    'subfill',
-    `<div class="row" style="justify-content:space-between"><div><h1>subfill</h1><div class="dim">Arabic subtitles from ${esc(s.model)} when Bazarr finds none. Last sync ${ago(s.lastSync, now)}.</div></div><a href="/logout">Sign out</a></div>
-${problems}<h2>Nodes</h2><div class="nodes" id="nodes">${renderNodes(s.nodes, deps.store.heldNow(now), now)}</div><div class="stats" id="stats">${renderStats(deps.store, now)}</div>
-<h2>Queue</h2><form class="row" method="get" action="/">${state ? `<input type="hidden" name="state" value="${esc(state)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search titles"><button>Search</button></form>
-<p class="chips row">${chips}</p>
-<div class="wrap"><table><thead><tr><th>Title</th><th>State</th><th>Changed</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="dim">Nothing here.</td></tr>'}</tbody></table></div>
-${total > items.length ? `<p class="dim">Showing the ${items.length} most recently changed of ${total}. Search or filter to find the rest.</p>` : ''}`,
-    LIVE,
-  );
-}
-
-export function renderItem(deps: WebDeps, key: string): string | null {
-  const now = (deps.now ?? Date.now)();
-  const item = deps.store.get(key);
-  if (!item) return null;
-  const log = deps.store
-    .logFor(key)
-    .map((l) => `<tr><td class="dim" style="white-space:nowrap">${esc(new Date(l.at).toLocaleString('en-GB'))}</td><td><pre>${esc(l.message)}</pre></td></tr>`)
-    .join('');
-  const facts: [string, string | null][] = [
-    ['State', LABEL[item.state]],
-    ['Note', item.note],
-    ['Node', item.node],
-    ['Video', item.video_path],
-    ['Translated from', item.source_path],
-    ['Machine subtitle', item.out_path],
-    ['Eligible', ago(item.eligible_at, now)],
-    ['Attempts', String(item.attempts)],
-  ];
-  return page(
-    `subfill - ${item.title}`,
-    `<p><a href="/">&larr; All items</a></p><h1>${esc(item.title)}</h1><p>${actions(item, `/item?key=${encodeURIComponent(key)}`)}</p>
-<div class="card wrap"><table>${facts.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v ?? '-')}</td></tr>`).join('')}</table></div>
-<h2>Log</h2><div class="card wrap"><table>${log || '<tr><td class="dim">No entries.</td></tr>'}</table></div>`,
-  );
-}
+// The parts of a page /live can send fresh, and the page asking, for the
+// buttons inside them to return to.
+const LIVE_PARTS: Record<string, (v: View, back: string) => string> = { nodes: renderNodes, kpis: renderKpis };
 
 // What Malak reads to decide whether to ask about waking the PC.
 export function summary(deps: WebDeps): Record<string, unknown> {
@@ -371,7 +185,7 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
       try {
         auth = await signedIn(req);
       } catch {
-        return send(res, 503, page('subfill', '<div class="bad">The sign-in service is not answering, so the page stays closed. Check the subfill-login container.</div>'));
+        return send(res, 503, problemPage('The sign-in service is not answering, so the page stays closed. Check the subfill-login container.'));
       }
       if (!auth.ok) return send(res, 302, '', { location: auth.redirect });
 
@@ -385,25 +199,52 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
         const op = form.get('op') ?? '';
         const problem =
           op === 'pause-node' || op === 'resume-node' ? deps.setNodePaused(key, op === 'pause-node') : deps.worker.act(key, op);
-        if (problem) return send(res, 409, page('subfill', `<div class="bad">${esc(problem)}</div><p><a href="${esc(safeBack(form.get('back')))}">Back</a></p>`));
+        if (problem) return send(res, 409, problemPage(problem, safeBack(form.get('back'))));
         return send(res, 303, '', { location: safeBack(form.get('back')) });
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'method not allowed');
-      if (url.pathname === '/') return send(res, 200, renderHome(deps, url.searchParams));
-      if (url.pathname === '/live') {
-        const now = (deps.now ?? Date.now)();
-        return sendJson(res, 200, { nodes: renderNodes(deps.status().nodes, deps.store.heldNow(now), now), stats: renderStats(deps.store, now) });
+      const v: View = { store: deps.store, library: deps.library, status: deps.status(), now: (deps.now ?? Date.now)() };
+      const q = url.searchParams;
+      switch (url.pathname) {
+        case '/':
+          // The old page was the item list, filtered by these; a bookmark of it lands there.
+          if (q.has('state') || q.has('q')) return send(res, 302, '', { location: `/items?${q}` });
+          return send(res, 200, renderOverview(v));
+        case '/queue':
+          return send(res, 200, renderQueue(v));
+        case '/shows':
+          return send(res, 200, renderShows(v, q));
+        case '/show': {
+          const id = Number(q.get('id'));
+          const html = Number.isSafeInteger(id) ? renderShow(v, id) : null;
+          return html ? send(res, 200, html) : send(res, 404, notFound('No such show.', '/shows', 'All shows'));
+        }
+        case '/movies':
+          return send(res, 200, renderMovies(v, q));
+        case '/items':
+          return send(res, 200, renderItems(v, q));
+        case '/item': {
+          const html = renderItem(v, q.get('key') ?? '');
+          return html ? send(res, 200, html) : send(res, 404, notFound('No such item.', '/items', 'All items'));
+        }
+        case '/activity':
+          return send(res, 200, renderActivity(v));
+        case '/live': {
+          const wanted = (q.get('parts') ?? 'nodes,kpis').split(',').filter((p) => Object.hasOwn(LIVE_PARTS, p));
+          const back = safeBack(q.get('back'));
+          return sendJson(res, 200, Object.fromEntries(wanted.map((p) => [p, LIVE_PARTS[p](v, back)])));
+        }
       }
-      if (url.pathname === '/item') {
-        const html = renderItem(deps, url.searchParams.get('key') ?? '');
-        return html ? send(res, 200, html) : send(res, 404, page('subfill', '<p>No such item. <a href="/">All items</a></p>'));
-      }
-      return send(res, 404, page('subfill', '<p>Not found. <a href="/">All items</a></p>'));
+      return send(res, 404, notFound('Not found.', '/', 'Overview'));
     } catch (err) {
       console.error('request failed', req.method, url.pathname, err);
-      if (!res.headersSent) send(res, 500, page('subfill', `<div class="bad">Something went wrong: ${esc((err as Error).message)}</div>`));
+      if (!res.headersSent) send(res, 500, problemPage(`Something went wrong: ${(err as Error).message}`));
     }
   };
+}
+
+function notFound(message: string, back: string, label: string): string {
+  return page({ title: 'subfill', body: `<p>${esc(message)} <a href="${back}">${esc(label)}</a></p>` });
 }
 
 export function startWeb(deps: WebDeps, port: number): Server {

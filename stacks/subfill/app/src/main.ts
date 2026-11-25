@@ -1,4 +1,5 @@
-// subfill's entry point: the sync loop, one loop per node, and the page.
+// subfill's entry point: the sync loop (which also reads Bazarr's library for
+// the page), one loop per node, and the page.
 //
 // The sync loop reads Bazarr every SYNC_MINUTES. Each node translates one item
 // at a time from the same queue: the mini inside ACTIVE_HOURS, the PC whenever
@@ -9,6 +10,7 @@ import path from 'node:path';
 import { Bazarr, BazarrError } from './bazarr.ts';
 import { readSettings } from './config.ts';
 import { Lease } from './lease.ts';
+import { LibraryStore } from './library.ts';
 import { NodeRunner } from './nodes.ts';
 import { Ollama } from './ollama.ts';
 import { Store } from './store.ts';
@@ -18,6 +20,7 @@ import { Worker } from './worker.ts';
 
 const settings = readSettings(process.env);
 const store = new Store(path.join(settings.dataDir, 'subfill.db'));
+const library = new LibraryStore(store.db);
 const recovered = store.recoverInterrupted();
 if (recovered) console.log(`picked up ${recovered} translation(s) interrupted by the last stop`);
 // Before crashes were told apart, a dead model runner used up an episode's
@@ -95,6 +98,9 @@ async function syncLoop(): Promise<void> {
           : `The sync stopped partway: ${message}. Trying again in ${settings.syncMinutes} min.`;
       console.error('sync failed:', message);
     }
+    // After the sync, so the page's shows already know about any new item.
+    const libraryProblem = await library.refresh(() => bazarr.library(), ARABIC.code);
+    if (libraryProblem) console.error('library read failed:', libraryProblem);
     await sleep(settings.syncMinutes * 60_000);
   }
 }
@@ -102,6 +108,7 @@ async function syncLoop(): Promise<void> {
 const server = startWeb(
   {
     store,
+    library,
     worker,
     loginUrl: settings.loginUrl,
     apiToken: settings.apiToken,
