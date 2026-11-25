@@ -149,8 +149,10 @@ test('a database from before crash counting gains the column, every row at 0', (
 test('the summary tells Malak when each node last answered', async () => {
   const { summary } = await import('../src/web.ts');
   const s = new Store(':memory:');
+  const { LibraryStore } = await import('../src/library.ts');
   const out = summary({
     store: s,
+    library: new LibraryStore(s.db),
     worker: {} as never,
     setNodePaused: () => null,
     loginUrl: 'http://x',

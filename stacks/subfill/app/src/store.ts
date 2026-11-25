@@ -65,6 +65,11 @@ const ADDED_COLUMNS: [string, string][] = [
   ['crashes', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
+// The order the nodes take ready items in: an item held for the PC, then a
+// "translate now", then the one that crashed the model fewest times, then the
+// newest video. Takes `now` once, for the hold.
+const QUEUE_ORDER = '(held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, crashes ASC, eligible_at DESC';
+
 // What a failure from a runner crash said, before crashes stopped counting as
 // attempts: Ollama's 5xx answer, kept in the note, in Ollama's own words.
 const CRASH_NOTES = CRASH_PHRASES.map((p) => `%${p}%`);
@@ -239,9 +244,41 @@ export class Store {
         `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
            AND (held_until IS NULL OR held_until <= ? OR ?)
            AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
-         ORDER BY (held_until IS NOT NULL AND held_until > ?) DESC, priority DESC, crashes ASC, eligible_at DESC LIMIT 1`,
+         ORDER BY ${QUEUE_ORDER} LIMIT 1`,
       )
       .get(now, now, takesHeld ? 1 : 0, now) as Item | undefined;
+  }
+
+  // The ready items in the order the nodes will take them, for the page. The
+  // same order as next(), so what the queue shows first is what runs first.
+  queue(now: number, limit: number): Item[] {
+    return this.db
+      .prepare(`SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ? ORDER BY ${QUEUE_ORDER} LIMIT ?`)
+      .all(now, now, limit) as Item[];
+  }
+
+  // Items in a state, the most recently changed first.
+  inState(state: State, limit: number): Item[] {
+    return this.db.prepare('SELECT * FROM items WHERE state = ? ORDER BY updated_at DESC LIMIT ?').all(state, limit) as Item[];
+  }
+
+  // Machine subtitles written most recently.
+  recentlyFinished(limit: number): Item[] {
+    return this.db
+      .prepare(`SELECT * FROM items WHERE state = 'done' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT ?`)
+      .all(limit) as Item[];
+  }
+
+  // Eligible items sitting out a retry delay, the soonest first.
+  retrying(now: number, limit: number): Item[] {
+    return this.db
+      .prepare(`SELECT * FROM items WHERE state = 'eligible' AND eligible_at > ? ORDER BY eligible_at ASC LIMIT ?`)
+      .all(now, limit) as Item[];
+  }
+
+  // Waiting items, the ones whose wait ends soonest first.
+  waitingSoonest(limit: number): Item[] {
+    return this.db.prepare(`SELECT * FROM items WHERE state = 'waiting' ORDER BY eligible_at ASC LIMIT ?`).all(limit) as Item[];
   }
 
   // Keeps the item the mini would take next for the PC until `until`, or
@@ -299,6 +336,30 @@ export class Store {
       .prepare(`SELECT * FROM items ${clause} ORDER BY updated_at DESC LIMIT ?`)
       .all(...args, opts.limit) as Item[];
     return { items, total };
+  }
+
+  // The newest log lines across every item, with the item's title when it is
+  // still tracked.
+  recentLog(limit: number): (LogLine & { key: string; title: string | null })[] {
+    return this.db
+      .prepare(
+        `SELECT log.item_key AS key, log.at, log.message, items.title FROM log
+         LEFT JOIN items ON items.key = log.item_key ORDER BY log.id DESC LIMIT ?`,
+      )
+      .all(limit) as (LogLine & { key: string; title: string | null })[];
+  }
+
+  // Finished translations since a time, per node: how many and how long each took.
+  finishedByNode(since: number): { node: string; count: number; avgSeconds: number }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT node, COUNT(*) AS n, AVG((finished_at - started_at) / 1000.0) AS avg FROM items
+           WHERE finished_at >= ? AND started_at IS NOT NULL AND node IS NOT NULL AND state IN ('done', 'replaced', 'gone')
+           GROUP BY node`,
+        )
+        .all(since) as { node: string; n: number; avg: number }[]
+    ).map((r) => ({ node: r.node, count: Number(r.n), avgSeconds: Number(r.avg) }));
   }
 
   // Finished translations since a time, and their average length in seconds.

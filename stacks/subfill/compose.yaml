@@ -1,9 +1,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # subfill — Arabic subtitles from a local model, only where Bazarr finds none.
 #
-#   subfill        8097  its page, Tdarr-style: the nodes and what each is
-#                        translating, the queue, pause/retry/skip buttons;
-#                        HTTPS mirror on 18097 through tls-proxy
+#   subfill        8097  its page: the nodes and what each is translating,
+#                        the queue in the order it runs, every show and film
+#                        with its subtitles and Arabic status, the activity,
+#                        pause/retry/skip buttons; HTTPS mirror on 18097
+#                        through tls-proxy
 #   subfill-login  -     its sign-in page (glances-login's login.py)
 #
 # How it fits with Bazarr. Bazarr searches first, and subfill reads Bazarr's
@@ -48,6 +50,11 @@
 # While it asks, the next item is held for the PC (POST /api/ask); the mini
 # takes it after the hold if nobody answered. /api takes SUBFILL_API_TOKEN and
 # is off without it.
+#
+# The shows and films pages come from a copy of Bazarr's library (every
+# series, episode and film with its subtitles), read after each sync and kept
+# in the same database. A read that fails keeps the last copy, and the page
+# says how old it is.
 #
 # Nothing phones home. The app has no dependencies besides Node itself, which
 # has no telemetry or update check; it talks only to Bazarr, the two Ollamas,

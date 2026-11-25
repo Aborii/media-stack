@@ -20,7 +20,25 @@ export type Media = {
   missing: string[];
 };
 
-export type Wanted = { key: string; kind: 'episode' | 'movie'; id: number; title: string; missing: string[] };
+export type Series = { id: number; title: string; year: string | null; path: string; ended: boolean };
+
+// An episode or film in the library, wanted or not.
+export type LibraryEntry = {
+  key: string;
+  kind: 'episode' | 'movie';
+  id: number;
+  seriesId: number | null;
+  season: number | null;
+  episode: number | null;
+  title: string;
+  path: string;
+  subtitles: Subtitle[];
+  missing: string[];
+};
+
+export type Library = { series: Series[]; entries: LibraryEntry[] };
+
+export type Wanted ={ key: string; kind: 'episode' | 'movie'; id: number; title: string; missing: string[] };
 
 type RawSubtitle = { code2?: string; path?: string | null; forced?: boolean; hi?: boolean };
 type RawMissing = { code2?: string; forced?: boolean };
@@ -81,6 +99,61 @@ export class Bazarr {
       out.push({ key: movieKey(id), kind: 'movie', id, title: String(m.title), missing: codes(m.missing_subtitles) });
     }
     return out;
+  }
+
+  // The whole library, for the page's shows and films: every series, every
+  // episode with a file, every film, each with the subtitles Bazarr knows of.
+  // Episodes come a chunk of series per call, which keeps each answer to a
+  // few MB. Any failed read throws, so a half-read library is never kept.
+  async library(): Promise<Library> {
+    const series = (await this.data('/series?start=0&length=-1')).map(
+      (s): Series => ({
+        id: Number(s.sonarrSeriesId),
+        title: String(s.title ?? ''),
+        year: s.year ? String(s.year) : null,
+        path: String(s.path ?? ''),
+        ended: Boolean(s.ended),
+      }),
+    );
+    const entries: LibraryEntry[] = [];
+    const ids = series.map((s) => s.id);
+    for (let i = 0; i < ids.length; i += 50) {
+      const query = ids
+        .slice(i, i + 50)
+        .map((id) => `seriesid%5B%5D=${id}`)
+        .join('&');
+      for (const e of await this.data(`/episodes?${query}`)) {
+        const id = Number(e.sonarrEpisodeId);
+        entries.push({
+          key: episodeKey(id),
+          kind: 'episode',
+          id,
+          seriesId: Number(e.sonarrSeriesId),
+          season: Number(e.season ?? 0),
+          episode: Number(e.episode ?? 0),
+          title: String(e.title ?? ''),
+          path: String(e.path ?? ''),
+          subtitles: subtitles(e.subtitles),
+          missing: codes(e.missing_subtitles),
+        });
+      }
+    }
+    for (const m of await this.data('/movies?start=0&length=-1')) {
+      const id = Number(m.radarrId);
+      entries.push({
+        key: movieKey(id),
+        kind: 'movie',
+        id,
+        seriesId: null,
+        season: null,
+        episode: null,
+        title: m.year ? `${m.title} (${m.year})` : String(m.title ?? ''),
+        path: String(m.path ?? ''),
+        subtitles: subtitles(m.subtitles),
+        missing: codes(m.missing_subtitles),
+      });
+    }
+    return { series, entries };
   }
 
   // Details for many items, a chunk of ids per call so the query string stays short.
