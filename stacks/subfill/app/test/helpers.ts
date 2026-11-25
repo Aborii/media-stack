@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Bazarr } from '../src/bazarr.ts';
+import type { extractEmbedded } from '../src/embedded.ts';
 import { Store } from '../src/store.ts';
 import { ARABIC, type Generate } from '../src/translate.ts';
 import { Worker, type Config } from '../src/worker.ts';
@@ -91,7 +92,7 @@ export function episode(root: string, id: number, name: string, extra: Partial<F
 
 // A worker over a fake Bazarr that answers from `items` (which tests change
 // between syncs), with the media folder taken from the first item's path.
-export function setup(items: FakeMedia[], over: Partial<Config> = {}, generate: Generate = arabicModel, fail?: () => boolean) {
+export function setup(items: FakeMedia[], over: Partial<Config> = {}, generate: Generate = arabicModel, fail?: () => boolean, extract?: typeof extractEmbedded) {
   const root = path.dirname(path.dirname(path.dirname(items[0]?.path ?? path.join(mediaDir(), 'tv', 'x', 'x'))));
   const store = new Store(':memory:');
   const bazarr = new Bazarr({ url: 'http://bazarr:6767', apiKey: 'key', fetcher: fakeBazarr(items, { fail }) });
@@ -108,5 +109,5 @@ export function setup(items: FakeMedia[], over: Partial<Config> = {}, generate: 
   // A second ahead of the wall clock: a file's ctime can read a few ms past
   // Date.now(), and with waitMs 0 a new video must already count as old enough.
   const now = () => Date.now() + 1000;
-  return { store, worker: new Worker({ store, bazarr, generate, config, now }) };
+  return { store, worker: new Worker({ store, bazarr, generate, config, now, extract }) };
 }

@@ -217,3 +217,19 @@ export function checkAligned(source: Parsed, output: Parsed): string | null {
   }
   return null;
 }
+
+// Cues that repeat an earlier one's timing and text: styled (ASS) tracks
+// stack copies of a line for visual effects, which as SRT would each be
+// translated and shown on top of each other. Renumbered when any go.
+export function withoutCopies(parsed: Parsed): { parsed: Parsed; dropped: number } {
+  const seen = new Set<string>();
+  const cues = parsed.cues.filter((c) => {
+    const k = `${c.timing.trim()}\n${c.lines.join('\n').trim()}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const dropped = parsed.cues.length - cues.length;
+  if (!dropped) return { parsed, dropped };
+  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, dropped };
+}

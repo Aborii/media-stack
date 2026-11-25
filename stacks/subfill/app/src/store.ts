@@ -56,6 +56,10 @@ export type Item = {
   // The show an episode belongs to (Sonarr's id); null for a film, or for an
   // episode not seen by a sync since this column was added.
   series_id: number | null;
+  // Translated from the subtitle inside the video instead of a file beside
+  // it: 'yes'. 'none' once a look inside found nothing it can read, so the
+  // sync stops offering it until the video changes. null otherwise.
+  inside_track: string | null;
 };
 
 export type LogLine = { at: number; message: string };
@@ -72,6 +76,7 @@ const ADDED_COLUMNS: [string, string][] = [
   ['node', 'TEXT'],
   ['crashes', 'INTEGER NOT NULL DEFAULT 0'],
   ['series_id', 'INTEGER'],
+  ['inside_track', 'TEXT'],
 ];
 
 // An item whose show or film is marked not to translate. The nodes never
@@ -119,7 +124,8 @@ export class Store {
         held_until INTEGER,
         node TEXT,
         crashes INTEGER NOT NULL DEFAULT 0,
-        series_id INTEGER
+        series_id INTEGER,
+        inside_track TEXT
       );
       CREATE INDEX IF NOT EXISTS items_state ON items (state, priority, eligible_at);
       CREATE TABLE IF NOT EXISTS log (
@@ -196,14 +202,14 @@ export class Store {
   insert(
     item: Omit<
       Item,
-      'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node' | 'crashes' | 'series_id'
-    > & { series_id?: number | null },
+      'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node' | 'crashes' | 'series_id' | 'inside_track'
+    > & { series_id?: number | null; inside_track?: string | null },
   ): void {
     const now = this.now();
     this.db
       .prepare(
-        `INSERT INTO items (key, kind, bazarr_id, title, video_path, source_path, source_lang, out_path, state, note, eligible_at, first_seen, updated_at, series_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO items (key, kind, bazarr_id, title, video_path, source_path, source_lang, out_path, state, note, eligible_at, first_seen, updated_at, series_id, inside_track)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         item.key,
@@ -220,6 +226,7 @@ export class Store {
         now,
         now,
         item.series_id ?? null,
+        item.inside_track ?? null,
       );
   }
 

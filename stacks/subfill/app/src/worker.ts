@@ -9,9 +9,10 @@
 import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { seriesKey, type Bazarr, type Media, type Wanted } from './bazarr.ts';
+import { extractEmbedded, NoTextTrack } from './embedded.ts';
 import { Unavailable } from './errors.ts';
 import { OllamaCrash } from './ollama.ts';
-import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
+import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt, withoutCopies } from './srt.ts';
 import { EXCLUDED_NOTE, type Item, type State, type Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
 
@@ -52,13 +53,15 @@ export class Worker {
   private readonly store: Store;
   private readonly bazarr: Bazarr;
   private readonly generate: Generate;
+  private readonly extract: typeof extractEmbedded;
   private readonly cfg: Config;
   private readonly now: () => number;
 
-  constructor(opts: { store: Store; bazarr: Bazarr; generate: Generate; config: Config; now?: () => number }) {
+  constructor(opts: { store: Store; bazarr: Bazarr; generate: Generate; config: Config; now?: () => number; extract?: typeof extractEmbedded }) {
     this.store = opts.store;
     this.bazarr = opts.bazarr;
     this.generate = opts.generate;
+    this.extract = opts.extract ?? extractEmbedded;
     this.cfg = opts.config;
     this.now = opts.now ?? Date.now;
   }
@@ -124,14 +127,21 @@ export class Worker {
     }
   }
 
-  private async pickSource(media: Media): Promise<{ path: string; lang: string } | null> {
+  // A subtitle file beside the video first. Failing that, a track inside the
+  // video that Bazarr lists, unless a look inside this same video already
+  // found nothing readable (`row`).
+  private async pickSource(media: Media, row: Item | undefined): Promise<{ path: string | null; lang: string; inside: boolean } | null> {
     for (const lang of this.cfg.sourceLanguages) {
       const candidates = media.subtitles
         .filter((s) => s.code2 === lang && s.path && !s.forced && s.path.toLowerCase().endsWith('.srt'))
         .sort((a, b) => Number(a.hi) - Number(b.hi));
       for (const c of candidates) {
-        if (c.path && this.inMedia(c.path) && (await this.exists(c.path))) return { path: c.path, lang };
+        if (c.path && this.inMedia(c.path) && (await this.exists(c.path))) return { path: c.path, lang, inside: false };
       }
+    }
+    if (row?.inside_track === 'none' && row.video_path === media.path) return null;
+    for (const lang of this.cfg.sourceLanguages) {
+      if (media.subtitles.some((s) => s.code2 === lang && !s.path && !s.forced)) return { path: null, lang, inside: true };
     }
     return null;
   }
@@ -174,7 +184,7 @@ export class Worker {
       ) {
         continue;
       }
-      const source = await this.pickSource(media);
+      const source = await this.pickSource(media, row);
       let eligibleAt = this.now() + this.cfg.waitMs;
       let note: string | null = null;
       try {
@@ -186,7 +196,11 @@ export class Worker {
         note = 'video file not found';
       }
       let state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
-      note ??= source ? null : 'no external subtitle to translate from';
+      note ??= source
+        ? null
+        : row?.inside_track === 'none' && row.video_path === media.path && row.note
+          ? row.note
+          : 'no subtitle beside the video or inside it to translate from';
       // A show or film the owner marked not to translate: set aside, new
       // episodes included, until the mark is lifted. Read now, after the
       // awaits above, so a mark set or lifted while this sync waited counts.
@@ -199,6 +213,8 @@ export class Worker {
         video_path: media.path,
         source_path: source?.path ?? null,
         source_lang: source?.lang ?? null,
+        // Kept while the video is the same: a look inside that found nothing stays found.
+        inside_track: source?.inside ? 'yes' : row?.inside_track === 'none' && row.video_path === media.path ? 'none' : null,
         // An eligible row keeps its time: "translate now" and the retry delay set it.
         eligible_at: row?.state === 'eligible' ? row.eligible_at : eligibleAt,
         note,
@@ -308,7 +324,8 @@ export class Worker {
       await this.drop(item);
       return;
     }
-    if (!item.source_path || !this.inMedia(item.source_path) || !this.inMedia(out)) {
+    const inside = !item.source_path && item.inside_track === 'yes';
+    if (!(inside ? this.inMedia(item.video_path) : item.source_path && this.inMedia(item.source_path)) || !this.inMedia(out)) {
       throw new Error('the subtitle or video is outside the media folder');
     }
     // A file holding several episodes: the first one translated serves them all.
@@ -323,7 +340,32 @@ export class Worker {
       throw new Error(`${path.basename(out)} already exists and subfill did not write it`);
     }
 
-    const source = parseSrt(decode(await readFile(item.source_path)));
+    let from = item.source_lang ?? 'en';
+    let text: string;
+    if (inside) {
+      // The item's language first, then the others it may translate from.
+      const langs = [from, ...this.cfg.sourceLanguages.filter((l) => l !== from)];
+      try {
+        const got = await this.extract(item.video_path, langs);
+        text = got.srt;
+        from = got.lang;
+        this.store.log(item.key, `read the ${got.lang} subtitle inside the video (track ${got.stream.index}, ${got.stream.codec}${got.stream.title ? `, "${got.stream.title}"` : ''})`);
+      } catch (err) {
+        if (!(err instanceof NoTextTrack)) throw err;
+        // Nothing readable inside: not an attempt, and not offered again until the video changes.
+        this.store.move(item.key, ['translating'], 'no_source', { attempts: item.attempts - 1, inside_track: 'none', note: err.message });
+        this.store.log(item.key, err.message);
+        return;
+      }
+    } else {
+      text = decode(await readFile(item.source_path!));
+    }
+    let source = parseSrt(text);
+    if (inside) {
+      const { parsed, dropped } = withoutCopies(source);
+      source = parsed;
+      if (dropped) this.store.log(item.key, `left out ${dropped} stacked copies of lines from the styled track`);
+    }
     if (!source.cues.length) throw new Error('the source subtitle has no cues');
     const segments = segmentsOf(source.cues);
     const startedAt = this.now();
@@ -332,7 +374,7 @@ export class Worker {
       segments.map((s) => s.body),
       node.generate,
       {
-        from: languageOf(item.source_lang ?? 'en'),
+        from: languageOf(from),
         to: target,
         batchSize: this.cfg.batchSize,
         onProgress: (done, total) => {
@@ -353,7 +395,7 @@ export class Worker {
     await writeFile(part, serializeSrt(result), 'utf8');
     await rename(part, out);
     const minutes = Math.round((this.now() - startedAt) / 60_000);
-    const untranslated = kept ? `, ${kept} left in ${languageOf(item.source_lang ?? 'en').name}` : '';
+    const untranslated = kept ? `, ${kept} left in ${languageOf(from).name}` : '';
     const note = `${source.cues.length} cues in ${minutes} min on the ${node.name}${untranslated}`;
     if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note, crashes: 0 })) {
       // The row changed under us, so nothing would ever clean this file up.

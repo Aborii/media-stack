@@ -1,8 +1,11 @@
 # subfill: plain Node running the TypeScript sources directly (Node strips the
-# types itself), with no runtime dependencies at all - SQLite, HTTP and fetch
-# all come from Node. So there is nothing installed that could phone home or
-# go stale, and no build step.
+# types itself), with no npm dependencies - SQLite, HTTP and fetch all come
+# from Node - and no build step. The one package added is Alpine's ffmpeg, to
+# read subtitle tracks stored inside videos (src/embedded.ts); it only reads
+# local files and makes no network calls.
 FROM node:24-alpine
+
+RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 COPY package.json ./
