@@ -31,7 +31,7 @@ export type { Status };
 export type WebDeps = {
   store: Store;
   library: LibraryStore;
-  worker: Pick<Worker, 'act' | 'holdForPc' | 'releaseHolds' | 'markPcWoken'>;
+  worker: Pick<Worker, 'act' | 'exclude' | 'holdForPc' | 'releaseHolds' | 'markPcWoken'>;
   status: () => Status;
   // Pauses or resumes a node by name; returns a problem, or null.
   setNodePaused: (name: string, paused: boolean) => string | null;
@@ -111,6 +111,7 @@ export function tokenMatches(header: string | undefined, token: string | undefin
 export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const fetcher = deps.fetcher ?? fetch;
   const gate = deps.loginUrl.replace(/\/+$/, '');
+  const itemsOf = (key: string) => itemsOfWith(deps.library, key);
 
   async function passToGate(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = req.method === 'POST' ? await readBody(req, 65536) : undefined;
@@ -198,7 +199,11 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
         const key = form.get('key') ?? '';
         const op = form.get('op') ?? '';
         const problem =
-          op === 'pause-node' || op === 'resume-node' ? deps.setNodePaused(key, op === 'pause-node') : deps.worker.act(key, op);
+          op === 'pause-node' || op === 'resume-node'
+            ? deps.setNodePaused(key, op === 'pause-node')
+            : op === 'exclude' || op === 'include'
+              ? deps.worker.exclude(key, op === 'exclude', itemsOf(key))
+              : deps.worker.act(key, op);
         if (problem) return send(res, 409, problemPage(problem, safeBack(form.get('back'))));
         return send(res, 303, '', { location: safeBack(form.get('back')) });
       }
@@ -241,6 +246,12 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
       if (!res.headersSent) send(res, 500, problemPage(`Something went wrong: ${(err as Error).message}`));
     }
   };
+}
+
+// The items a show or film mark covers: the show's episodes, or the film.
+function itemsOfWith(library: LibraryStore, key: string): string[] {
+  const m = key.match(/^series:(\d+)$/);
+  return m ? library.episodeKeys(Number(m[1])) : [key];
 }
 
 function notFound(message: string, back: string, label: string): string {

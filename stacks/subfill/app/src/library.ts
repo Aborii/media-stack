@@ -17,7 +17,9 @@ import type { Item } from './store.ts';
 //   machine      ours is in use
 //   ready        in the queue, its time has come
 //   retrying     in the queue, sitting out the delay after a failed try
-//   translating, waiting, failed, skipped, no_source   as subfill's item
+//   translating  being translated now, marked or not
+//   excluded     its show or film is marked not to translate
+//   waiting, failed, skipped, no_source   as subfill's item
 //   missing      Bazarr wants Arabic and subfill has not looked yet (next sync)
 //   not_wanted   no Arabic, and Bazarr's profile for it does not ask for any
 export const ARABIC_STATUSES = [
@@ -32,6 +34,7 @@ export const ARABIC_STATUSES = [
   'no_source',
   'missing',
   'not_wanted',
+  'excluded',
 ] as const;
 export type ArabicStatus = (typeof ARABIC_STATUSES)[number];
 
@@ -41,6 +44,8 @@ export type ArabicStatus = (typeof ARABIC_STATUSES)[number];
 const STATUS_SQL = `CASE
   WHEN l.target_human = 1 AND l.target_missing = 0 THEN 'human'
   WHEN i.state = 'done' THEN 'machine'
+  WHEN i.state = 'translating' THEN 'translating'
+  WHEN EXISTS (SELECT 1 FROM excluded x WHERE x.key = CASE l.kind WHEN 'episode' THEN 'series:' || l.show_id ELSE l.key END) THEN 'excluded'
   WHEN i.state = 'eligible' AND i.eligible_at > ? THEN 'retrying'
   WHEN i.state = 'eligible' THEN 'ready'
   WHEN i.state IN ('translating', 'waiting', 'failed', 'skipped', 'no_source') THEN i.state
@@ -56,6 +61,8 @@ export type Show = {
   // The library folder it lives in: tv, anime, arabic-shows.
   folder: string;
   ended: boolean;
+  // Marked by the owner not to translate.
+  excluded: boolean;
   episodes: number;
   counts: StatusCounts;
 };
@@ -70,6 +77,8 @@ export type Entry = {
   path: string;
   subtitles: Subtitle[];
   status: ArabicStatus;
+  // Its show or film is marked not to translate.
+  marked: boolean;
   // subfill's item for it, when it has one.
   item: Item | null;
 };
@@ -84,6 +93,7 @@ type EntryRow = {
   path: string;
   subtitles: string;
   status: ArabicStatus;
+  marked: number;
   item_json: string | null;
 };
 
@@ -151,6 +161,10 @@ export class LibraryStore {
           e.missing.includes(target) ? 1 : 0,
         );
       }
+      // Items made before their show was recorded learn it from the library.
+      this.db.exec(
+        `UPDATE items SET series_id = (SELECT show_id FROM library l WHERE l.key = items.key) WHERE series_id IS NULL AND kind = 'episode'`,
+      );
       this.setMeta('library_at', String(this.now()));
       this.db.prepare("DELETE FROM meta WHERE key = 'library_error'").run();
       this.db.exec('COMMIT');
@@ -181,13 +195,12 @@ export class LibraryStore {
 
   // Every show with its episodes counted by Arabic status, by title.
   shows(): Show[] {
-    const shows = this.db.prepare('SELECT id, title, year, folder, ended FROM shows ORDER BY title COLLATE NOCASE').all() as {
-      id: number;
-      title: string;
-      year: string | null;
-      folder: string;
-      ended: number;
-    }[];
+    const shows = this.db
+      .prepare(
+        `SELECT id, title, year, folder, ended, EXISTS (SELECT 1 FROM excluded x WHERE x.key = 'series:' || shows.id) AS excluded
+         FROM shows ORDER BY title COLLATE NOCASE`,
+      )
+      .all() as { id: number; title: string; year: string | null; folder: string; ended: number; excluded: number }[];
     const rows = this.db
       .prepare(
         `SELECT l.show_id AS id, ${STATUS_SQL} AS status, COUNT(*) AS n
@@ -202,7 +215,7 @@ export class LibraryStore {
     }
     return shows.map((s) => {
       const c = counts.get(s.id) ?? emptyCounts();
-      return { ...s, ended: Boolean(s.ended), episodes: Object.values(c).reduce((a, b) => a + b, 0), counts: c };
+      return { ...s, ended: Boolean(s.ended), excluded: Boolean(s.excluded), episodes: Object.values(c).reduce((a, b) => a + b, 0), counts: c };
     });
   }
 
@@ -216,9 +229,11 @@ export class LibraryStore {
   }
 
   // Films, by title, optionally only those with a status and matching a search.
-  movies(opts: { statuses?: ArabicStatus[]; q?: string; limit: number }): { movies: Entry[]; total: number } {
+  // `marked` picks the films marked not to translate, or those that are not.
+  movies(opts: { statuses?: ArabicStatus[]; marked?: boolean; q?: string; limit: number }): { movies: Entry[]; total: number } {
     const where = [`kind = 'movie'`];
     const args: (string | number)[] = [this.now()];
+    if (opts.marked !== undefined) where.push(`marked = ${opts.marked ? 1 : 0}`);
     if (opts.statuses?.length) {
       where.push(`status IN (${opts.statuses.map(() => '?').join(', ')})`);
       args.push(...opts.statuses);
@@ -243,6 +258,11 @@ export class LibraryStore {
     return out;
   }
 
+  // A show's episodes, for marking them all at once.
+  episodeKeys(showId: number): string[] {
+    return (this.db.prepare(`SELECT key FROM library WHERE show_id = ? AND kind = 'episode'`).all(showId) as { key: string }[]).map((r) => r.key);
+  }
+
   // The library entry behind an item, for its page: which show it is in.
   entry(key: string): Entry | null {
     const row = this.db.prepare(`${ENTRY_SELECT} WHERE l.key = ?`).get(this.now(), key) as EntryRow | undefined;
@@ -261,12 +281,13 @@ export class LibraryStore {
 
 // The item rides along as JSON, so one query gives each row its item.
 const ENTRY_SELECT = `SELECT l.key, l.kind, l.show_id, l.season, l.episode, l.title, l.path, l.subtitles, ${STATUS_SQL} AS status,
+  EXISTS (SELECT 1 FROM excluded x WHERE x.key = CASE l.kind WHEN 'episode' THEN 'series:' || l.show_id ELSE l.key END) AS marked,
   CASE WHEN i.key IS NULL THEN NULL ELSE json_object(
     'key', i.key, 'kind', i.kind, 'bazarr_id', i.bazarr_id, 'title', i.title, 'video_path', i.video_path,
     'source_path', i.source_path, 'source_lang', i.source_lang, 'out_path', i.out_path, 'state', i.state,
     'note', i.note, 'eligible_at', i.eligible_at, 'priority', i.priority, 'attempts', i.attempts,
     'first_seen', i.first_seen, 'updated_at', i.updated_at, 'started_at', i.started_at,
-    'finished_at', i.finished_at, 'held_until', i.held_until, 'node', i.node, 'crashes', i.crashes) END AS item_json
+    'finished_at', i.finished_at, 'held_until', i.held_until, 'node', i.node, 'crashes', i.crashes, 'series_id', i.series_id) END AS item_json
   FROM library l LEFT JOIN items i ON i.key = l.key`;
 
 function toEntry(r: EntryRow): Entry {
@@ -280,6 +301,7 @@ function toEntry(r: EntryRow): Entry {
     path: r.path,
     subtitles: JSON.parse(r.subtitles) as Subtitle[],
     status: r.status,
+    marked: Boolean(r.marked),
     item: r.item_json ? (JSON.parse(r.item_json) as Item) : null,
   };
 }

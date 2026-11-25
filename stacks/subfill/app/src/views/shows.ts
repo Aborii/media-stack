@@ -1,5 +1,6 @@
 // Shows: every series in the library with how its episodes stand for Arabic,
 // and a page per show with each episode's subtitles.
+import { seriesKey } from '../bazarr.ts';
 import type { Entry, Show } from '../library.ts';
 import {
   actions,
@@ -8,6 +9,7 @@ import {
   coverageBar,
   epCode,
   esc,
+  excludeButton,
   GROUPS,
   legend,
   page,
@@ -17,14 +19,22 @@ import {
 } from './layout.ts';
 import type { View } from './view.ts';
 
+// Shows marked not to translate appear only under their own filter.
 const FILTERS = {
-  '': ['All', () => true],
-  needs: ['Missing Arabic', (s: Show) => sum(s.counts, GROUPS.needs) > 0],
-  queue: ['In the queue', (s: Show) => sum(s.counts, GROUPS.queue) > 0],
-  machine: ['Has machine Arabic', (s: Show) => s.counts.machine > 0],
-  complete: ['Complete', (s: Show) => s.episodes > 0 && sum(s.counts, [...GROUPS.needs, ...GROUPS.queue]) === 0],
+  '': ['All', (s: Show) => !s.excluded],
+  needs: ['Missing Arabic', (s: Show) => !s.excluded && sum(s.counts, GROUPS.needs) > 0],
+  queue: ['In the queue', (s: Show) => !s.excluded && sum(s.counts, GROUPS.queue) > 0],
+  machine: ['Has machine Arabic', (s: Show) => !s.excluded && s.counts.machine > 0],
+  complete: ['Complete', (s: Show) => !s.excluded && s.episodes > 0 && sum(s.counts, [...GROUPS.needs, ...GROUPS.queue]) === 0],
+  excluded: ['Not translated', (s: Show) => s.excluded],
 } as const satisfies Record<string, readonly [string, (s: Show) => boolean]>;
 type Filter = keyof typeof FILTERS;
+
+// Episodes that want Arabic: not those Bazarr's profile skips, nor those set
+// aside by the owner's mark.
+function wantedOf(s: Show): number {
+  return s.episodes - s.counts.not_wanted - s.counts.excluded;
+}
 
 function libraryNote(v: View): string {
   const lib = v.library.freshness();
@@ -61,18 +71,18 @@ export function renderShows(v: View, query: URLSearchParams): string {
   const rows = shows
     .map((s) => {
       const has = sum(s.counts, GROUPS.has);
-      const wanted = s.episodes - s.counts.not_wanted;
+      const wanted = wantedOf(s);
       const needs = sum(s.counts, GROUPS.needs);
       const queued = sum(s.counts, GROUPS.queue);
       return `<tr><td><a href="/show?id=${s.id}">${esc(s.title)}</a>${s.year ? ` <span class="dim">${esc(s.year)}</span>` : ''}<span class="tag">${esc(s.folder)}</span></td>
-<td style="min-width:200px">${coverageBar(s.counts)}<span class="cov-sub">${wanted ? `${has} of ${wanted} have Arabic` : 'Arabic not wanted'}</span></td>
+<td style="min-width:200px">${coverageBar(s.counts)}<span class="cov-sub">${s.excluded ? 'not translated, by you' : wanted ? `${has} of ${wanted} have Arabic` : 'Arabic not wanted'}</span></td>
 <td class="num" data-label="Episodes">${s.episodes}</td><td class="num" data-label="Human">${s.counts.human}</td><td class="num" data-label="Machine">${s.counts.machine}</td>
 <td class="num" data-label="Queued">${queued || '<span class="dim">0</span>'}</td><td class="num" data-label="Missing">${needs ? `<span style="color:var(--missing);font-weight:600">${needs}</span>` : '<span class="dim">0</span>'}</td></tr>`;
     })
     .join('');
 
   const folderChips = folders.length > 1 ? `<div class="seg">${['', ...folders].map((f) => `<a class="${f === folder ? 'on' : ''}" href="${esc(link({ folder: f }))}">${f ? esc(f) : 'All folders'}</a>`).join('')}</div>` : '';
-  const body = `${pageHeader('Shows', `${all.length} shows. Each bar splits a show's episodes by their Arabic subtitle.`)}
+  const body = `${pageHeader('Shows', `${all.filter((s) => !s.excluded).length} shows. Each bar splits a show's episodes by their Arabic subtitle. Shows you marked not to translate are under "Not translated".`)}
 ${libraryNote(v)}
 <div class="toolbar"><form class="row" method="get" action="/shows">${filter ? `<input type="hidden" name="f" value="${esc(filter)}">` : ''}${folder ? `<input type="hidden" name="folder" value="${esc(folder)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search shows"><select name="sort" onchange="this.form.submit()"><option value="name"${sort === 'name' ? ' selected' : ''}>Sort by name</option><option value="missing"${sort === 'missing' ? ' selected' : ''}>Most missing first</option></select></form>${folderChips}</div>
 <div class="toolbar"><div class="seg">${chips}</div></div>
@@ -80,12 +90,13 @@ ${libraryNote(v)}
   return page({ title: 'subfill - shows', tab: 'shows', body, v });
 }
 
-export function entryRow(e: Entry, back: string, now: number, first: string): string {
-  const note = e.item?.note && e.status !== 'human' ? `<div class="dim">${esc(e.item.note)}</div>` : '';
+// `more` goes after the item's own buttons.
+export function entryRow(e: Entry, back: string, now: number, first: string, more = ''): string {
+  const note = e.item?.note && e.status !== 'human' && e.status !== 'excluded' ? `<div class="dim">${esc(e.item.note)}</div>` : '';
   const when =
     e.item && e.status === 'waiting' ? `<div class="dim">ready ${ago(e.item.eligible_at, now)}</div>` : e.item && e.status === 'machine' ? `<div class="dim">written ${ago(e.item.finished_at, now)}</div>` : '';
   const status = e.item ? `<a href="/item?key=${encodeURIComponent(e.key)}">${badge(e.status)}</a>` : badge(e.status);
-  return `<tr>${first}<td data-label="Subtitles">${subtitleChips(e.subtitles, e.status === 'machine')}</td><td class="inl">${status}${when}${note}</td><td class="num inl">${e.item ? actions(e.item, back) : ''}</td></tr>`;
+  return `<tr>${first}<td data-label="Subtitles">${subtitleChips(e.subtitles, e.status === 'machine')}</td><td class="inl">${status}${when}${note}</td><td class="num inl"><span class="acts">${e.item && !e.marked ? actions(e.item, back) : ''}${more}</span></td></tr>`;
 }
 
 export function renderShow(v: View, id: number): string | null {
@@ -98,7 +109,7 @@ export function renderShow(v: View, id: number): string | null {
   const sections = [...seasons]
     .map(([season, eps]) => {
       const has = eps.filter((e) => (GROUPS.has as readonly string[]).includes(e.status)).length;
-      const wanted = eps.filter((e) => e.status !== 'not_wanted').length;
+      const wanted = eps.filter((e) => e.status !== 'not_wanted' && e.status !== 'excluded').length;
       const rows = eps
         .map((e) => entryRow(e, back, v.now, `<td class="dim inl" style="white-space:nowrap">${epCode(e.season, e.episode)}</td><td class="inl">${esc(e.title || '-')}</td>`))
         .join('');
@@ -107,11 +118,12 @@ export function renderShow(v: View, id: number): string | null {
     })
     .join('');
   const has = sum(show.counts, GROUPS.has);
-  const wanted = show.episodes - show.counts.not_wanted;
+  const wanted = wantedOf(show);
   const tile = (label: string, value: string | number, c: string, sub = '') =>
     `<div class="card kpi"><span class="l"><i class="s-${c}"></i>${label}</span><b>${value}</b>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
   const body = `<p class="crumb"><a href="/shows">Shows</a> / ${esc(show.title)}</p>
-${pageHeader(`${esc(show.title)}${show.year ? ` <span class="dim">${esc(show.year)}</span>` : ''}`, '', `<span class="tag">${esc(show.folder)}</span><span class="tag">${show.ended ? 'ended' : 'continuing'}</span>`)}
+${pageHeader(`${esc(show.title)}${show.year ? ` <span class="dim">${esc(show.year)}</span>` : ''}`, '', `<span class="tag">${esc(show.folder)}</span><span class="tag">${show.ended ? 'ended' : 'continuing'}</span>${excludeButton(seriesKey(show.id), show.excluded, back, 'show')}`)}
+${show.excluded ? '<div class="note">You marked this show not to translate. Its episodes are set aside, new ones too, and it is listed only under "Not translated" on the shows page. Machine subtitles written before stay.</div>' : ''}
 ${libraryNote(v)}
 <div class="kpis">${tile('Coverage', wanted ? `${Math.round((has / wanted) * 100)}%` : '-', 'human', `${has} of ${wanted} that want Arabic`)}${tile('Episodes', show.episodes, 'not_wanted')}${tile('Machine Arabic', show.counts.machine, 'machine')}${tile('In the queue', sum(show.counts, GROUPS.queue), 'ready')}${tile('Missing', sum(show.counts, GROUPS.needs), 'missing')}</div>
 <div class="card" style="margin-top:16px">${coverageBar(show.counts)}${legend(show.counts)}</div>

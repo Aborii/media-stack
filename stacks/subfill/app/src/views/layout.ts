@@ -4,7 +4,7 @@
 import type { Subtitle } from '../bazarr.ts';
 import { ARABIC_STATUSES, type ArabicStatus, type StatusCounts } from '../library.ts';
 import type { NodeState } from '../nodes.ts';
-import type { Item, State } from '../store.ts';
+import { EXCLUDED_NOTE, type Item, type State } from '../store.ts';
 import type { View } from './view.ts';
 
 export function esc(text: unknown): string {
@@ -58,6 +58,7 @@ export const STATUS_LABEL: Record<ArabicStatus, string> = {
   no_source: 'nothing to translate from',
   missing: 'missing, not looked at yet',
   not_wanted: 'Arabic not wanted',
+  excluded: 'not translated, by you',
 };
 
 // The statuses gathered the way the filters and the coverage bar use them.
@@ -123,8 +124,15 @@ export function actions(item: Item, back: string): string {
   if (item.state === 'waiting' || item.state === 'eligible') ops.push(['now', 'Translate now', '']);
   if (item.state === 'failed') ops.push(['retry', 'Retry', 'primary']);
   if (['waiting', 'eligible', 'failed', 'no_source'].includes(item.state)) ops.push(['skip', 'Skip', '']);
-  if (item.state === 'skipped') ops.push(['unskip', 'Undo skip', '']);
+  // One set aside by its show's or film's mark comes back by lifting the mark.
+  if (item.state === 'skipped' && item.note !== EXCLUDED_NOTE) ops.push(['unskip', 'Undo skip', '']);
   return ops.length ? `<span class="acts">${ops.map(([op, label, kind]) => button(item.key, op, label, back, kind)).join('')}</span>` : '';
+}
+
+// The button that marks a show ("series:<id>") or film ("movie:<id>") not to
+// translate, or lifts the mark.
+export function excludeButton(key: string, excluded: boolean, back: string, noun: string): string {
+  return excluded ? button(key, 'include', `Translate this ${noun} again`, back, 'primary') : button(key, 'exclude', `Don't translate this ${noun}`, back);
 }
 
 export function itemLink(item: { key: string; title: string }): string {
@@ -190,9 +198,9 @@ const STYLE = `<style>
 :root{color-scheme:dark;
 --bg:#0a0c0f;--side:#0d1014;--card:#12161b;--card2:#181d23;--hover:#1a2028;--line:#1f252d;--line2:#2a313a;
 --text:#e4e7eb;--muted:#8a94a0;--faint:#5c6672;--accent:#5b8def;--accent2:#3b6fd8;--ok:#3fb950;--warn:#d29922;--off:#6b7280;--bad:#f85149;--badbg:rgba(248,81,73,.08);
---human:#3fb950;--machine:#a371f7;--translating:#5b8def;--ready:#39c5cf;--retrying:#8b8ff8;--waiting:#768390;--failed:#f85149;--skipped:#545d68;--no_source:#d29922;--missing:#db6d28;--not_wanted:#2d333b;
+--human:#3fb950;--machine:#a371f7;--translating:#5b8def;--ready:#39c5cf;--retrying:#8b8ff8;--waiting:#768390;--failed:#f85149;--skipped:#545d68;--no_source:#d29922;--missing:#db6d28;--not_wanted:#2d333b;--excluded:#3d444d;
 --r:10px;--font:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f6f7f9;--side:#fbfbfc;--card:#fff;--card2:#f6f8fa;--hover:#f3f5f8;--line:#e4e7eb;--line2:#d5dae0;--text:#1c2128;--muted:#59636e;--faint:#8c959f;--accent:#2f6fdb;--accent2:#1f5fc9;--badbg:#fff1f0;--not_wanted:#dfe3e8;--skipped:#9aa4ae;--waiting:#8c959f}}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f6f7f9;--side:#fbfbfc;--card:#fff;--card2:#f6f8fa;--hover:#f3f5f8;--line:#e4e7eb;--line2:#d5dae0;--text:#1c2128;--muted:#59636e;--faint:#8c959f;--accent:#2f6fdb;--accent2:#1f5fc9;--badbg:#fff1f0;--not_wanted:#dfe3e8;--excluded:#c4cbd3;--skipped:#9aa4ae;--waiting:#8c959f}}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:13.5px/1.5 var(--font);-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
@@ -213,7 +221,7 @@ aside{position:sticky;top:0;height:100vh;background:var(--side);border-right:1px
 .sn{display:flex;align-items:center;gap:8px;padding:4px 10px;font-size:12.5px} .sn-name{color:var(--text)} .sn-state{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
 .side-foot .out{display:flex;align-items:center;gap:10px;padding:7px 10px;margin-top:8px;border-radius:7px;color:var(--muted)} .side-foot .out:hover{background:var(--hover);color:var(--text);text-decoration:none}
 .topbar{display:none}
-main{min-width:0;padding:28px 36px 56px;max-width:1240px;width:100%}
+main{min-width:0;padding:28px 40px 56px;width:100%}
 .ph{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 22px}
 h1{font-size:20px;font-weight:650;letter-spacing:-.015em;margin:0;line-height:1.3} h1 .dim{font-weight:400}
 .sub{margin:4px 0 0;color:var(--muted);font-size:13px;max-width:760px}
@@ -255,7 +263,7 @@ td a{color:var(--text);font-weight:500} td a:hover{color:var(--accent)}
 .wrap{overflow-x:auto}
 .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;border-radius:6px;padding:1px 8px;white-space:nowrap;border:1px solid var(--line2);background:var(--card2);color:var(--text)}
 .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c,var(--off))}
-.s-human{--c:var(--human)} .s-machine{--c:var(--machine)} .s-translating{--c:var(--translating)} .s-ready{--c:var(--ready)} .s-retrying{--c:var(--retrying)} .s-waiting{--c:var(--waiting)} .s-failed{--c:var(--failed)} .s-skipped{--c:var(--skipped)} .s-no_source{--c:var(--no_source)} .s-missing{--c:var(--missing)} .s-not_wanted{--c:var(--not_wanted)}
+.s-human{--c:var(--human)} .s-machine{--c:var(--machine)} .s-translating{--c:var(--translating)} .s-ready{--c:var(--ready)} .s-retrying{--c:var(--retrying)} .s-waiting{--c:var(--waiting)} .s-failed{--c:var(--failed)} .s-skipped{--c:var(--skipped)} .s-no_source{--c:var(--no_source)} .s-missing{--c:var(--missing)} .s-not_wanted{--c:var(--not_wanted)} .s-excluded{--c:var(--excluded)}
 .st-done{--c:var(--machine)} .st-eligible{--c:var(--ready)} .st-translating{--c:var(--translating)} .st-waiting{--c:var(--waiting)} .st-failed{--c:var(--failed)} .st-skipped{--c:var(--skipped)} .st-no_source{--c:var(--no_source)} .st-replaced{--c:var(--human)} .st-gone{--c:var(--off)}
 .chips-inline{display:inline-flex;flex-wrap:wrap;gap:4px}
 .chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;border:1px solid var(--line2);background:transparent;border-radius:5px;padding:0 6px;line-height:19px;white-space:nowrap;color:var(--muted)}

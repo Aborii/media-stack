@@ -8,6 +8,7 @@ import {
   dateTime,
   epCode,
   esc,
+  excludeButton,
   GROUPS,
   itemLink,
   page,
@@ -21,12 +22,14 @@ import type { View } from './view.ts';
 
 const SHOWN = 300;
 
+// Films marked not to translate appear only under their own filter.
 const MOVIE_FILTERS = {
   '': ['All', null],
   needs: ['Missing Arabic', GROUPS.needs],
   queue: ['In the queue', GROUPS.queue],
   machine: ['Machine Arabic', ['machine']],
   human: ['Human Arabic', ['human']],
+  excluded: ['Not translated', null],
 } as const;
 type MovieFilter = keyof typeof MOVIE_FILTERS;
 
@@ -34,13 +37,12 @@ export function renderMovies(v: View, query: URLSearchParams): string {
   const f = query.get('f') ?? '';
   const filter: MovieFilter = Object.hasOwn(MOVIE_FILTERS, f) ? (f as MovieFilter) : '';
   const q = (query.get('q') ?? '').slice(0, 100);
-  const statuses = MOVIE_FILTERS[filter][1];
-  const { movies, total } = v.library.movies({ statuses: statuses ? [...statuses] : undefined, q, limit: SHOWN });
-  const cov = v.library.coverage().movie;
-  const count = (f: MovieFilter) => {
+  const filterOf = (f: MovieFilter) => {
     const s = MOVIE_FILTERS[f][1];
-    return s ? s.reduce((a, x) => a + cov[x], 0) : Object.values(cov).reduce((a, b) => a + b, 0);
+    return { statuses: s ? [...s] : undefined, marked: f === 'excluded' };
   };
+  const { movies, total } = v.library.movies({ ...filterOf(filter), q, limit: SHOWN });
+  const count = (f: MovieFilter) => v.library.movies({ ...filterOf(f), limit: 0 }).total;
   const chips = (Object.keys(MOVIE_FILTERS) as MovieFilter[])
     .map((f) => {
       const p = new URLSearchParams({ ...(q ? { q } : {}), ...(f ? { f } : {}) });
@@ -48,9 +50,11 @@ export function renderMovies(v: View, query: URLSearchParams): string {
     })
     .join('');
   const back = `/movies?${query.toString()}`;
-  const rows = movies.map((m) => entryRow(m, back, v.now, `<td>${m.item ? itemLink({ key: m.key, title: m.title }) : esc(m.title)}</td>`)).join('');
+  const rows = movies
+    .map((m) => entryRow(m, back, v.now, `<td>${m.item ? itemLink({ key: m.key, title: m.title }) : esc(m.title)}</td>`, excludeButton(m.key, m.marked, back, 'film')))
+    .join('');
   const lib = v.library.freshness();
-  const body = `${pageHeader('Films', `${count('').toLocaleString('en')} films in the library, by title.`)}
+  const body = `${pageHeader('Films', `${count('').toLocaleString('en')} films, by title. Films you marked not to translate are under "Not translated".`)}
 ${lib.error ? `<div class="bad">The last read of the library failed (${esc(lib.error)}).${lib.at ? ` This is the copy from ${ago(lib.at, v.now)}.` : ''}</div>` : !lib.at ? '<div class="note">The library has not been read from Bazarr yet.</div>' : ''}
 <div class="toolbar"><form class="row" method="get" action="/movies">${filter ? `<input type="hidden" name="f" value="${esc(filter)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search films"></form><div class="seg">${chips}</div></div>
 <div class="card flush wrap"><table class="stack"><thead><tr><th>Film</th><th>Subtitles</th><th>Arabic</th><th class="num">Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="dim">No film matches.</td></tr>'}</tbody></table></div>
@@ -113,7 +117,7 @@ export function renderItem(v: View, key: string): string | null {
       : '<a href="/items">All items</a>';
   const human = entry?.status === 'human' && item.state !== 'replaced' ? ` ${badge('human')} <span class="dim">Bazarr found one; the next sync tidies up</span>` : '';
   const body = `<p class="crumb">${crumb}</p>
-${pageHeader(esc(item.title), '', actions(item, back))}
+${pageHeader(esc(item.title), '', `${v.store.isItemMarked(key) ? '' : actions(item, back)}${entry?.kind === 'movie' ? excludeButton(entry.key, entry.marked, back, 'film') : ''}`)}
 <div class="row" style="margin:-10px 0 18px">${stateBadge(item.state)}${human}</div>
 ${entry ? `<div class="card" style="margin-bottom:16px"><div class="card-h">Subtitles beside the video</div>${subtitleChips(entry.subtitles, entry.status === 'machine')}</div>` : ''}
 <div class="card flush wrap"><table class="facts">${facts

@@ -8,11 +8,11 @@
 // arrives, the next sync sees Arabic is no longer missing and deletes ours.
 import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Bazarr, Media, Wanted } from './bazarr.ts';
+import { seriesKey, type Bazarr, type Media, type Wanted } from './bazarr.ts';
 import { Unavailable } from './errors.ts';
 import { OllamaCrash } from './ollama.ts';
 import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
-import type { Item, State, Store } from './store.ts';
+import { EXCLUDED_NOTE, type Item, type State, type Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
 
 export const MARKER = 'machine';
@@ -162,7 +162,18 @@ export class Worker {
       const media = details.get(w.key);
       if (!media) continue;
       const row = this.store.get(w.key);
-      if (row && HANDS_OFF.includes(row.state)) continue;
+      const markKey = w.seriesId !== null ? seriesKey(w.seriesId) : w.key;
+      // Hands off, except for what a mark should change: a row its lifted mark
+      // left set aside comes back, and a marked row that failed is set aside.
+      // A row still under its mark is left as it is, so it does not churn.
+      if (
+        row &&
+        HANDS_OFF.includes(row.state) &&
+        !(row.state === 'skipped' && row.note === EXCLUDED_NOTE && !this.store.isExcluded(markKey)) &&
+        !(row.state === 'failed' && this.store.isExcluded(markKey))
+      ) {
+        continue;
+      }
       const source = await this.pickSource(media);
       let eligibleAt = this.now() + this.cfg.waitMs;
       let note: string | null = null;
@@ -174,8 +185,15 @@ export class Worker {
       } catch {
         note = 'video file not found';
       }
-      const state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
+      let state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
       note ??= source ? null : 'no external subtitle to translate from';
+      // A show or film the owner marked not to translate: set aside, new
+      // episodes included, until the mark is lifted. Read now, after the
+      // awaits above, so a mark set or lifted while this sync waited counts.
+      if (this.store.isExcluded(markKey)) {
+        state = 'skipped';
+        note = EXCLUDED_NOTE;
+      }
       const fields = {
         title: w.title,
         video_path: media.path,
@@ -184,6 +202,7 @@ export class Worker {
         // An eligible row keeps its time: "translate now" and the retry delay set it.
         eligible_at: row?.state === 'eligible' ? row.eligible_at : eligibleAt,
         note,
+        series_id: w.seriesId,
       };
       if (!row) {
         this.store.insert({ key: w.key, kind: w.kind, bazarr_id: w.id, out_path: null, state, ...fields });
@@ -345,10 +364,25 @@ export class Worker {
     this.store.log(item.key, `wrote ${path.basename(out)} (${note})`);
   }
 
+  // The owner marks a show ("series:<id>") or film ("movie:<id>") not to
+  // translate, or lifts the mark. `itemKeys` are its episodes, or the film.
+  exclude(key: string, on: boolean, itemKeys: string[]): string | null {
+    if (!/^(series|movie):\d+$/.test(key)) return 'not a show or film';
+    if (on === this.store.isExcluded(key)) return on ? 'it is already marked not to translate' : 'it is not marked';
+    const moved = this.store.setExcluded(key, on, itemKeys);
+    const word = on ? 'you marked it not to translate' : 'you lifted the mark: translate it again';
+    for (const k of itemKeys) if (this.store.get(k)) this.store.log(k, word);
+    console.log(`${key}: ${word} (${moved} item(s) moved)`);
+    return null;
+  }
+
   // Owner actions from the page.
   act(key: string, op: string): string | null {
     const item = this.store.get(key);
     if (!item) return 'no such item';
+    if (['now', 'retry', 'unskip'].includes(op) && this.store.isItemMarked(key)) {
+      return 'its show or film is marked not to translate; lift the mark first';
+    }
     const ok = (() => {
       switch (op) {
         case 'now':
