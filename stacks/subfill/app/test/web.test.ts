@@ -385,3 +385,15 @@ test('a show and a film can be marked not to translate from their pages', async 
   assert.match(films.body, /name="key" value="movie:5"><input type="hidden" name="op" value="exclude">/);
   assert.match(films.body, /Not translated<span class="c">0</);
 });
+
+test('the shows header counts what the All filter lists, without the marked shows', async () => {
+  store.setExcluded('series:8', true, []);
+  try {
+    const r = await call('/shows', { cookie: 'subfill_session=good' });
+    assert.match(r.body, /<p class="sub">1 shows\./);
+    assert.match(r.body, />All<span class="c">1</);
+    assert.match(r.body, /Not translated<span class="c">1</);
+  } finally {
+    store.setExcluded('series:8', false, []);
+  }
+});

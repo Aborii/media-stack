@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { LibraryStore } from '../src/library.ts';
+import { OllamaDown } from '../src/ollama.ts';
 import { EXCLUDED_NOTE } from '../src/store.ts';
 import { actions } from '../src/views/layout.ts';
-import { episode, mediaDir, setup } from './helpers.ts';
+import { arabicModel, episode, mediaDir, setup } from './helpers.ts';
 
 function show(root: string) {
   return [
@@ -116,4 +117,82 @@ test('the page shows marked titles as not translated, and lists them apart', asy
   assert.ok(!actions(store.get('episode:1')!, '/').includes('unskip'));
   worker.act('episode:4', 'skip');
   assert.ok(actions(store.get('episode:4')!, '/').includes('unskip'));
+});
+
+test('lifting the mark while a sync waits on Bazarr does not leave the episodes set aside', async () => {
+  const root = mediaDir();
+  let calls = 0;
+  let onDetails: () => void = () => undefined;
+  const { store, worker } = setup(show(root), {}, arabicModel, () => {
+    if (++calls === 3) onDetails();
+    return false;
+  });
+  await worker.sync();
+  worker.exclude('series:7', true, []);
+  // A sync calls Bazarr twice for the wanted lists, then for the details:
+  // lift the mark during that third call.
+  calls = 0;
+  onDetails = () => void worker.exclude('series:7', false, []);
+  await worker.sync();
+  assert.equal(store.isExcluded('series:7'), false);
+  assert.equal(store.get('episode:1')!.state, 'eligible');
+});
+
+test('a row the lifted mark missed comes back at the next sync', async () => {
+  const root = mediaDir();
+  const { store, worker } = setup(show(root));
+  await worker.sync();
+  worker.exclude('series:7', true, []);
+  // As if the mark had been lifted with no record of the episodes at all.
+  store.db.prepare('DELETE FROM excluded').run();
+  store.update('episode:2', { series_id: null });
+  assert.equal(store.get('episode:2')!.state, 'skipped');
+  await worker.sync();
+  assert.equal(store.get('episode:2')!.state, 'eligible');
+  assert.equal(store.get('episode:2')!.series_id, 7);
+});
+
+test('the mark finds an episode by its own show id, even one the library copy does not list', async () => {
+  const root = mediaDir();
+  const { store, worker } = setup(show(root));
+  await worker.sync();
+  assert.equal(worker.exclude('series:7', true, []), null);
+  assert.equal(store.get('episode:2')!.state, 'skipped');
+  worker.exclude('series:7', false, []);
+  assert.equal(store.get('episode:2')!.state, 'waiting');
+});
+
+test('an item marked while it is translated is never taken again after an outage', async () => {
+  const root = mediaDir();
+  let worker!: ReturnType<typeof setup>['worker'];
+  const down = async (): Promise<string> => {
+    worker.exclude('series:7', true, []);
+    throw new OllamaDown('Ollama call failed: fetch failed');
+  };
+  const made = setup([episode(root, 1, 'One', { seriesId: 7 })], {}, down);
+  worker = made.worker;
+  const { store } = made;
+  await worker.sync();
+  assert.equal(await worker.translateNext(), false);
+  // Back to eligible by the outage, but marked: no node takes it, and the queue does not count it.
+  assert.equal(store.get('episode:1')!.state, 'eligible');
+  assert.equal(store.next(Date.now() + 5000, true), undefined);
+  assert.equal(store.readyCount(Date.now() + 5000), 0);
+  assert.equal(store.queue(Date.now() + 5000, 10).length, 0);
+  // Retry and Translate now are refused while it is marked, and the next sync sets it aside.
+  assert.match(worker.act('episode:1', 'now') ?? '', /marked not to translate/);
+  await worker.sync();
+  assert.equal(store.get('episode:1')!.state, 'skipped');
+});
+
+test('a marked item that failed is set aside by the next sync, and its Retry is refused', async () => {
+  const root = mediaDir();
+  const { store, worker } = setup(show(root));
+  await worker.sync();
+  store.move('episode:1', ['eligible'], 'failed', { note: 'boom' });
+  store.db.prepare("INSERT INTO excluded (key, at) VALUES ('series:7', 0)").run();
+  assert.match(worker.act('episode:1', 'retry') ?? '', /lift the mark first/);
+  await worker.sync();
+  assert.equal(store.get('episode:1')!.state, 'skipped');
+  assert.equal(store.get('episode:1')!.note, EXCLUDED_NOTE);
 });

@@ -221,7 +221,7 @@ aside{position:sticky;top:0;height:100vh;background:var(--side);border-right:1px
 .sn{display:flex;align-items:center;gap:8px;padding:4px 10px;font-size:12.5px} .sn-name{color:var(--text)} .sn-state{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
 .side-foot .out{display:flex;align-items:center;gap:10px;padding:7px 10px;margin-top:8px;border-radius:7px;color:var(--muted)} .side-foot .out:hover{background:var(--hover);color:var(--text);text-decoration:none}
 .topbar{display:none}
-main{min-width:0;padding:28px 40px 56px;max-width:1800px;width:100%}
+main{min-width:0;padding:28px 40px 56px;width:100%}
 .ph{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 22px}
 h1{font-size:20px;font-weight:650;letter-spacing:-.015em;margin:0;line-height:1.3} h1 .dim{font-weight:400}
 .sub{margin:4px 0 0;color:var(--muted);font-size:13px;max-width:760px}

@@ -145,7 +145,6 @@ export class Worker {
     const wantedKeys = new Map<string, Wanted>(wanted.map((w) => [w.key, w]));
     const tracked = this.store.all();
     const done = tracked.filter((r) => r.state === 'done');
-    const excluded = this.store.excludedKeys();
     const details = await this.bazarr.details([...wanted, ...done.map((r) => ({ kind: r.kind, id: r.bazarr_id }))]);
 
     for (const row of done) {
@@ -163,7 +162,17 @@ export class Worker {
       const media = details.get(w.key);
       if (!media) continue;
       const row = this.store.get(w.key);
-      if (row && HANDS_OFF.includes(row.state)) continue;
+      const markKey = w.seriesId !== null ? seriesKey(w.seriesId) : w.key;
+      // Hands off, except for what a mark should change: a row its lifted mark
+      // left set aside comes back, and a marked row that failed is set aside.
+      if (
+        row &&
+        HANDS_OFF.includes(row.state) &&
+        !(row.state === 'skipped' && row.note === EXCLUDED_NOTE) &&
+        !(row.state === 'failed' && this.store.isExcluded(markKey))
+      ) {
+        continue;
+      }
       const source = await this.pickSource(media);
       let eligibleAt = this.now() + this.cfg.waitMs;
       let note: string | null = null;
@@ -178,8 +187,9 @@ export class Worker {
       let state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
       note ??= source ? null : 'no external subtitle to translate from';
       // A show or film the owner marked not to translate: set aside, new
-      // episodes included, until the mark is lifted.
-      if (excluded.has(w.seriesId !== null ? seriesKey(w.seriesId) : w.key)) {
+      // episodes included, until the mark is lifted. Read now, after the
+      // awaits above, so a mark set or lifted while this sync waited counts.
+      if (this.store.isExcluded(markKey)) {
         state = 'skipped';
         note = EXCLUDED_NOTE;
       }
@@ -191,6 +201,7 @@ export class Worker {
         // An eligible row keeps its time: "translate now" and the retry delay set it.
         eligible_at: row?.state === 'eligible' ? row.eligible_at : eligibleAt,
         note,
+        series_id: w.seriesId,
       };
       if (!row) {
         this.store.insert({ key: w.key, kind: w.kind, bazarr_id: w.id, out_path: null, state, ...fields });
@@ -368,6 +379,9 @@ export class Worker {
   act(key: string, op: string): string | null {
     const item = this.store.get(key);
     if (!item) return 'no such item';
+    if (['now', 'retry', 'unskip'].includes(op) && this.store.isItemMarked(key)) {
+      return 'its show or film is marked not to translate; lift the mark first';
+    }
     const ok = (() => {
       switch (op) {
         case 'now':

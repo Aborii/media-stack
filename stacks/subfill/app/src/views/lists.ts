@@ -117,7 +117,7 @@ export function renderItem(v: View, key: string): string | null {
       : '<a href="/items">All items</a>';
   const human = entry?.status === 'human' && item.state !== 'replaced' ? ` ${badge('human')} <span class="dim">Bazarr found one; the next sync tidies up</span>` : '';
   const body = `<p class="crumb">${crumb}</p>
-${pageHeader(esc(item.title), '', `${actions(item, back)}${entry?.kind === 'movie' ? excludeButton(entry.key, entry.marked, back, 'film') : ''}`)}
+${pageHeader(esc(item.title), '', `${v.store.isItemMarked(key) ? '' : actions(item, back)}${entry?.kind === 'movie' ? excludeButton(entry.key, entry.marked, back, 'film') : ''}`)}
 <div class="row" style="margin:-10px 0 18px">${stateBadge(item.state)}${human}</div>
 ${entry ? `<div class="card" style="margin-bottom:16px"><div class="card-h">Subtitles beside the video</div>${subtitleChips(entry.subtitles, entry.status === 'machine')}</div>` : ''}
 <div class="card flush wrap"><table class="facts">${facts

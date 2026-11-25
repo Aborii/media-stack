@@ -53,6 +53,9 @@ export type Item = {
   // Times the model's runner died while translating it. Not attempts: a crash
   // is the machine's trouble, until one episode keeps causing it.
   crashes: number;
+  // The show an episode belongs to (Sonarr's id); null for a film, or for an
+  // episode not seen by a sync since this column was added.
+  series_id: number | null;
 };
 
 export type LogLine = { at: number; message: string };
@@ -68,7 +71,13 @@ const ADDED_COLUMNS: [string, string][] = [
   ['held_until', 'INTEGER'],
   ['node', 'TEXT'],
   ['crashes', 'INTEGER NOT NULL DEFAULT 0'],
+  ['series_id', 'INTEGER'],
 ];
+
+// An item whose show or film is marked not to translate. The nodes never
+// take one, whatever state it reached (an outage or a restart can put a
+// marked item back to eligible); the next sync then sets it aside.
+const MARKED = `EXISTS (SELECT 1 FROM excluded x WHERE x.key = items.key OR x.key = 'series:' || items.series_id)`;
 
 // The order the nodes take ready items in: an item held for the PC, then a
 // "translate now", then the one that crashed the model fewest times, then the
@@ -109,7 +118,8 @@ export class Store {
         finished_at INTEGER,
         held_until INTEGER,
         node TEXT,
-        crashes INTEGER NOT NULL DEFAULT 0
+        crashes INTEGER NOT NULL DEFAULT 0,
+        series_id INTEGER
       );
       CREATE INDEX IF NOT EXISTS items_state ON items (state, priority, eligible_at);
       CREATE TABLE IF NOT EXISTS log (
@@ -171,7 +181,7 @@ export class Store {
   // Eligible items whose time has come, as opposed to ones waiting out a retry delay.
   readyCount(now: number): number {
     return Number(
-      (this.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE state = 'eligible' AND eligible_at <= ?`).get(now) as { n: number }).n,
+      (this.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE state = 'eligible' AND eligible_at <= ? AND NOT ${MARKED}`).get(now) as { n: number }).n,
     );
   }
 
@@ -186,14 +196,14 @@ export class Store {
   insert(
     item: Omit<
       Item,
-      'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node' | 'crashes'
-    >,
+      'priority' | 'attempts' | 'first_seen' | 'updated_at' | 'started_at' | 'finished_at' | 'held_until' | 'node' | 'crashes' | 'series_id'
+    > & { series_id?: number | null },
   ): void {
     const now = this.now();
     this.db
       .prepare(
-        `INSERT INTO items (key, kind, bazarr_id, title, video_path, source_path, source_lang, out_path, state, note, eligible_at, first_seen, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO items (key, kind, bazarr_id, title, video_path, source_path, source_lang, out_path, state, note, eligible_at, first_seen, updated_at, series_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         item.key,
@@ -209,6 +219,7 @@ export class Store {
         item.eligible_at,
         now,
         now,
+        item.series_id ?? null,
       );
   }
 
@@ -252,6 +263,7 @@ export class Store {
         `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
            AND (held_until IS NULL OR held_until <= ? OR ?)
            AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
+           AND NOT ${MARKED}
          ORDER BY ${QUEUE_ORDER} LIMIT 1`,
       )
       .get(now, now, takesHeld ? 1 : 0, now) as Item | undefined;
@@ -266,6 +278,7 @@ export class Store {
       .prepare(
         `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
            AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
+           AND NOT ${MARKED}
          ORDER BY ${QUEUE_ORDER} LIMIT ?`,
       )
       .all(now, now, limit) as Item[];
@@ -387,48 +400,48 @@ export class Store {
     return { count: Number(r.n), avgSeconds: r.avg === null ? null : Number(r.avg) };
   }
 
-  excludedKeys(): Set<string> {
-    return new Set((this.db.prepare('SELECT key FROM excluded').all() as { key: string }[]).map((r) => r.key));
-  }
-
   isExcluded(key: string): boolean {
     return this.db.prepare('SELECT 1 FROM excluded WHERE key = ?').get(key) !== undefined;
+  }
+
+  isItemMarked(key: string): boolean {
+    return this.db.prepare(`SELECT 1 FROM items WHERE key = ? AND ${MARKED}`).get(key) !== undefined;
   }
 
   // Marks a show or film as not to translate, or lifts the mark, and moves its
   // items with it in one transaction: on, the ones not yet translated are
   // set aside; off, the ones the mark set aside go back to waiting, for the
   // next sync to sort out. Items being translated finish, and machine
-  // subtitles already written stay. Returns how many items moved.
+  // subtitles already written stay. The items are found by their own show id
+  // and by `itemKeys` (the library's list, for rows not synced since the
+  // show id was recorded). Returns how many items moved.
   setExcluded(key: string, on: boolean, itemKeys: string[]): number {
-    const marks = itemKeys.map(() => '?').join(', ');
+    const series = key.match(/^series:(\d+)$/);
+    const match = `(key = ? OR series_id = ?${itemKeys.length ? ` OR key IN (${itemKeys.map(() => '?').join(', ')})` : ''})`;
+    const args = [key, series ? Number(series[1]) : -1, ...itemKeys];
     this.db.exec('BEGIN');
     try {
-      let moved = 0;
+      let moved: number;
       if (on) {
         this.db.prepare('INSERT OR IGNORE INTO excluded (key, at) VALUES (?, ?)').run(key, this.now());
-        if (itemKeys.length) {
-          moved = Number(
-            this.db
-              .prepare(
-                `UPDATE items SET state = 'skipped', note = ?, priority = 0, held_until = NULL, updated_at = ?
-                 WHERE state IN ('waiting', 'eligible', 'failed', 'no_source') AND key IN (${marks})`,
-              )
-              .run(EXCLUDED_NOTE, this.now(), ...itemKeys).changes,
-          );
-        }
+        moved = Number(
+          this.db
+            .prepare(
+              `UPDATE items SET state = 'skipped', note = ?, priority = 0, held_until = NULL, updated_at = ?
+               WHERE state IN ('waiting', 'eligible', 'failed', 'no_source') AND ${match}`,
+            )
+            .run(EXCLUDED_NOTE, this.now(), ...args).changes,
+        );
       } else {
         this.db.prepare('DELETE FROM excluded WHERE key = ?').run(key);
-        if (itemKeys.length) {
-          moved = Number(
-            this.db
-              .prepare(
-                `UPDATE items SET state = 'waiting', note = NULL, crashes = 0, eligible_at = ?, updated_at = ?
-                 WHERE state = 'skipped' AND note = ? AND key IN (${marks})`,
-              )
-              .run(this.now(), this.now(), EXCLUDED_NOTE, ...itemKeys).changes,
-          );
-        }
+        moved = Number(
+          this.db
+            .prepare(
+              `UPDATE items SET state = 'waiting', note = NULL, crashes = 0, eligible_at = ?, updated_at = ?
+               WHERE state = 'skipped' AND note = ? AND ${match}`,
+            )
+            .run(this.now(), this.now(), EXCLUDED_NOTE, ...args).changes,
+        );
       }
       this.db.exec('COMMIT');
       return moved;

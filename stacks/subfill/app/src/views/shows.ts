@@ -82,7 +82,7 @@ export function renderShows(v: View, query: URLSearchParams): string {
     .join('');
 
   const folderChips = folders.length > 1 ? `<div class="seg">${['', ...folders].map((f) => `<a class="${f === folder ? 'on' : ''}" href="${esc(link({ folder: f }))}">${f ? esc(f) : 'All folders'}</a>`).join('')}</div>` : '';
-  const body = `${pageHeader('Shows', `${all.length} shows. Each bar splits a show's episodes by their Arabic subtitle.`)}
+  const body = `${pageHeader('Shows', `${all.filter((s) => !s.excluded).length} shows. Each bar splits a show's episodes by their Arabic subtitle. Shows you marked not to translate are under "Not translated".`)}
 ${libraryNote(v)}
 <div class="toolbar"><form class="row" method="get" action="/shows">${filter ? `<input type="hidden" name="f" value="${esc(filter)}">` : ''}${folder ? `<input type="hidden" name="folder" value="${esc(folder)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search shows"><select name="sort" onchange="this.form.submit()"><option value="name"${sort === 'name' ? ' selected' : ''}>Sort by name</option><option value="missing"${sort === 'missing' ? ' selected' : ''}>Most missing first</option></select></form>${folderChips}</div>
 <div class="toolbar"><div class="seg">${chips}</div></div>
@@ -96,7 +96,7 @@ export function entryRow(e: Entry, back: string, now: number, first: string, mor
   const when =
     e.item && e.status === 'waiting' ? `<div class="dim">ready ${ago(e.item.eligible_at, now)}</div>` : e.item && e.status === 'machine' ? `<div class="dim">written ${ago(e.item.finished_at, now)}</div>` : '';
   const status = e.item ? `<a href="/item?key=${encodeURIComponent(e.key)}">${badge(e.status)}</a>` : badge(e.status);
-  return `<tr>${first}<td data-label="Subtitles">${subtitleChips(e.subtitles, e.status === 'machine')}</td><td class="inl">${status}${when}${note}</td><td class="num inl"><span class="acts">${e.item ? actions(e.item, back) : ''}${more}</span></td></tr>`;
+  return `<tr>${first}<td data-label="Subtitles">${subtitleChips(e.subtitles, e.status === 'machine')}</td><td class="inl">${status}${when}${note}</td><td class="num inl"><span class="acts">${e.item && !e.marked ? actions(e.item, back) : ''}${more}</span></td></tr>`;
 }
 
 export function renderShow(v: View, id: number): string | null {
