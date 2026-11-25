@@ -28,7 +28,8 @@ const NODE_LABEL: Record<NodeState, string> = {
   outside_hours: 'outside its hours',
 };
 
-export function renderNodes(v: View): string {
+// `back` is the page the Pause and Resume buttons return to.
+export function renderNodes(v: View, back = '/'): string {
   const held = v.store.heldNow(v.now);
   const week = new Map(v.store.finishedByNode(v.now - 7 * 86400_000).map((r) => [r.node, r]));
   return v.status.nodes
@@ -45,7 +46,7 @@ export function renderNodes(v: View): string {
       const w = week.get(n.name);
       const pace = w ? `<div class="dim">This week: ${w.count} done, about ${span(Math.round(w.avgSeconds))} each</div>` : '';
       const problem = n.lease?.error ? `<div class="bad" style="margin:8px 0 0">${esc(n.lease.error)}</div>` : '';
-      const toggle = n.paused ? button(n.name, 'resume-node', 'Resume', '/', 'primary') : button(n.name, 'pause-node', 'Pause', '/');
+      const toggle = n.paused ? button(n.name, 'resume-node', 'Resume', back, 'primary') : button(n.name, 'pause-node', 'Pause', back);
       // A paused node still finishes the item it is on.
       const label = n.paused && n.state === 'working' ? 'pauses after this item' : NODE_LABEL[n.state];
       return `<div class="card node"><div class="row" style="justify-content:space-between"><h3><span class="dot ${n.state}"></span>${esc(n.label)}</h3>${toggle}</div><div class="dim">${esc(label)}${facts.length ? ` &middot; ${facts.join(' &middot; ')}` : ''}</div>${pace}${problem}${doing}</div>`;
@@ -92,7 +93,10 @@ function problems(v: View): string {
   const out: string[] = [];
   if (v.status.bazarrError) out.push(`<div class="bad">${esc(v.status.bazarrError)}</div>`);
   const lib = v.library.freshness();
-  if (lib.error) out.push(`<div class="bad">Could not read the library from Bazarr: ${esc(lib.error)}. The shows and films shown are from ${ago(lib.at, v.now)}.</div>`);
+  if (lib.error) {
+    const age = lib.at ? ` The shows and films shown are from ${ago(lib.at, v.now)}.` : '';
+    out.push(`<div class="bad">Could not read the library from Bazarr: ${esc(lib.error)}.${age}</div>`);
+  }
   return out.join('');
 }
 

@@ -30,7 +30,8 @@ const MOVIE_FILTERS = {
 type MovieFilter = keyof typeof MOVIE_FILTERS;
 
 export function renderMovies(v: View, query: URLSearchParams): string {
-  const filter: MovieFilter = query.get('f') && query.get('f')! in MOVIE_FILTERS ? (query.get('f') as MovieFilter) : '';
+  const f = query.get('f') ?? '';
+  const filter: MovieFilter = Object.hasOwn(MOVIE_FILTERS, f) ? (f as MovieFilter) : '';
   const q = (query.get('q') ?? '').slice(0, 100);
   const statuses = MOVIE_FILTERS[filter][1];
   const { movies, total } = v.library.movies({ statuses: statuses ? [...statuses] : undefined, q, limit: SHOWN });

@@ -41,8 +41,9 @@ export type WebDeps = {
   now?: () => number;
 };
 
-// The parts of a page /live can send fresh.
-const LIVE_PARTS: Record<string, (v: View) => string> = { nodes: renderNodes, kpis: renderKpis };
+// The parts of a page /live can send fresh, and the page asking, for the
+// buttons inside them to return to.
+const LIVE_PARTS: Record<string, (v: View, back: string) => string> = { nodes: renderNodes, kpis: renderKpis };
 
 // What Malak reads to decide whether to ask about waking the PC.
 export function summary(deps: WebDeps): Record<string, unknown> {
@@ -229,8 +230,9 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
         case '/activity':
           return send(res, 200, renderActivity(v));
         case '/live': {
-          const wanted = (q.get('parts') ?? 'nodes,kpis').split(',').filter((p) => p in LIVE_PARTS);
-          return sendJson(res, 200, Object.fromEntries(wanted.map((p) => [p, LIVE_PARTS[p](v)])));
+          const wanted = (q.get('parts') ?? 'nodes,kpis').split(',').filter((p) => Object.hasOwn(LIVE_PARTS, p));
+          const back = safeBack(q.get('back'));
+          return sendJson(res, 200, Object.fromEntries(wanted.map((p) => [p, LIVE_PARTS[p](v, back)])));
         }
       }
       return send(res, 404, notFound('Not found.', '/', 'Overview'));

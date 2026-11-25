@@ -71,7 +71,10 @@ before(async () => {
   const sub = (code2: string, path: string | null) => ({ code2, path, forced: false, hi: false });
   library.replace(
     {
-      series: [{ id: 7, title: 'Show <b>bold</b>', year: '2020', path: '/data/library/tv/Show', ended: false }],
+      series: [
+        { id: 7, title: 'Show <b>bold</b>', year: '2020', path: '/data/library/tv/Show', ended: false },
+        { id: 8, title: 'Empty', year: null, path: '/data/library/a<b/Empty', ended: true },
+      ],
       entries: [
         { key: 'episode:1', kind: 'episode', id: 1, seriesId: 7, season: 1, episode: 1, title: 'Pilot <i>x</i>', path: '/data/v.mkv', subtitles: [sub('en', '/data/v.en.srt')], missing: ['ar'] },
         { key: 'episode:2', kind: 'episode', id: 2, seriesId: 7, season: 1, episode: 2, title: 'Second', path: '/data/v2.mkv', subtitles: [sub('ar', '/data/v2.ar.srt'), sub('en', null)], missing: [] },
@@ -327,4 +330,27 @@ test('subtitles of the same kind share one chip with a count, and ours is marked
   assert.match(html, /class="chip ar" title="a track inside the video">AR <small>in video<\/small>/);
   assert.match(html, /AR <small>machine<\/small>/);
   assert.equal(subtitleChips([], false), '<span class="dim">none</span>');
+});
+
+test('folder names are escaped, and odd filter names fall back to all instead of failing', async () => {
+  const r = await call('/shows', { cookie: 'subfill_session=good' });
+  assert.ok(r.body.includes('>a&#60;b</a>'));
+  assert.ok(!r.body.includes('a<b'));
+  for (const path of ['/shows?f=constructor', '/shows?f=__proto__', '/movies?f=toString', '/movies?f=constructor']) {
+    const page = await call(path, { cookie: 'subfill_session=good' });
+    assert.equal(page.status, 200, path);
+  }
+  const live = await call('/live?parts=constructor,__proto__,toString', { cookie: 'subfill_session=good' });
+  assert.equal(live.status, 200);
+  assert.deepEqual(JSON.parse(live.body), {});
+});
+
+test('Pause and Resume return to the page they were pressed on, live refresh included', async () => {
+  const q = await call('/queue', { cookie: 'subfill_session=good' });
+  assert.match(q.body, /name="op" value="pause-node"><input type="hidden" name="back" value="\/queue">/);
+  const live = JSON.parse((await call('/live?parts=nodes&back=%2Fqueue', { cookie: 'subfill_session=good' })).body) as { nodes: string };
+  assert.match(live.nodes, /name="back" value="\/queue"/);
+  const evil = JSON.parse((await call('/live?parts=nodes&back=https%3A%2F%2Fevil.example', { cookie: 'subfill_session=good' })).body) as { nodes: string };
+  assert.ok(!evil.nodes.includes('evil.example'));
+  assert.match(evil.nodes, /name="back" value="\/"/);
 });

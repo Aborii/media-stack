@@ -12,9 +12,12 @@ import type { Library as BazarrLibrary, Subtitle } from './bazarr.ts';
 import type { Item } from './store.ts';
 
 // Where an episode or film stands for Arabic, the first that fits:
-//   human        Bazarr lists an Arabic subtitle: a file or a track in the video
+//   human        Bazarr lists an Arabic subtitle (a file or a track in the
+//                video) and no longer wants one: the same test the worker uses
 //   machine      ours is in use
-//   translating, ready, waiting, failed, skipped, no_source   as subfill's item
+//   ready        in the queue, its time has come
+//   retrying     in the queue, sitting out the delay after a failed try
+//   translating, waiting, failed, skipped, no_source   as subfill's item
 //   missing      Bazarr wants Arabic and subfill has not looked yet (next sync)
 //   not_wanted   no Arabic, and Bazarr's profile for it does not ask for any
 export const ARABIC_STATUSES = [
@@ -22,6 +25,7 @@ export const ARABIC_STATUSES = [
   'machine',
   'translating',
   'ready',
+  'retrying',
   'waiting',
   'failed',
   'skipped',
@@ -33,10 +37,11 @@ export type ArabicStatus = (typeof ARABIC_STATUSES)[number];
 
 // The one place the status is worked out, used by every list so a show's
 // counts and its episode rows can never disagree. `l` is the library row,
-// `i` the item joined to it.
+// `i` the item joined to it. Takes `now` once, as its first parameter.
 const STATUS_SQL = `CASE
-  WHEN l.target_human = 1 THEN 'human'
+  WHEN l.target_human = 1 AND l.target_missing = 0 THEN 'human'
   WHEN i.state = 'done' THEN 'machine'
+  WHEN i.state = 'eligible' AND i.eligible_at > ? THEN 'retrying'
   WHEN i.state = 'eligible' THEN 'ready'
   WHEN i.state IN ('translating', 'waiting', 'failed', 'skipped', 'no_source') THEN i.state
   WHEN l.target_missing = 1 THEN 'missing'
@@ -188,7 +193,7 @@ export class LibraryStore {
         `SELECT l.show_id AS id, ${STATUS_SQL} AS status, COUNT(*) AS n
          FROM library l LEFT JOIN items i ON i.key = l.key WHERE l.kind = 'episode' GROUP BY l.show_id, status`,
       )
-      .all() as { id: number; status: ArabicStatus; n: number }[];
+      .all(this.now()) as { id: number; status: ArabicStatus; n: number }[];
     const counts = new Map<number, StatusCounts>();
     for (const r of rows) {
       const c = counts.get(r.id) ?? emptyCounts();
@@ -206,14 +211,14 @@ export class LibraryStore {
     if (!show) return null;
     const rows = this.db
       .prepare(`${ENTRY_SELECT} WHERE l.show_id = ? AND l.kind = 'episode' ORDER BY l.season, l.episode`)
-      .all(id) as EntryRow[];
+      .all(this.now(), id) as EntryRow[];
     return { show, episodes: rows.map(toEntry) };
   }
 
   // Films, by title, optionally only those with a status and matching a search.
   movies(opts: { statuses?: ArabicStatus[]; q?: string; limit: number }): { movies: Entry[]; total: number } {
     const where = [`kind = 'movie'`];
-    const args: (string | number)[] = [];
+    const args: (string | number)[] = [this.now()];
     if (opts.statuses?.length) {
       where.push(`status IN (${opts.statuses.map(() => '?').join(', ')})`);
       args.push(...opts.statuses);
@@ -233,14 +238,14 @@ export class LibraryStore {
     const out = { episode: emptyCounts(), movie: emptyCounts() };
     const rows = this.db
       .prepare(`SELECT l.kind AS kind, ${STATUS_SQL} AS status, COUNT(*) AS n FROM library l LEFT JOIN items i ON i.key = l.key GROUP BY l.kind, status`)
-      .all() as { kind: 'episode' | 'movie'; status: ArabicStatus; n: number }[];
+      .all(this.now()) as { kind: 'episode' | 'movie'; status: ArabicStatus; n: number }[];
     for (const r of rows) out[r.kind][r.status] = Number(r.n);
     return out;
   }
 
   // The library entry behind an item, for its page: which show it is in.
   entry(key: string): Entry | null {
-    const row = this.db.prepare(`${ENTRY_SELECT} WHERE l.key = ?`).get(key) as EntryRow | undefined;
+    const row = this.db.prepare(`${ENTRY_SELECT} WHERE l.key = ?`).get(this.now(), key) as EntryRow | undefined;
     return row ? toEntry(row) : null;
   }
 

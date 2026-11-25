@@ -48,6 +48,7 @@ export const STATUS_LABEL: Record<ArabicStatus, string> = {
   machine: 'machine Arabic',
   translating: 'translating',
   ready: 'in the queue',
+  retrying: 'trying again later',
   waiting: 'waiting for Bazarr',
   failed: 'failed',
   skipped: 'skipped',
@@ -59,7 +60,7 @@ export const STATUS_LABEL: Record<ArabicStatus, string> = {
 // The statuses gathered the way the filters and the coverage bar use them.
 export const GROUPS = {
   has: ['human', 'machine'],
-  queue: ['translating', 'ready', 'waiting'],
+  queue: ['translating', 'ready', 'retrying', 'waiting'],
   needs: ['failed', 'no_source', 'missing', 'skipped'],
 } as const satisfies Record<string, readonly ArabicStatus[]>;
 
@@ -144,7 +145,7 @@ export type Tab = (typeof TABS)[number][0];
 
 const STYLE = `<style>
 :root{color-scheme:light dark;--bg:#0d1014;--card:#161a20;--card2:#1c2129;--line:#272e38;--text:#e7e9ec;--dim:#97a0ab;--accent:#4f8cff;--bad:#ffb4b4;--badbg:#3a1d1d;--ok:#22c55e;--warn:#f59e0b;--off:#6b7280;
---human:#22c55e;--machine:#a78bfa;--translating:#4f8cff;--ready:#38bdf8;--waiting:#64748b;--failed:#ef4444;--skipped:#475569;--no_source:#f59e0b;--missing:#fb923c;--not_wanted:#2a313b}
+--human:#22c55e;--machine:#a78bfa;--translating:#4f8cff;--ready:#38bdf8;--retrying:#818cf8;--waiting:#64748b;--failed:#ef4444;--skipped:#475569;--no_source:#f59e0b;--missing:#fb923c;--not_wanted:#2a313b}
 @media (prefers-color-scheme:light){:root{--bg:#f5f6f8;--card:#fff;--card2:#f1f3f6;--line:#dde1e6;--text:#16191d;--dim:#5b6470;--accent:#2563eb;--bad:#8a1f1f;--badbg:#fde8e8;--not_wanted:#d9dee5;--skipped:#94a3b8;--waiting:#94a3b8}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -160,14 +161,14 @@ h1{font-size:22px;margin:0 0 4px} h2{font-size:15px;margin:26px 0 10px;display:f
 a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
 .dim{color:var(--dim)} small{font-size:11px} .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center} .grow{flex:1}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
-.nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px}
+.nodes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px}
 .node h3{margin:0;font-size:15px} .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;background:var(--off)}
 .dot.working{background:var(--accent);box-shadow:0 0 0 0 var(--accent);animation:pulse 1.6s infinite} .dot.idle{background:var(--ok)} .dot.paused,.dot.outside_hours{background:var(--warn)}
 @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 60%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
 .doing{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .meter{height:8px;border-radius:999px;background:var(--card2);overflow:hidden;margin:6px 0 4px} .meter i{display:block;height:100%;background:var(--accent);border-radius:999px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px;margin:14px 0 0}
 .kpi b{display:block;font-size:24px;line-height:1.2;font-variant-numeric:tabular-nums} .kpi span{color:var(--dim);font-size:13px} .kpi .sub{display:block;font-size:12px;color:var(--dim);margin-top:2px}
 .kpi.good b{color:var(--human)} .kpi.warn b{color:var(--warn)} .kpi.bad b{color:var(--failed)}
 .bad{background:var(--badbg);color:var(--bad);border-radius:10px;padding:9px 12px;margin:0 0 12px}
@@ -179,7 +180,7 @@ tr:last-child td{border-bottom:0}
 th{font-size:12px;color:var(--dim);font-weight:600;white-space:nowrap} td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .wrap{overflow-x:auto} .card.flush{padding:4px 8px}
 .badge{display:inline-block;font-size:12px;border-radius:999px;padding:1px 9px;white-space:nowrap;border:1px solid transparent;background:color-mix(in srgb,var(--c,var(--off)) 18%,transparent);color:color-mix(in srgb,var(--c,var(--off)) 70%,var(--text))}
-.s-human{--c:var(--human)} .s-machine{--c:var(--machine)} .s-translating{--c:var(--translating)} .s-ready{--c:var(--ready)} .s-waiting{--c:var(--waiting)} .s-failed{--c:var(--failed)} .s-skipped{--c:var(--skipped)} .s-no_source{--c:var(--no_source)} .s-missing{--c:var(--missing)} .s-not_wanted{--c:var(--not_wanted)}
+.s-human{--c:var(--human)} .s-machine{--c:var(--machine)} .s-translating{--c:var(--translating)} .s-ready{--c:var(--ready)} .s-retrying{--c:var(--retrying)} .s-waiting{--c:var(--waiting)} .s-failed{--c:var(--failed)} .s-skipped{--c:var(--skipped)} .s-no_source{--c:var(--no_source)} .s-missing{--c:var(--missing)} .s-not_wanted{--c:var(--not_wanted)}
 .st-done{--c:var(--machine)} .st-eligible{--c:var(--ready)} .st-translating{--c:var(--translating)} .st-waiting{--c:var(--waiting)} .st-failed{--c:var(--failed)} .st-skipped{--c:var(--skipped)} .st-no_source{--c:var(--no_source)} .st-replaced{--c:var(--human)} .st-gone{--c:var(--off)}
 .chip{display:inline-block;font-size:12px;border:1px solid var(--line);background:var(--card2);border-radius:6px;padding:0 6px;margin:0 4px 3px 0;white-space:nowrap}
 .chip.ar{border-color:color-mix(in srgb,var(--human) 55%,var(--line))} .chip.machine{border-color:color-mix(in srgb,var(--machine) 65%,var(--line))} .chip small{color:var(--dim)}
@@ -217,7 +218,8 @@ const LIVE = `<script>
   if (!parts.length) return;
   setInterval(async () => {
     try {
-      const r = await fetch('/live?parts=' + parts.join(','), { headers: { accept: 'application/json' } });
+      const back = encodeURIComponent(location.pathname + location.search);
+      const r = await fetch('/live?parts=' + parts.join(',') + '&back=' + back, { headers: { accept: 'application/json' } });
       if (!r.ok) throw new Error(r.status);
       const j = await r.json();
       for (const p of parts) if (j[p] !== undefined) document.querySelector('[data-live="' + p + '"]').innerHTML = j[p];

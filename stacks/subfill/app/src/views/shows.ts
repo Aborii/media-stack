@@ -39,7 +39,8 @@ function libraryNote(v: View): string {
 
 export function renderShows(v: View, query: URLSearchParams): string {
   const all = v.library.shows();
-  const filter: Filter = query.get('f') && query.get('f')! in FILTERS ? (query.get('f') as Filter) : '';
+  const f = query.get('f') ?? '';
+  const filter: Filter = Object.hasOwn(FILTERS, f) ? (f as Filter) : '';
   const folders = [...new Set(all.map((s) => s.folder))].sort();
   const folder = folders.find((f) => f === query.get('folder')) ?? '';
   const q = (query.get('q') ?? '').slice(0, 100);
@@ -69,7 +70,7 @@ export function renderShows(v: View, query: URLSearchParams): string {
     })
     .join('');
 
-  const folderChips = folders.length > 1 ? `<div class="chips">${['', ...folders].map((f) => `<a class="${f === folder ? 'on' : ''}" href="${esc(link({ folder: f }))}">${f || 'every folder'}</a>`).join('')}</div>` : '';
+  const folderChips = folders.length > 1 ? `<div class="chips">${['', ...folders].map((f) => `<a class="${f === folder ? 'on' : ''}" href="${esc(link({ folder: f }))}">${f ? esc(f) : 'every folder'}</a>`).join('')}</div>` : '';
   const body = `<h1>Shows</h1><p class="dim">${all.length} shows. Each bar is one show's episodes by Arabic subtitle: green has a human one, violet ours, blue and grey are in the queue, orange and red have none.</p>
 ${libraryNote(v)}
 <form class="row" method="get" action="/shows">${filter ? `<input type="hidden" name="f" value="${esc(filter)}">` : ''}${folder ? `<input type="hidden" name="folder" value="${esc(folder)}">` : ''}<input type="search" name="q" value="${esc(q)}" placeholder="Search shows"><select name="sort" onchange="this.form.submit()"><option value="name"${sort === 'name' ? ' selected' : ''}>By name</option><option value="missing"${sort === 'missing' ? ' selected' : ''}>Most missing first</option></select><button>Search</button></form>

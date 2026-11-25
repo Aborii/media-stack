@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Bazarr, type Library, type Subtitle } from '../src/bazarr.ts';
 import { LibraryStore } from '../src/library.ts';
+import { renderOverview } from '../src/views/overview.ts';
 import { Store } from '../src/store.ts';
 import { json } from './helpers.ts';
 
@@ -204,4 +205,49 @@ test('the queue the page shows runs in the order the nodes take it', () => {
     store.retrying(1000, 10).map((i) => i.key),
     ['later'],
   );
+});
+
+test('an Arabic subtitle Bazarr still counts as missing is not shown as having Arabic', () => {
+  const { store, library } = setup();
+  library.replace({ series: [LIB.series[0]], entries: [episode(31, 1, 1, [sub('ar')], ['ar'])] }, 'ar');
+  addItem(store, 'episode:31', 'eligible');
+  assert.equal(library.entry('episode:31')?.status, 'ready');
+});
+
+test('an item sitting out its retry delay is "retrying", so the overview counts ready once', () => {
+  const store = new Store(':memory:');
+  const library = new LibraryStore(store.db, () => 1000);
+  library.replace({ series: [LIB.series[0]], entries: [episode(41, 1, 1, [sub('en')], ['ar']), episode(42, 1, 2, [sub('en')], ['ar'])] }, 'ar');
+  addItem(store, 'episode:41', 'eligible');
+  addItem(store, 'episode:42', 'eligible');
+  store.update('episode:42', { eligible_at: 5000 });
+  assert.equal(library.entry('episode:41')?.status, 'ready');
+  assert.equal(library.entry('episode:42')?.status, 'retrying');
+  assert.equal(library.coverage().episode.ready, store.readyCount(1000));
+});
+
+test('a library that has never been read says so, with no empty date', async () => {
+  const store = new Store(':memory:');
+  const library = new LibraryStore(store.db);
+  await library.refresh(async () => {
+    throw new Error('Bazarr unreachable');
+  }, 'ar');
+  const html = renderOverview({ store, library, now: Date.now(), status: { bazarrError: null, lastSync: null, model: 'm', nodes: [] } });
+  assert.match(html, /Could not read the library from Bazarr: Bazarr unreachable\./);
+  assert.ok(!html.includes(' from -'));
+  assert.match(html, /has not been read from Bazarr yet/);
+});
+
+test('the queue leaves out an episode whose shared video is being translated, as the nodes do', () => {
+  const store = new Store(':memory:');
+  const add = (key: string, video: string, state: 'eligible' | 'translating', eligibleAt: number) =>
+    store.insert({ key, kind: 'episode', bazarr_id: 0, title: key, video_path: video, source_path: null, source_lang: null, out_path: null, state, note: null, eligible_at: eligibleAt });
+  add('a', '/v/double.mkv', 'translating', 0);
+  add('b', '/v/double.mkv', 'eligible', 500);
+  add('c', '/v/single.mkv', 'eligible', 100);
+  assert.deepEqual(
+    store.queue(1000, 10).map((i) => i.key),
+    ['c'],
+  );
+  assert.equal(store.next(1000)?.key, 'c');
 });

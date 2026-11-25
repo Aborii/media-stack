@@ -250,10 +250,16 @@ export class Store {
   }
 
   // The ready items in the order the nodes will take them, for the page. The
-  // same order as next(), so what the queue shows first is what runs first.
+  // same order and filter as next(), so what the queue shows first is what
+  // runs first. An episode sharing its video with one being translated is
+  // left out: it is done when that one is.
   queue(now: number, limit: number): Item[] {
     return this.db
-      .prepare(`SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ? ORDER BY ${QUEUE_ORDER} LIMIT ?`)
+      .prepare(
+        `SELECT * FROM items WHERE state = 'eligible' AND eligible_at <= ?
+           AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
+         ORDER BY ${QUEUE_ORDER} LIMIT ?`,
+      )
       .all(now, now, limit) as Item[];
   }
 
