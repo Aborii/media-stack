@@ -40,7 +40,9 @@ export function machinePath(item: Item, deps: SubtitleDeps): string | null {
   return p && p.endsWith(`.${deps.targetCode}.${MARKER}.srt`) && inMedia(deps.mediaRoot, p) ? p : null;
 }
 
-type Source = { parsed: Parsed; from: string; lang: string; text: string | null; name: string | null };
+// `unmerged` is the same track cleaned as before repeats were joined, for an
+// Arabic translated then, whose lines follow that cleaning.
+type Source = { parsed: Parsed; from: string; lang: string; text: string | null; name: string | null; unmerged?: Parsed };
 
 // Reading a track inside a video means reading the whole video, which can
 // take minutes for a large film. The page and its download, a reload, or two
@@ -61,6 +63,7 @@ function readInside(item: Item, deps: SubtitleDeps, ctime: number): Promise<Sour
   }
   const read = (deps.extract ?? extractEmbedded)(item.video_path, langs).then((got) => ({
     parsed: cleanStyled(parseSrt(got.srt)).parsed,
+    unmerged: cleanStyled(parseSrt(got.srt), { merge: false }).parsed,
     from: `the ${got.lang} subtitle inside the video (track ${got.stream.index}, ${got.stream.codec})`,
     lang: got.lang,
     text: null,
@@ -146,6 +149,10 @@ export async function loadPair(item: Item, deps: SubtitleDeps): Promise<Pair> {
   ]);
   let s = source as Source | null;
   const t = target as Parsed | null;
+  // An Arabic made before repeats were joined has one line per unjoined cue.
+  if (s?.unmerged && t && s.parsed.cues.length !== t.cues.length && s.unmerged.cues.length === t.cues.length) {
+    s = { ...s, parsed: s.unmerged };
+  }
   if (s && !s.parsed.cues.length) {
     sourceProblem = 'the original has no lines subfill can read';
     s = null;
@@ -165,5 +172,11 @@ export async function fileFor(item: Item, which: 'arabic' | 'original', deps: Su
   }
   const source = await loadSource(item, deps);
   if (source.text !== null && source.name) return { name: source.name, body: source.text };
-  return { name: `${base}.${source.lang}.srt`, body: serializeSrt(source.parsed) };
+  // Cleaned the way the Arabic beside it was, so the two match cue for cue.
+  const arabic = await loadTarget(item, deps).catch(() => null);
+  const parsed =
+    source.unmerged && arabic && source.parsed.cues.length !== arabic.cues.length && source.unmerged.cues.length === arabic.cues.length
+      ? source.unmerged
+      : source.parsed;
+  return { name: `${base}.${source.lang}.srt`, body: serializeSrt(parsed) };
 }

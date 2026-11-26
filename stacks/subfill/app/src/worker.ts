@@ -379,9 +379,11 @@ export class Worker {
     }
     let source = parseSrt(text);
     if (inside) {
-      const { parsed, drawings, copies } = cleanStyled(source);
+      const { parsed, drawings, copies, merged } = cleanStyled(source);
       source = parsed;
-      if (drawings || copies) this.store.log(item.key, `left out ${copies} stacked copies of lines and ${drawings} drawings from the track`);
+      if (drawings || copies || merged) {
+        this.store.log(item.key, `left out ${copies} stacked copies of lines and ${drawings} drawings, and joined ${merged} back-to-back repeats of a line`);
+      }
     }
     if (!source.cues.length) throw new Error('the source subtitle has no cues');
     const segments = segmentsOf(source.cues);
