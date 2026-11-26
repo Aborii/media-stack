@@ -135,9 +135,10 @@ export function excludeButton(key: string, excluded: boolean, back: string, noun
   return excluded ? button(key, 'include', `Translate this ${noun} again`, back, 'primary') : button(key, 'exclude', `Don't translate this ${noun}`, back);
 }
 
-// The link to an item's subtitles page, for one subfill has translated.
-export function subtitlesLink(item: Pick<Item, 'key' | 'out_path'>, label = 'View subtitles', kind = ''): string {
-  return item.out_path ? `<a class="btn${kind ? ` ${kind}` : ''}" href="/subtitles?key=${encodeURIComponent(item.key)}">${esc(label)}</a>` : '';
+// The link to an item's subtitles page, while its Arabic is in use: a
+// replaced or gone item keeps its out_path, but the file is deleted.
+export function subtitlesLink(item: Pick<Item, 'key' | 'out_path' | 'state'>, label = 'View subtitles', kind = ''): string {
+  return item.out_path && item.state === 'done' ? `<a class="btn${kind ? ` ${kind}` : ''}" href="/subtitles?key=${encodeURIComponent(item.key)}">${esc(label)}</a>` : '';
 }
 
 export function itemLink(item: { key: string; title: string }): string {

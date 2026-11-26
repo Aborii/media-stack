@@ -3,7 +3,7 @@
 // by line. Reads only. The original comes from the file beside the video, or
 // for one translated from inside the video, from that track again, cleaned
 // the same way it was for translating, so the lines meet the Arabic's.
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { extractEmbedded } from './embedded.ts';
 import { cleanStyled, parseSrt, serializeSrt, type Cue, type Parsed } from './srt.ts';
@@ -40,20 +40,52 @@ export function machinePath(item: Item, deps: SubtitleDeps): string | null {
   return p && p.endsWith(`.${deps.targetCode}.${MARKER}.srt`) && inMedia(deps.mediaRoot, p) ? p : null;
 }
 
-// The original as a parsed subtitle, and where it came from.
-export async function loadSource(item: Item, deps: SubtitleDeps): Promise<{ parsed: Parsed; from: string }> {
+type Source = { parsed: Parsed; from: string; lang: string; text: string | null; name: string | null };
+
+// Reading a track inside a video means reading the whole video, which can
+// take minutes for a large film. The page and its download, a reload, or two
+// tabs share one read while it runs, and the last few results are kept, by
+// video and its change time, so a new file at the same path is read afresh.
+const INSIDE_KEPT = 4;
+const insideReads = new Map<string, Promise<Source>>();
+
+function readInside(item: Item, deps: SubtitleDeps, ctime: number): Promise<Source> {
+  const from = item.source_lang ?? deps.sourceLanguages[0] ?? 'en';
+  const langs = [from, ...deps.sourceLanguages.filter((l) => l !== from)];
+  const key = `${item.video_path}|${ctime}|${langs.join(',')}`;
+  const known = insideReads.get(key);
+  if (known) {
+    insideReads.delete(key);
+    insideReads.set(key, known);
+    return known;
+  }
+  const read = (deps.extract ?? extractEmbedded)(item.video_path, langs).then((got) => ({
+    parsed: cleanStyled(parseSrt(got.srt)).parsed,
+    from: `the ${got.lang} subtitle inside the video (track ${got.stream.index}, ${got.stream.codec})`,
+    lang: got.lang,
+    text: null,
+    name: null,
+  }));
+  insideReads.set(key, read);
+  // A failed read is not kept: the next view tries again.
+  read.catch(() => insideReads.get(key) === read && insideReads.delete(key));
+  while (insideReads.size > INSIDE_KEPT) insideReads.delete(insideReads.keys().next().value!);
+  return read;
+}
+
+// The original as a parsed subtitle, where it came from, and for a file
+// beside the video, the file itself.
+export async function loadSource(item: Item, deps: SubtitleDeps): Promise<Source> {
   if (item.source_path) {
     if (!inMedia(deps.mediaRoot, item.source_path)) throw new Error('the original is outside the media folder');
-    return { parsed: parseSrt(decode(await readFile(item.source_path))), from: path.basename(item.source_path) };
+    const text = decode(await readFile(item.source_path));
+    const name = path.basename(item.source_path);
+    return { parsed: parseSrt(text), from: name, lang: item.source_lang ?? 'en', text, name };
   }
   if (item.inside_track === 'yes') {
     if (!inMedia(deps.mediaRoot, item.video_path)) throw new Error('the video is outside the media folder');
-    const from = item.source_lang ?? deps.sourceLanguages[0] ?? 'en';
-    const got = await (deps.extract ?? extractEmbedded)(item.video_path, [from, ...deps.sourceLanguages.filter((l) => l !== from)]);
-    return {
-      parsed: cleanStyled(parseSrt(got.srt)).parsed,
-      from: `the ${got.lang} subtitle inside the video (track ${got.stream.index}, ${got.stream.codec})`,
-    };
+    const ctime = Math.floor((await stat(item.video_path)).ctimeMs);
+    return readInside(item, deps, ctime);
   }
   throw new Error('this item has no original to read');
 }
@@ -98,7 +130,7 @@ export function pairUp(source: Cue[] | null, target: Cue[] | null): Row[] {
 }
 
 export async function loadPair(item: Item, deps: SubtitleDeps): Promise<Pair> {
-  let source: { parsed: Parsed; from: string } | null = null;
+  let source: Source | null = null;
   let target: Parsed | null = null;
   let sourceProblem: string | null = null;
   let targetProblem: string | null = null;
@@ -112,13 +144,18 @@ export async function loadPair(item: Item, deps: SubtitleDeps): Promise<Pair> {
       (err: Error) => void (targetProblem = err.message),
     ),
   ]);
-  const s = source as { parsed: Parsed; from: string } | null;
+  let s = source as Source | null;
   const t = target as Parsed | null;
-  return { rows: pairUp(s?.parsed.cues ?? null, t?.cues ?? null), sourceFrom: s?.from ?? null, sourceProblem, targetProblem };
+  if (s && !s.parsed.cues.length) {
+    sourceProblem = 'the original has no lines subfill can read';
+    s = null;
+  }
+  return { rows: pairUp(s?.parsed.cues ?? null, t?.cues ?? null), sourceFrom: s?.from ?? (source as Source | null)?.from ?? null, sourceProblem, targetProblem };
 }
 
-// A subtitle as a file to download: the Arabic, or the original (written out
-// as SRT when it came from inside the video). The name is the video's.
+// A subtitle as a file to download: the Arabic, or the original, byte for
+// byte under its own name when it is a file beside the video, and written out
+// as SRT under the video's name when it came from inside it.
 export async function fileFor(item: Item, which: 'arabic' | 'original', deps: SubtitleDeps): Promise<{ name: string; body: string }> {
   const base = path.basename(item.video_path).replace(/\.[^.]+$/, '');
   if (which === 'arabic') {
@@ -126,6 +163,7 @@ export async function fileFor(item: Item, which: 'arabic' | 'original', deps: Su
     if (!p) throw new Error('subfill has written no Arabic for this item');
     return { name: path.basename(p), body: decode(await readFile(p)) };
   }
-  const { parsed } = await loadSource(item, deps);
-  return { name: `${base}.${item.source_lang ?? 'en'}.srt`, body: serializeSrt(parsed) };
+  const source = await loadSource(item, deps);
+  if (source.text !== null && source.name) return { name: source.name, body: source.text };
+  return { name: `${base}.${source.lang}.srt`, body: serializeSrt(source.parsed) };
 }

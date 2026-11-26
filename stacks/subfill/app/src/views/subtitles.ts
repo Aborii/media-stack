@@ -53,7 +53,7 @@ export function renderSubtitles(v: View, item: Item, pair: Pair): string {
     pair.sourceProblem ? `<div class="note">Could not read the original: ${esc(pair.sourceProblem)}.</div>` : '',
     pair.targetProblem ? `<div class="note">Could not read the Arabic: ${esc(pair.targetProblem)}.</div>` : '',
     oneSided && !pair.sourceProblem && !pair.targetProblem
-      ? `<div class="note">${oneSided} lines have no partner on the other side: the original has changed since it was translated.</div>`
+      ? `<div class="note">${oneSided} lines have no partner on the other side, most likely because the original has changed since it was translated.</div>`
       : '',
   ].join('');
   const rows = pair.rows

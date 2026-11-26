@@ -177,3 +177,96 @@ test('both files download with the video\'s name, and nothing else does', async 
   }
   assert.equal((await get('/subtitles/file?key=episode%3A1&which=arabic', '')).status, 302);
 });
+
+test('views and a download of the same inside track share one read of the video', async () => {
+  const f = files();
+  let calls = 0;
+  let finish: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (finish = r));
+  const extract: SubtitleDeps['extract'] = async () => {
+    calls++;
+    await gate;
+    return { srt: EN, lang: 'en', stream: { index: 2, codec: 'subrip', language: 'eng', title: '', forced: false, hi: false } };
+  };
+  const it = item({ video_path: f.video, inside_track: 'yes', out_path: f.ar });
+  const d = deps(f.root, extract);
+  const all = Promise.all([loadPair(it, d), loadPair(it, d), loadPair(it, d), fileFor(it, 'original', d)]);
+  await new Promise((r) => setTimeout(r, 20));
+  finish();
+  const [a, , , file] = await all;
+  assert.equal(calls, 1);
+  assert.equal(a.rows.length, 2);
+  assert.equal(file.name, 'Show - S01E01.en.srt');
+  // Kept afterwards too; a new file at the same path is read afresh.
+  await loadPair(it, d);
+  assert.equal(calls, 1);
+  await new Promise((r) => setTimeout(r, 20));
+  writeFileSync(`${f.video}.new`, 'new video');
+  rmSync(f.video);
+  (await import('node:fs')).renameSync(`${f.video}.new`, f.video);
+  await loadPair(it, d);
+  assert.equal(calls, 2);
+});
+
+test('a failed read inside the video is not kept: the next view tries again', async () => {
+  const f = files();
+  let calls = 0;
+  const extract: SubtitleDeps['extract'] = async () => {
+    calls++;
+    if (calls === 1) throw new Error('ffmpeg failed: busy');
+    return { srt: EN, lang: 'en', stream: { index: 2, codec: 'subrip', language: 'eng', title: '', forced: false, hi: false } };
+  };
+  const it = item({ video_path: f.video, inside_track: 'yes', out_path: f.ar });
+  assert.match((await loadPair(it, deps(f.root, extract))).sourceProblem ?? '', /busy/);
+  assert.equal((await loadPair(it, deps(f.root, extract))).sourceProblem, null);
+  assert.equal(calls, 2);
+});
+
+test('the original downloads byte for byte under its own name', async () => {
+  const f = files();
+  const odd = 'Release notes, not a cue\n\n1\n00:00:01,000 --> 00:00:02,000\nHello.\n';
+  const sdh = f.en.replace('.en.srt', '.en.sdh.srt');
+  writeFileSync(sdh, odd);
+  const file = await fileFor(item({ video_path: f.video, source_path: sdh, out_path: f.ar }), 'original', deps(f.root));
+  assert.equal(file.name, 'Show - S01E01.en.sdh.srt');
+  assert.equal(file.body, odd);
+  // An inside track is named for the language actually read.
+  const fr: SubtitleDeps['extract'] = async () => ({ srt: EN, lang: 'fr', stream: { index: 2, codec: 'subrip', language: 'fre', title: '', forced: false, hi: false } });
+  const inside = await fileFor(item({ video_path: f.video, inside_track: 'yes', source_lang: 'en' }), 'original', { ...deps(f.root, fr), sourceLanguages: ['en', 'fr'] });
+  assert.equal(inside.name, 'Show - S01E01.fr.srt');
+});
+
+test('an original with no readable lines says so instead of blaming a change', async () => {
+  const f = files();
+  writeFileSync(f.en, 'not a subtitle at all');
+  const pair = await loadPair(item({ video_path: f.video, source_path: f.en, out_path: f.ar }), deps(f.root));
+  assert.equal(pair.sourceProblem, 'the original has no lines subfill can read');
+  assert.equal(pair.rows.length, 2);
+  assert.ok(pair.rows.every((r) => r.source === null && r.target));
+});
+
+test('no subtitles link once the Arabic is deleted, and HEAD reads nothing', async () => {
+  store.insert({ key: 'episode:2', kind: 'episode', bazarr_id: 2, title: 'Replaced', video_path: f.video, source_path: f.en, source_lang: 'en', out_path: f.ar, state: 'replaced', note: null, eligible_at: 0 });
+  assert.ok(!(await get('/item?key=episode%3A2')).body.includes('href="/subtitles'));
+  const head = await new Promise<number>((resolve, reject) => {
+    const req = request(`${base}/subtitles?key=episode%3A1`, { method: 'HEAD', headers: { cookie: 's=ok' } });
+    req.on('response', (res) => resolve(res.statusCode ?? 0));
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(head, 200);
+});
+
+test('a download name with quotes, brackets and accents is encoded for both header forms', async () => {
+  const dir = path.dirname(f.video);
+  const name = "Amélie's (Cut) - S01E01";
+  writeFileSync(path.join(dir, `${name}.mkv`), 'v');
+  writeFileSync(path.join(dir, `${name}.ar.machine.srt`), AR);
+  store.insert({ key: 'episode:3', kind: 'episode', bazarr_id: 3, title: 'Amelie', video_path: path.join(dir, `${name}.mkv`), source_path: null, source_lang: 'en', out_path: path.join(dir, `${name}.ar.machine.srt`), state: 'done', note: null, eligible_at: 0 });
+  const r = await get('/subtitles/file?key=episode%3A3&which=arabic');
+  const cd = String(r.headers['content-disposition']);
+  assert.match(cd, /filename="Am_lie's \(Cut\) - S01E01\.ar\.machine\.srt"/);
+  const star = cd.split("filename*=UTF-8''")[1];
+  assert.match(star, /^[A-Za-z0-9!#$&+\-.^_`|~%]+$/);
+  assert.equal(decodeURIComponent(star), `${name}.ar.machine.srt`);
+});

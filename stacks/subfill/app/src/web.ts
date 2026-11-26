@@ -239,6 +239,8 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
         case '/subtitles': {
           const item = deps.store.get(q.get('key') ?? '');
           if (!item || !deps.subtitles) return send(res, 404, notFound('No such item.', '/items', 'All items'));
+          // HEAD asks only whether it is there: no reading the video for it.
+          if (req.method === 'HEAD') return send(res, 200, '');
           return send(res, 200, renderSubtitles(v, item, await loadPair(item, deps.subtitles)));
         }
         case '/subtitles/file': {
@@ -247,6 +249,7 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
           if (!item || !deps.subtitles || (which !== 'arabic' && which !== 'original')) {
             return send(res, 404, notFound('No such subtitle.', '/items', 'All items'));
           }
+          if (req.method === 'HEAD') return send(res, 200, '', { 'content-type': 'application/x-subrip; charset=utf-8' });
           let file: { name: string; body: string };
           try {
             file = await fileFor(item, which, deps.subtitles);
@@ -255,7 +258,7 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
           }
           return send(res, 200, file.body, {
             'content-type': 'application/x-subrip; charset=utf-8',
-            'content-disposition': `attachment; filename="${file.name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+            'content-disposition': `attachment; filename="${file.name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file.name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`,
           });
         }
         case '/activity':
