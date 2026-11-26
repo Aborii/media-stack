@@ -29,8 +29,30 @@ const TAGS: Record<string, string[]> = {
 
 export type Stream = { index: number; codec: string; language: string; title: string; forced: boolean; hi: boolean };
 
-// The video has a track in a source language, but none of them is text.
-export class NoTextTrack extends Error {}
+// Nothing inside the video can be translated: its tracks in a source
+// language are all pictures, or it has none at all.
+export type InsideReason = 'pictures' | 'missing';
+
+export const INSIDE_REASON: Record<InsideReason, string> = {
+  pictures: 'the subtitle inside the video is a picture of text, which cannot be translated',
+  missing: 'the video has no subtitle inside it in a language it translates from',
+};
+
+export class NoTextTrack extends Error {
+  readonly reason: InsideReason;
+  constructor(reason: InsideReason) {
+    super(INSIDE_REASON[reason]);
+    this.reason = reason;
+  }
+}
+
+// A title that says the track holds only the signs or songs, not the
+// dialogue: "Signs & Songs", "Forced", "Signs". "Dialogue & Signs" and
+// "Full + Signs" are full tracks.
+function signsOnly(title: string): boolean {
+  if (/full|dialog/i.test(title)) return false;
+  return /\bforced\b/i.test(title) || /^\W*signs\b/i.test(title) || /signs\s*(?:&|and|\+|\/)\s*songs/i.test(title);
+}
 
 type RawStream = {
   index?: number;
@@ -49,28 +71,32 @@ export function parseProbe(json: string): Stream[] {
       language: String(s.tags?.language ?? '').toLowerCase(),
       title,
       // A "Signs & Songs" or "Forced" track holds only the foreign lines.
-      forced: s.disposition?.forced === 1 || /forced|signs/i.test(title),
+      forced: s.disposition?.forced === 1 || signsOnly(title),
       hi: s.disposition?.hearing_impaired === 1 || /\b(sdh|cc|hi)\b/i.test(title),
     };
   });
 }
 
+const isText = (s: Stream) => (TEXT_CODECS as readonly string[]).includes(s.codec);
+const best = (a: Stream, b: Stream) => Number(a.hi) - Number(b.hi) || TEXT_CODECS.indexOf(a.codec as never) - TEXT_CODECS.indexOf(b.codec as never);
+
 // The track to translate from: the first source language that has a full
 // text track, plain before hearing-impaired, SubRip before styled formats.
-// null when no track is in a source language at all; NoTextTrack when one
-// is, but only as pictures.
+// Failing that, the one full text track with no language tag, which Bazarr
+// may count as the first source language. null when there is nothing to
+// take; NoTextTrack('pictures') when the only ones are pictures.
 export function pickStream(streams: Stream[], languages: string[]): { stream: Stream; lang: string } | null {
   let pictureOnly = false;
   for (const lang of languages) {
     const tags = TAGS[lang] ?? [lang];
     const full = streams.filter((s) => tags.includes(s.language) && !s.forced);
-    const text = full
-      .filter((s) => (TEXT_CODECS as readonly string[]).includes(s.codec))
-      .sort((a, b) => Number(a.hi) - Number(b.hi) || TEXT_CODECS.indexOf(a.codec as never) - TEXT_CODECS.indexOf(b.codec as never));
+    const text = full.filter(isText).sort(best);
     if (text.length) return { stream: text[0], lang };
     if (full.length) pictureOnly = true;
   }
-  if (pictureOnly) throw new NoTextTrack('the subtitle inside the video is a picture of text, which cannot be translated');
+  const untagged = streams.filter((s) => (s.language === '' || s.language === 'und') && !s.forced && isText(s));
+  if (untagged.length === 1 && languages.length) return { stream: untagged[0], lang: languages[0] };
+  if (pictureOnly) throw new NoTextTrack('pictures');
   return null;
 }
 
@@ -101,7 +127,7 @@ export async function extractEmbedded(
     maxBytes: 4 << 20,
   });
   const picked = pickStream(parseProbe(probe), languages);
-  if (!picked) throw new NoTextTrack(`the video has no ${languages.join(' or ')} subtitle inside it`);
+  if (!picked) throw new NoTextTrack('missing');
   const srt = await run('ffmpeg', ['-v', 'error', '-nostdin', '-i', video, '-map', `0:${picked.stream.index}`, '-f', 'srt', '-'], {
     timeoutMs: TIMEOUT_MS,
     maxBytes: 32 << 20,

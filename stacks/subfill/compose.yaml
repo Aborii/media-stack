@@ -10,8 +10,9 @@
 #
 # How it fits with Bazarr. Bazarr searches first, and subfill reads Bazarr's
 # wanted lists every SYNC_MINUTES. An episode or film whose Arabic is still
-# missing WAIT_HOURS after its video arrived, and which has an English .srt
-# beside it, is translated by TranslateGemma 12B in the ollama stack and saved
+# missing WAIT_HOURS after its video arrived, and which has an English subtitle
+# beside it or inside the video, is translated by TranslateGemma 12B in the
+# ollama stack and saved
 # as <video>.ar.machine.srt. Only the words change: index and timing lines go
 # back out byte for byte, and tags, positions, song markers and dialogue dashes
 # are put back where they were.

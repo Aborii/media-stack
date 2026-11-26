@@ -57,8 +57,8 @@ export type Item = {
   // episode not seen by a sync since this column was added.
   series_id: number | null;
   // Translated from the subtitle inside the video instead of a file beside
-  // it: 'yes'. 'none' once a look inside found nothing it can read, so the
-  // sync stops offering it until the video changes. null otherwise.
+  // it: 'yes'. 'none:<reason>:<ctime>' once a look inside found nothing it
+  // can read, so the sync stops offering that file. null otherwise.
   inside_track: string | null;
 };
 

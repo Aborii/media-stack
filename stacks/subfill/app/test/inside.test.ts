@@ -1,12 +1,13 @@
 // Translating from the subtitle inside the video: choosing the track, pulling
 // it out, and what happens when there is nothing readable inside.
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { test } from 'node:test';
 import { extractEmbedded, NoTextTrack, parseProbe, pickStream, type Run, type Stream } from '../src/embedded.ts';
 import { Unavailable } from '../src/errors.ts';
 import { ARABIC } from '../src/translate.ts';
-import { outPathFor } from '../src/worker.ts';
+import { lookedInside, outPathFor } from '../src/worker.ts';
 import { episode, mediaDir, setup, SRT } from './helpers.ts';
 
 const s = (index: number, codec: string, language: string, extra: Partial<Stream> = {}): Stream => ({ index, codec, language, title: '', forced: false, hi: false, ...extra });
@@ -118,13 +119,14 @@ test('nothing readable inside sends the item back to nothing-to-translate, uses 
   let looks = 0;
   const extract = async () => {
     looks++;
-    throw new NoTextTrack('the subtitle inside the video is a picture of text, which cannot be translated');
+    throw new NoTextTrack('pictures');
   };
   const { store, worker } = setup(items, { maxAttempts: 1 }, undefined, undefined, extract);
   await worker.sync();
   assert.equal(await worker.translateNext(), true);
   const row = store.get('episode:1')!;
-  assert.deepEqual([row.state, row.attempts, row.inside_track], ['no_source', 0, 'none']);
+  assert.deepEqual([row.state, row.attempts], ['no_source', 0]);
+  assert.match(row.inside_track ?? '', /^none:pictures:\d+$/);
   assert.match(row.note ?? '', /picture of text/);
   await worker.sync();
   assert.equal(store.get('episode:1')!.state, 'no_source');
@@ -153,20 +155,25 @@ test('ffmpeg missing puts the item back without using an attempt', async () => {
 });
 
 test('stacked copies of a line in a styled track are translated and shown once', async () => {
-  const { parseSrt, withoutCopies } = await import('../src/srt.ts');
-  const srt = '1\n00:00:01,000 --> 00:00:02,000\n{\\an8}Sign\n\n2\n00:00:01,000 --> 00:00:02,000\n{\\an8}Sign\n\n3\n00:00:01,000 --> 00:00:02,000\nHello\n\n4\n00:00:03,000 --> 00:00:04,000\nSign\n';
-  const { parsed, dropped } = withoutCopies(parseSrt(srt));
-  assert.equal(dropped, 1);
+  const { parseSrt, cleanStyled } = await import('../src/srt.ts');
+  // What ffmpeg writes for a styled track: a drawing as text, and two layers
+  // of one sign that differ only in colour (seen with Alpine's ffmpeg).
+  const srt =
+    '1\n00:00:01,000 --> 00:00:02,000\n<font size="40" color="#ffff00">{\\an8}<font color="#ff0000">Sign</font></font>\n\n' +
+    '2\n00:00:01,000 --> 00:00:02,000\n<font size="40" color="#ffff00">{\\an8}<font color="#ffffff">Sign</font></font>\n\n' +
+    '3\n00:00:01,000 --> 00:00:02,000\nHello\n\n' +
+    '4\n00:00:01,000 --> 00:00:02,000\n<font size="40" color="#ffff00">{\\an8}m 0 0 l 1920 0 1920 1080 0 1080</font>\n\n' +
+    '5\n00:00:03,000 --> 00:00:04,000\nSign\n';
+  const { parsed, drawings, copies } = cleanStyled(parseSrt(srt));
+  assert.deepEqual([drawings, copies], [1, 1]);
   assert.deepEqual(
-    parsed.cues.map((c) => [c.index, c.lines.join('|')]),
-    [
-      ['1', '{\\an8}Sign'],
-      ['2', 'Hello'],
-      ['3', 'Sign'],
-    ],
+    parsed.cues.map((c) => c.index + ' ' + c.lines.join('|').replace(/<[^>]+>|\{[^}]*\}/g, '')),
+    ['1 Sign', '2 Hello', '3 Sign'],
   );
   const plain = parseSrt(SRT);
-  assert.equal(withoutCopies(plain).parsed, plain);
+  assert.equal(cleanStyled(plain).parsed, plain);
+  // A real word starting with m is not a drawing.
+  assert.equal(cleanStyled(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nm 2 go\n')).drawings, 0);
   // Through the worker: the output has one cue per distinct line.
   const root = mediaDir();
   const ep = { ...episode(root, 1, 'Stacked'), subtitles: [{ code2: 'en', path: null }] };
@@ -175,5 +182,90 @@ test('stacked copies of a line in a styled track are translated and shown once',
   await worker.translateNext();
   assert.equal(store.get('episode:1')!.state, 'done');
   assert.equal(parseSrt(readFileSync(outPathFor(ep.path, ARABIC), 'utf8')).cues.length, 3);
-  assert.ok(store.logFor('episode:1').some((l) => /left out 1 stacked copies/.test(l.message)));
+  assert.ok(store.logFor('episode:1').some((l) => /left out 1 stacked copies of lines and 1 drawings/.test(l.message)));
+});
+
+test('a track titled as dialogue with signs is a full track; signs and songs alone is not', () => {
+  const t = (title: string) => parseProbe(JSON.stringify({ streams: [{ index: 2, codec_name: 'ass', tags: { language: 'eng', title } }] }));
+  for (const full of ['English (Dialogue & Signs)', 'Full Subtitles + Signs', 'English', 'Signs Translated + Dialogue']) {
+    assert.equal(pickStream(t(full), ['en'])?.stream.index, 2, full);
+  }
+  for (const only of ['Signs & Songs', 'Signs/Songs', 'Signs', 'English [Forced]', 'Forced']) {
+    assert.equal(pickStream(t(only), ['en']), null, only);
+  }
+});
+
+test('the only untagged text track is used when no track is tagged in a source language', () => {
+  assert.deepEqual(pickStream([s(2, 'subrip', 'und'), s(3, 'hdmv_pgs_subtitle', 'eng')], ['en']), { stream: s(2, 'subrip', 'und'), lang: 'en' });
+  assert.equal(pickStream([s(2, 'subrip', ''), s(3, 'subrip', 'und')], ['en']), null);
+  assert.equal(pickStream([s(2, 'subrip', 'eng'), s(3, 'subrip', '')], ['en'])!.stream.index, 2);
+});
+
+test('a look inside that found nothing is tied to the file: a new file at the same path is looked at again', async () => {
+  assert.equal(lookedInside('none:pictures:5', 5), 'pictures');
+  assert.equal(lookedInside('none:pictures:5', 6), null);
+  assert.equal(lookedInside('none:missing:5', null), null);
+  assert.equal(lookedInside('yes', 5), null);
+  const root = mediaDir();
+  const ep = { ...episode(root, 1, 'Replaced'), subtitles: [{ code2: 'en', path: null }] };
+  let looks = 0;
+  const { store, worker } = setup([ep], {}, undefined, undefined, async () => {
+    looks++;
+    if (looks === 1) throw new NoTextTrack('pictures');
+    return { srt: SRT, lang: 'en', stream: s(2, 'subrip', 'eng') };
+  });
+  await worker.sync();
+  await worker.translateNext();
+  assert.match(store.get('episode:1')!.inside_track ?? '', /^none:pictures:\d+$/);
+  // Sonarr swaps in a new release under the same name.
+  await new Promise((r) => setTimeout(r, 20));
+  writeFileSync(`${ep.path}.new`, 'new video');
+  rmSync(ep.path);
+  renameSync(`${ep.path}.new`, ep.path);
+  await worker.sync();
+  assert.equal(store.get('episode:1')!.state, 'eligible');
+  await worker.translateNext();
+  assert.equal(store.get('episode:1')!.state, 'done');
+  assert.equal(looks, 2);
+});
+
+test('skip then undo skip looks inside the same file again', async () => {
+  const root = mediaDir();
+  const ep = { ...episode(root, 1, 'Again'), subtitles: [{ code2: 'en', path: null }] };
+  const { store, worker } = setup([ep], {}, undefined, undefined, async () => {
+    throw new NoTextTrack('missing');
+  });
+  await worker.sync();
+  await worker.translateNext();
+  assert.equal(store.get('episode:1')!.state, 'no_source');
+  assert.equal(worker.act('episode:1', 'skip'), null);
+  assert.equal(worker.act('episode:1', 'unskip'), null);
+  assert.equal(store.get('episode:1')!.inside_track, null);
+  await worker.sync();
+  assert.equal(store.get('episode:1')!.state, 'eligible');
+});
+
+test('the reason a look inside found nothing survives a sync that briefly could not see the video', async () => {
+  const root = mediaDir();
+  const ep = { ...episode(root, 1, 'Blip'), subtitles: [{ code2: 'en', path: null }] };
+  const { store, worker } = setup([ep], {}, undefined, undefined, async () => {
+    throw new NoTextTrack('pictures');
+  });
+  await worker.sync();
+  await worker.translateNext();
+  const kept = store.get('episode:1')!.inside_track;
+  // The disk drops out for one sync: same path, the file untouched, but it cannot be seen.
+  const dir = path.dirname(ep.path);
+  chmodSync(dir, 0o000);
+  try {
+    await worker.sync();
+  } finally {
+    chmodSync(dir, 0o755);
+  }
+  assert.equal(store.get('episode:1')!.note, 'video file not found');
+  assert.equal(store.get('episode:1')!.inside_track, kept);
+  await worker.sync();
+  const row = store.get('episode:1')!;
+  assert.equal(row.state, 'no_source');
+  assert.match(row.note ?? '', /picture of text/);
 });

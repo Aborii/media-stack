@@ -218,18 +218,32 @@ export function checkAligned(source: Parsed, output: Parsed): string | null {
   return null;
 }
 
-// Cues that repeat an earlier one's timing and text: styled (ASS) tracks
-// stack copies of a line for visual effects, which as SRT would each be
-// translated and shown on top of each other. Renumbered when any go.
-export function withoutCopies(parsed: Parsed): { parsed: Parsed; dropped: number } {
+// An ASS vector drawing ("m 0 0 l 1920 0 ..."), which ffmpeg writes out as
+// text when it turns a styled track into SRT.
+const DRAWING = /^m(?:\s+(?:[mnlbspc]|-?\d+(?:\.\d+)?))+$/i;
+
+// A track pulled out of a video, made fit to translate: drawings left out,
+// and cues that repeat an earlier one's timing and words (styled tracks
+// stack copies of a line, often differing only in colour) kept once.
+// Renumbered when any go.
+export function cleanStyled(parsed: Parsed): { parsed: Parsed; drawings: number; copies: number } {
   const seen = new Set<string>();
+  let drawings = 0;
+  let copies = 0;
   const cues = parsed.cues.filter((c) => {
-    const k = `${c.timing.trim()}\n${c.lines.join('\n').trim()}`;
-    if (seen.has(k)) return false;
+    const words = c.lines.join(' ').replace(INNER_TAG, '').replace(/\s+/g, ' ').trim();
+    if (DRAWING.test(words) && /\d/.test(words)) {
+      drawings++;
+      return false;
+    }
+    const k = `${c.timing.trim()}\n${words}`;
+    if (seen.has(k)) {
+      copies++;
+      return false;
+    }
     seen.add(k);
     return true;
   });
-  const dropped = parsed.cues.length - cues.length;
-  if (!dropped) return { parsed, dropped };
-  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, dropped };
+  if (cues.length === parsed.cues.length) return { parsed, drawings, copies };
+  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies };
 }
