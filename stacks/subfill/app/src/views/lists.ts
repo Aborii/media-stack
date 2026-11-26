@@ -15,6 +15,7 @@ import {
   pageHeader,
   STATE_LABEL,
   stateBadge,
+  subtitlesLink,
   subtitleChips,
 } from './layout.ts';
 import { entryRow } from './shows.ts';
@@ -78,7 +79,7 @@ export function renderItems(v: View, query: URLSearchParams): string {
   const rows = items
     .map(
       (i) =>
-        `<tr><td>${itemLink(i)}<div class="dim">${esc(i.note ?? '')}</div></td><td>${stateBadge(i.state)}${i.node && i.state !== 'waiting' ? `<div class="dim">${esc(i.node)}</div>` : ''}</td><td class="dim" data-label="Changed">${ago(i.updated_at, v.now)}</td><td class="num">${actions(i, back)}</td></tr>`,
+        `<tr><td>${itemLink(i)}<div class="dim">${esc(i.note ?? '')}</div></td><td>${stateBadge(i.state)}${i.node && i.state !== 'waiting' ? `<div class="dim">${esc(i.node)}</div>` : ''}</td><td class="dim" data-label="Changed">${ago(i.updated_at, v.now)}</td><td class="num"><span class="acts">${i.state === 'done' ? subtitlesLink(i, 'View') : ''}${actions(i, back)}</span></td></tr>`,
     )
     .join('');
   const body = `${pageHeader('All items', 'Every episode and film subfill tracks: the ones Bazarr has no Arabic for, and what became of them.')}
@@ -117,7 +118,7 @@ export function renderItem(v: View, key: string): string | null {
       : '<a href="/items">All items</a>';
   const human = entry?.status === 'human' && item.state !== 'replaced' ? ` ${badge('human')} <span class="dim">Bazarr found one; the next sync tidies up</span>` : '';
   const body = `<p class="crumb">${crumb}</p>
-${pageHeader(esc(item.title), '', `${v.store.isItemMarked(key) ? '' : actions(item, back)}${entry?.kind === 'movie' ? excludeButton(entry.key, entry.marked, back, 'film') : ''}`)}
+${pageHeader(esc(item.title), '', `${subtitlesLink(item, 'View subtitles', 'primary')}${v.store.isItemMarked(key) ? '' : actions(item, back)}${entry?.kind === 'movie' ? excludeButton(entry.key, entry.marked, back, 'film') : ''}`)}
 <div class="row" style="margin:-10px 0 18px">${stateBadge(item.state)}${human}</div>
 ${entry ? `<div class="card" style="margin-bottom:16px"><div class="card-h">Subtitles beside the video</div>${subtitleChips(entry.subtitles, entry.status === 'machine')}</div>` : ''}
 <div class="card flush wrap"><table class="facts">${facts

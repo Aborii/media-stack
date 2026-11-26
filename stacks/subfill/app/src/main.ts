@@ -110,6 +110,7 @@ const server = startWeb(
     store,
     library,
     worker,
+    subtitles: { mediaRoot: settings.mediaRoot, targetCode: ARABIC.code, sourceLanguages: settings.sourceLanguages },
     loginUrl: settings.loginUrl,
     apiToken: settings.apiToken,
     status: () => ({ ...status, nodes: nodes.map((n) => n.status()), model: settings.model }),

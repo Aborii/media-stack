@@ -113,7 +113,7 @@ function upNext(v: View, items: Item[]): string {
 function finished(v: View, items: Item[]): string {
   if (!items.length) return '<p class="dim" style="padding:14px 18px;margin:0">Nothing translated yet.</p>';
   return `<ul class="list">${items
-    .map((i) => `<li><span class="grow">${itemLink(i)}<div class="dim" style="font-size:12.5px">${esc(i.note ?? '')}</div></span><span class="dim" style="white-space:nowrap;font-size:12.5px">${ago(i.finished_at, v.now)}</span></li>`)
+    .map((i) => `<li><span class="grow">${itemLink(i)}<div class="dim" style="font-size:12.5px">${esc(i.note ?? '')}</div></span><span class="dim" style="white-space:nowrap;font-size:12.5px">${ago(i.finished_at, v.now)} &middot; <a href="/subtitles?key=${encodeURIComponent(i.key)}">view</a></span></li>`)
     .join('')}</ul>`;
 }
 

@@ -135,6 +135,11 @@ export function excludeButton(key: string, excluded: boolean, back: string, noun
   return excluded ? button(key, 'include', `Translate this ${noun} again`, back, 'primary') : button(key, 'exclude', `Don't translate this ${noun}`, back);
 }
 
+// The link to an item's subtitles page, for one subfill has translated.
+export function subtitlesLink(item: Pick<Item, 'key' | 'out_path'>, label = 'View subtitles', kind = ''): string {
+  return item.out_path ? `<a class="btn${kind ? ` ${kind}` : ''}" href="/subtitles?key=${encodeURIComponent(item.key)}">${esc(label)}</a>` : '';
+}
+
 export function itemLink(item: { key: string; title: string }): string {
   return `<a href="/item?key=${encodeURIComponent(item.key)}">${esc(item.title)}</a>`;
 }
@@ -279,6 +284,10 @@ td a{color:var(--text);font-weight:500} td a:hover{color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff} .btn.primary:hover{background:var(--accent2)}
 .acts{display:inline-flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 form.inline{display:inline}
+a.btn{display:inline-block} a.btn:hover{text-decoration:none}
+table.subs td{vertical-align:top;line-height:1.55} table.subs td:nth-child(3),table.subs td:nth-child(4){width:46%}
+table.subs td.ar{font-size:15px;text-align:right;font-family:"Noto Naskh Arabic","Segoe UI","Geeza Pro",var(--font)}
+table.subs tr.lone td{background:color-mix(in srgb,var(--warn) 8%,transparent)}
 input[type=search],select{font:inherit;font-size:13px;height:32px;padding:0 11px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);outline:none}
 input[type=search]:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
 input[type=search]{min-width:240px}
