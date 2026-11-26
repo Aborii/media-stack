@@ -94,7 +94,7 @@ ${libraryNote(v)}
 export function entryRow(e: Entry, back: string, now: number, first: string, more = ''): string {
   const note = e.item?.note && e.status !== 'human' && e.status !== 'excluded' ? `<div class="dim">${esc(e.item.note)}</div>` : '';
   const when =
-    e.item && e.status === 'waiting' ? `<div class="dim">ready ${ago(e.item.eligible_at, now)}</div>` : e.item && e.status === 'machine' ? `<div class="dim">written ${ago(e.item.finished_at, now)}</div>` : '';
+    e.item && e.status === 'waiting' ? `<div class="dim">ready ${ago(e.item.eligible_at, now)}</div>` : e.item && e.status === 'machine' ? `<div class="dim">written ${ago(e.item.finished_at, now)} &middot; <a href="/subtitles?key=${encodeURIComponent(e.key)}">view</a></div>` : '';
   const status = e.item ? `<a href="/item?key=${encodeURIComponent(e.key)}">${badge(e.status)}</a>` : badge(e.status);
   return `<tr>${first}<td data-label="Subtitles">${subtitleChips(e.subtitles, e.status === 'machine')}</td><td class="inl">${status}${when}${note}</td><td class="num inl"><span class="acts">${e.item && !e.marked ? actions(e.item, back) : ''}${more}</span></td></tr>`;
 }
