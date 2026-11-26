@@ -182,7 +182,7 @@ test('stacked copies of a line in a styled track are translated and shown once',
   await worker.translateNext();
   assert.equal(store.get('episode:1')!.state, 'done');
   assert.equal(parseSrt(readFileSync(outPathFor(ep.path, ARABIC), 'utf8')).cues.length, 3);
-  assert.ok(store.logFor('episode:1').some((l) => /left out 1 stacked copies of lines and 1 drawings/.test(l.message)));
+  assert.ok(store.logFor('episode:1').some((l) => /left out 1 stacked copies of lines, 1 drawings and 0 letter or syllable fragments/.test(l.message)));
 });
 
 test('a track titled as dialogue with signs is a full track; signs and songs alone is not', () => {
@@ -361,4 +361,40 @@ test('joining keeps a spoken line apart from a sign with the same words, takes t
   // Exactly at the gap joins; just past it does not.
   assert.equal(at(cue(1, '00:00:01,000', '00:00:02,000', 'Go') + '\n' + cue(2, '00:00:02,100', '00:00:03,000', 'Go')).length, 1);
   assert.equal(at(cue(1, '00:00:01,000', '00:00:02,000', 'Go') + '\n' + cue(2, '00:00:02,101', '00:00:03,000', 'Go')).length, 2);
+});
+
+test('a title spelled one letter per line and karaoke syllables are left out; short real lines stay', async () => {
+  const { parseSrt, cleanStyled } = await import('../src/srt.ts');
+  const lines = ['R', 'u', 'm', ',', "'", 'ka', 'shi', 'tsu', 'No.', 'Oh!', 'No', 'I', 'Eren!', 'Hello there.'];
+  const srt = lines.map((t, i) => `${i + 1}\n00:00:${String(10 + i).padStart(2, '0')},000 --> 00:00:${String(10 + i).padStart(2, '0')},900\n{\\an8}${t}\n`).join('\n');
+  const { parsed, fragments } = cleanStyled(parseSrt(srt));
+  assert.equal(fragments, 8);
+  assert.deepEqual(
+    parsed.cues.map((c) => c.lines.join('').replace('{\\an8}', '')),
+    ['No.', 'Oh!', 'No', 'I', 'Eren!', 'Hello there.'],
+  );
+  assert.equal(cleanStyled(parseSrt(srt), { fragments: false }).parsed.cues.length, lines.length);
+});
+
+test('Translate again puts a done item back in the queue, and its new Arabic replaces the old', async () => {
+  const root = mediaDir();
+  const ep = { ...episode(root, 1, 'Again'), subtitles: [{ code2: 'en', path: null }] };
+  let srt = '1\n00:00:01,000 --> 00:00:02,000\nR\n\n2\n00:00:03,000 --> 00:00:04,000\nHello there.\n';
+  const { store, worker } = setup([ep], {}, undefined, undefined, async () => ({ srt, lang: 'en', stream: s(3, 'ass', 'eng') }));
+  await worker.sync();
+  await worker.translateNext();
+  const out = outPathFor(ep.path, ARABIC);
+  assert.equal((await import('../src/srt.ts')).parseSrt(readFileSync(out, 'utf8')).cues.length, 1);
+  assert.equal(worker.act('episode:1', 'again'), null);
+  const row = store.get('episode:1')!;
+  assert.deepEqual([row.state, row.attempts, row.out_path], ['eligible', 0, out]);
+  srt = srt + '\n3\n00:00:05,000 --> 00:00:06,000\nSee you.\n';
+  await worker.translateNext();
+  assert.equal(store.get('episode:1')!.state, 'done');
+  assert.equal((await import('../src/srt.ts')).parseSrt(readFileSync(out, 'utf8')).cues.length, 2);
+  // Done items cannot be skipped, and a marked one is not translated again.
+  assert.match(worker.act('episode:1', 'skip') ?? '', /cannot skip/);
+  store.db.prepare("INSERT INTO excluded (key, at) VALUES ('episode:1', 0)").run();
+  assert.match(worker.act('episode:1', 'again') ?? '', /marked not to translate/);
+  assert.equal(store.get('episode:1')!.state, 'done');
 });
