@@ -222,6 +222,14 @@ export function checkAligned(source: Parsed, output: Parsed): string | null {
 // text when it turns a styled track into SRT.
 const DRAWING = /^m(?:\s+(?:[mnlbspc]|-?\d+(?:\.\d+)?))+$/i;
 
+// A piece of an effect, not a line: a title drawn one character per cue,
+// or a song's karaoke split into lowercase syllables ("ka", "shi", "tsu").
+// Real short lines carry a capital or punctuation ("No.", "Oh!"), and a
+// lone "I" is kept too.
+// Only for tracks from inside a video; with `fragments: false` they are
+// kept, to rebuild how a track was cleaned before, for translations made then.
+const FRAGMENT = /^(?!I$)(?:.|[a-z]{2,3})$/u;
+
 // How far apart two showings of the same words may be and still be one
 // line: animated signs come as a new cue per frame, back to back.
 export const MERGE_GAP_MS = 100;
@@ -244,9 +252,11 @@ function toMs(t: string): number | null {
 // Renumbered when any go.
 export function cleanStyled(
   parsed: Parsed,
-  opts: { merge?: boolean } = {},
-): { parsed: Parsed; drawings: number; copies: number; merged: number } {
+  opts: { merge?: boolean; fragments?: boolean } = {},
+): { parsed: Parsed; drawings: number; copies: number; merged: number; fragments: number } {
   const merge = opts.merge ?? true;
+  const dropFragments = opts.fragments ?? true;
+  let fragments = 0;
   const seen = new Set<string>();
   // The last kept cue for some words, and when it ends.
   const open = new Map<string, { cue: Cue; start: number; end: number; longest: number }>();
@@ -258,6 +268,10 @@ export function cleanStyled(
     const words = c.lines.join(' ').replace(INNER_TAG, '').replace(/\s+/g, ' ').trim();
     if (DRAWING.test(words) && /\d/.test(words)) {
       drawings++;
+      continue;
+    }
+    if (dropFragments && FRAGMENT.test(words)) {
+      fragments++;
       continue;
     }
     const k = `${c.timing.trim()}\n${words}`;
@@ -294,6 +308,6 @@ export function cleanStyled(
     }
     cues.push(c);
   }
-  if (cues.length === parsed.cues.length) return { parsed, drawings, copies, merged };
-  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies, merged };
+  if (cues.length === parsed.cues.length) return { parsed, drawings, copies, merged, fragments };
+  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies, merged, fragments };
 }

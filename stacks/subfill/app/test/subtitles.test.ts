@@ -302,3 +302,19 @@ test('the original downloaded beside an older Arabic is cleaned the same way, cu
   writeFileSync(f.ar, '1\n00:00:01,000 --> 00:00:01,083\nلافتة\n\n2\n00:00:02,000 --> 00:00:03,000\nمرحبا.\n');
   assert.equal(parseSrt((await fileFor(it, 'original', deps(f.root, extract))).body).cues.length, 2);
 });
+
+test('an Arabic from any earlier cleaning pairs with the matching one', async () => {
+  const f = files();
+  const track = '1\n00:00:01,000 --> 00:00:01,042\nR\n\n2\n00:00:01,042 --> 00:00:01,083\nR\n\n3\n00:00:02,000 --> 00:00:03,000\nHello.\n';
+  const extract: SubtitleDeps['extract'] = async () => ({ srt: track, lang: 'en', stream: { index: 3, codec: 'ass', language: 'eng', title: '', forced: false, hi: false } });
+  const ar = (n: number) => Array.from({ length: n }, (_, i) => `${i + 1}\n00:00:0${i + 1},000 --> 00:00:0${i + 1},500\nس\n`).join('\n');
+  // Today 1 line; joined but with fragments 2; before joining 3.
+  for (const n of [1, 2, 3]) {
+    writeFileSync(f.ar, ar(n));
+    writeFileSync(f.video, `video ${n}`);
+    await new Promise((r) => setTimeout(r, 15));
+    const it = item({ video_path: f.video, inside_track: 'yes', out_path: f.ar });
+    const original = await fileFor(it, 'original', deps(f.root, extract));
+    assert.equal(parseSrt(original.body).cues.length, n, `original for an Arabic of ${n}`);
+  }
+});

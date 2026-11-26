@@ -379,10 +379,13 @@ export class Worker {
     }
     let source = parseSrt(text);
     if (inside) {
-      const { parsed, drawings, copies, merged } = cleanStyled(source);
+      const { parsed, drawings, copies, merged, fragments } = cleanStyled(source);
       source = parsed;
-      if (drawings || copies || merged) {
-        this.store.log(item.key, `left out ${copies} stacked copies of lines and ${drawings} drawings, and joined ${merged} back-to-back repeats of a line`);
+      if (drawings || copies || merged || fragments) {
+        this.store.log(
+          item.key,
+          `left out ${copies} stacked copies of lines, ${drawings} drawings and ${fragments} letter or syllable fragments, and joined ${merged} back-to-back repeats of a line`,
+        );
       }
     }
     if (!source.cues.length) throw new Error('the source subtitle has no cues');
@@ -441,7 +444,7 @@ export class Worker {
   act(key: string, op: string): string | null {
     const item = this.store.get(key);
     if (!item) return 'no such item';
-    if (['now', 'retry', 'unskip'].includes(op) && this.store.isItemMarked(key)) {
+    if (['now', 'retry', 'unskip', 'again'].includes(op) && this.store.isItemMarked(key)) {
       return 'its show or film is marked not to translate; lift the mark first';
     }
     const ok = (() => {
@@ -452,6 +455,9 @@ export class Worker {
           return this.store.move(key, ['failed'], 'eligible', { attempts: 0, crashes: 0, eligible_at: this.now(), note: null });
         case 'skip':
           return this.store.move(key, ['waiting', 'eligible', 'failed', 'no_source'], 'skipped', { note: 'skipped by you' });
+        case 'again':
+          // Done once already; the Arabic in use stays until the new one replaces it.
+          return this.store.move(key, ['done'], 'eligible', { priority: 0, attempts: 0, crashes: 0, eligible_at: this.now(), note: 'translating again: you asked' });
         case 'unskip':
           // Also forgets a look inside that found nothing, so it is looked at again.
           return this.store.move(key, ['skipped'], 'waiting', { note: null, crashes: 0, eligible_at: this.now(), inside_track: null });
