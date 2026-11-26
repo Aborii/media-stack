@@ -283,3 +283,58 @@ test('a video replaced while it was looked inside still ends as nothing readable
   assert.deepEqual([row.state, row.attempts, row.inside_track], ['no_source', 0, 'none:pictures:0']);
   assert.match(row.note ?? '', /picture of text/);
 });
+
+test('a sign shown frame by frame is one line: back-to-back repeats are joined, a real pause is not', async () => {
+  const { parseSrt, cleanStyled, MERGE_GAP_MS } = await import('../src/srt.ts');
+  const cue = (n: number, from: string, to: string, text: string) => `${n}\n${from} --> ${to}\n${text}\n`;
+  const srt = [
+    cue(1, '00:00:01,000', '00:00:01,042', '{\\an8}<font color="#fff">SHOP</font>'),
+    cue(2, '00:00:01,000', '00:00:03,000', 'Dialogue in between.'),
+    cue(3, '00:00:01,042', '00:00:01,083', '{\\an8}<font color="#eee">SHOP</font>'),
+    cue(4, '00:00:01,150', '00:00:01,200', '{\\an8}SHOP'),
+    cue(5, '00:00:05,000', '00:00:06,000', 'No!'),
+    cue(6, '00:00:06,500', '00:00:07,000', 'No!'),
+  ].join('\n');
+  const { parsed, merged } = cleanStyled(parseSrt(srt));
+  assert.equal(MERGE_GAP_MS, 100);
+  assert.equal(merged, 2);
+  assert.deepEqual(
+    parsed.cues.map((c) => [c.index, c.timing, c.lines.join('|')]),
+    [
+      ['1', '00:00:01,000 --> 00:00:01,200', '{\\an8}<font color="#fff">SHOP</font>'],
+      ['2', '00:00:01,000 --> 00:00:03,000', 'Dialogue in between.'],
+      ['3', '00:00:05,000 --> 00:00:06,000', 'No!'],
+      ['4', '00:00:06,500 --> 00:00:07,000', 'No!'],
+    ],
+  );
+  // Off, it is cleaned as before joining existed.
+  assert.equal(cleanStyled(parseSrt(srt), { merge: false }).parsed.cues.length, 6);
+  // A track with nothing to clean comes back as it was.
+  const plain = parseSrt(SRT);
+  assert.equal(cleanStyled(plain).parsed, plain);
+});
+
+test('the worker translates a frame-by-frame sign once and writes one line for it', async () => {
+  const { parseSrt } = await import('../src/srt.ts');
+  const frames = Array.from({ length: 24 }, (_, i) => {
+    const t = (ms: number) => `00:00:${String(Math.floor(ms / 1000)).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
+    return `${i + 1}\n${t(1000 + i * 42)} --> ${t(1042 + i * 42)}\n{\\an8}TRAIN STATION\n`;
+  });
+  const srt = [...frames, '25\n00:00:03,000 --> 00:00:04,000\nHello there.\n'].join('\n');
+  const prompts: string[] = [];
+  const root = mediaDir();
+  const ep = { ...episode(root, 1, 'Frames'), subtitles: [{ code2: 'en', path: null }] };
+  const model = async (prompt: string) => {
+    prompts.push(prompt);
+    return (await import('./helpers.ts')).arabicModel(prompt);
+  };
+  const { store, worker } = setup([ep], {}, model, undefined, async () => ({ srt, lang: 'en', stream: s(3, 'ass', 'eng') }));
+  await worker.sync();
+  await worker.translateNext();
+  assert.equal(store.get('episode:1')!.state, 'done');
+  const out = parseSrt(readFileSync(outPathFor(ep.path, ARABIC), 'utf8'));
+  assert.equal(out.cues.length, 2);
+  assert.equal(out.cues[0].timing, '00:00:01,000 --> 00:00:02,008');
+  assert.equal(prompts.join('\n').split('TRAIN STATION').length - 1, 1);
+  assert.ok(store.logFor('episode:1').some((l) => /joined 23 back-to-back repeats/.test(l.message)));
+});

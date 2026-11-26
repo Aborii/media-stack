@@ -270,3 +270,23 @@ test('a download name with quotes, brackets and accents is encoded for both head
   assert.match(star, /^[A-Za-z0-9!#$&+\-.^_`|~%]+$/);
   assert.equal(decodeURIComponent(star), `${name}.ar.machine.srt`);
 });
+
+test('an Arabic translated before repeats were joined still pairs line for line', async () => {
+  const f = files();
+  const frames = '1\n00:00:01,000 --> 00:00:01,042\nSIGN\n\n2\n00:00:01,042 --> 00:00:01,083\nSIGN\n\n3\n00:00:02,000 --> 00:00:03,000\nHello.\n';
+  const oldArabic = '1\n00:00:01,000 --> 00:00:01,042\nلافتة\n\n2\n00:00:01,042 --> 00:00:01,083\nلافتة\n\n3\n00:00:02,000 --> 00:00:03,000\nمرحبا.\n';
+  const newArabic = '1\n00:00:01,000 --> 00:00:01,083\nلافتة\n\n2\n00:00:02,000 --> 00:00:03,000\nمرحبا.\n';
+  const extract: SubtitleDeps['extract'] = async () => ({ srt: frames, lang: 'en', stream: { index: 3, codec: 'ass', language: 'eng', title: '', forced: false, hi: false } });
+  for (const [arabic, lines] of [
+    [oldArabic, 3],
+    [newArabic, 2],
+  ] as const) {
+    writeFileSync(f.ar, arabic);
+    // A fresh video file each round, so the kept read is not reused across them.
+    writeFileSync(f.video, `video ${lines}`);
+    await new Promise((r) => setTimeout(r, 15));
+    const pair = await loadPair(item({ video_path: f.video, inside_track: 'yes', out_path: f.ar }), deps(f.root, extract));
+    assert.equal(pair.rows.length, lines);
+    assert.ok(pair.rows.every((r) => r.source && r.target), `${lines} lines all paired`);
+  }
+});

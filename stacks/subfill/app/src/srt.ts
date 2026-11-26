@@ -222,28 +222,68 @@ export function checkAligned(source: Parsed, output: Parsed): string | null {
 // text when it turns a styled track into SRT.
 const DRAWING = /^m(?:\s+(?:[mnlbspc]|-?\d+(?:\.\d+)?))+$/i;
 
-// A track pulled out of a video, made fit to translate: drawings left out,
-// and cues that repeat an earlier one's timing and words (styled tracks
-// stack copies of a line, often differing only in colour) kept once.
+// How far apart two showings of the same words may be and still be one
+// line: animated signs come as a new cue per frame, back to back.
+export const MERGE_GAP_MS = 100;
+
+function toMs(t: string): number | null {
+  const m = t.trim().match(/^(\d+):(\d+):(\d+)[,.](\d+)/);
+  return m ? ((Number(m[1]) * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000 + Number(m[4].padEnd(3, '0').slice(0, 3)) : null;
+}
+
+// A track pulled out of a video, made fit to translate:
+//   - drawings left out;
+//   - cues that repeat an earlier one's timing and words kept once (styled
+//     tracks stack copies of a line, often differing only in colour);
+//   - with `merge`, a cue whose words were already showing, or ended at most
+//     MERGE_GAP_MS before, extends that cue instead (a sign animated frame by
+//     frame is one line, translated once). Off only to rebuild how a track
+//     was cleaned before merging, for translations made then.
 // Renumbered when any go.
-export function cleanStyled(parsed: Parsed): { parsed: Parsed; drawings: number; copies: number } {
+export function cleanStyled(
+  parsed: Parsed,
+  opts: { merge?: boolean } = {},
+): { parsed: Parsed; drawings: number; copies: number; merged: number } {
+  const merge = opts.merge ?? true;
   const seen = new Set<string>();
+  // The last kept cue for some words, and when it ends.
+  const open = new Map<string, { cue: Cue; end: number }>();
   let drawings = 0;
   let copies = 0;
-  const cues = parsed.cues.filter((c) => {
+  let merged = 0;
+  const cues: Cue[] = [];
+  for (const c of parsed.cues) {
     const words = c.lines.join(' ').replace(INNER_TAG, '').replace(/\s+/g, ' ').trim();
     if (DRAWING.test(words) && /\d/.test(words)) {
       drawings++;
-      return false;
+      continue;
     }
     const k = `${c.timing.trim()}\n${words}`;
     if (seen.has(k)) {
       copies++;
-      return false;
+      continue;
     }
     seen.add(k);
-    return true;
-  });
-  if (cues.length === parsed.cues.length) return { parsed, drawings, copies };
-  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies };
+    const [startText, endText] = c.timing.split('-->').map((x) => x.trim());
+    const start = toMs(startText ?? '');
+    const end = toMs(endText ?? '');
+    if (merge && start !== null && end !== null) {
+      const prev = open.get(words);
+      if (prev && start <= prev.end + MERGE_GAP_MS) {
+        if (end > prev.end) {
+          prev.end = end;
+          prev.cue.timing = `${prev.cue.timing.split('-->')[0].trim()} --> ${endText}`;
+        }
+        merged++;
+        continue;
+      }
+      const kept = { ...c };
+      cues.push(kept);
+      open.set(words, { cue: kept, end });
+      continue;
+    }
+    cues.push(c);
+  }
+  if (cues.length === parsed.cues.length) return { parsed, drawings, copies, merged };
+  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies, merged };
 }
