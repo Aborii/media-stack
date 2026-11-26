@@ -224,11 +224,12 @@ const DRAWING = /^m(?:\s+(?:[mnlbspc]|-?\d+(?:\.\d+)?))+$/i;
 
 // A piece of an effect, not a line: a title drawn one character per cue,
 // or a song's karaoke split into lowercase syllables ("ka", "shi", "tsu").
-// Real short lines carry a capital or punctuation ("No.", "Oh!"), and a
-// lone "I" is kept too.
+// Real short lines carry a capital or punctuation ("No.", "Oh!", "I—").
+// A lone "I" goes too: in these tracks it is a big title letter, and a
+// spoken "I" comes with more ("I...", "I—").
 // Only for tracks from inside a video; with `fragments: false` they are
 // kept, to rebuild how a track was cleaned before, for translations made then.
-const FRAGMENT = /^(?!I$)(?:.|[a-z]{2,3})$/u;
+const FRAGMENT = /^(?:.|[a-z]{2,3})$/u;
 
 // How far apart two showings of the same words may be and still be one
 // line: animated signs come as a new cue per frame, back to back.

@@ -365,13 +365,13 @@ test('joining keeps a spoken line apart from a sign with the same words, takes t
 
 test('a title spelled one letter per line and karaoke syllables are left out; short real lines stay', async () => {
   const { parseSrt, cleanStyled } = await import('../src/srt.ts');
-  const lines = ['R', 'u', 'm', ',', "'", 'ka', 'shi', 'tsu', 'No.', 'Oh!', 'No', 'I', 'Eren!', 'Hello there.'];
+  const lines = ['R', 'u', 'm', ',', "'", 'ka', 'shi', 'tsu', 'I', 'No.', 'Oh!', 'No', 'I—', 'Eren!', 'Hello there.'];
   const srt = lines.map((t, i) => `${i + 1}\n00:00:${String(10 + i).padStart(2, '0')},000 --> 00:00:${String(10 + i).padStart(2, '0')},900\n{\\an8}${t}\n`).join('\n');
   const { parsed, fragments } = cleanStyled(parseSrt(srt));
-  assert.equal(fragments, 8);
+  assert.equal(fragments, 9);
   assert.deepEqual(
     parsed.cues.map((c) => c.lines.join('').replace('{\\an8}', '')),
-    ['No.', 'Oh!', 'No', 'I', 'Eren!', 'Hello there.'],
+    ['No.', 'Oh!', 'No', 'I—', 'Eren!', 'Hello there.'],
   );
   assert.equal(cleanStyled(parseSrt(srt), { fragments: false }).parsed.cues.length, lines.length);
 });
