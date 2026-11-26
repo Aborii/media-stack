@@ -367,7 +367,9 @@ export class Worker {
         if (!(err instanceof NoTextTrack)) throw err;
         // Nothing readable inside: not an attempt, and not offered again until
         // the file changes (or the owner skips and un-skips it).
-        const ctime = Math.floor((await stat(item.video_path)).ctimeMs);
+        // A video gone since the look (replaced mid-run) gets 0: the next sync
+        // sees a different time and looks inside the new file.
+        const ctime = await stat(item.video_path).then((st) => Math.floor(st.ctimeMs), () => 0);
         this.store.move(item.key, ['translating'], 'no_source', { attempts: item.attempts - 1, inside_track: emptyInside(err.reason, ctime), note: err.message });
         this.store.log(item.key, err.message);
         return;

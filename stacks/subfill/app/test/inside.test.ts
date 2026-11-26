@@ -269,3 +269,17 @@ test('the reason a look inside found nothing survives a sync that briefly could 
   assert.equal(row.state, 'no_source');
   assert.match(row.note ?? '', /picture of text/);
 });
+
+test('a video replaced while it was looked inside still ends as nothing readable, with its reason', async () => {
+  const root = mediaDir();
+  const ep = { ...episode(root, 1, 'Swapped'), subtitles: [{ code2: 'en', path: null }] };
+  const { store, worker } = setup([ep], { maxAttempts: 1 }, undefined, undefined, async () => {
+    rmSync(ep.path);
+    throw new NoTextTrack('pictures');
+  });
+  await worker.sync();
+  assert.equal(await worker.translateNext(), true);
+  const row = store.get('episode:1')!;
+  assert.deepEqual([row.state, row.attempts, row.inside_track], ['no_source', 0, 'none:pictures:0']);
+  assert.match(row.note ?? '', /picture of text/);
+});
