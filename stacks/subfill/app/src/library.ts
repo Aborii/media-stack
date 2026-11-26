@@ -287,7 +287,7 @@ const ENTRY_SELECT = `SELECT l.key, l.kind, l.show_id, l.season, l.episode, l.ti
     'source_path', i.source_path, 'source_lang', i.source_lang, 'out_path', i.out_path, 'state', i.state,
     'note', i.note, 'eligible_at', i.eligible_at, 'priority', i.priority, 'attempts', i.attempts,
     'first_seen', i.first_seen, 'updated_at', i.updated_at, 'started_at', i.started_at,
-    'finished_at', i.finished_at, 'held_until', i.held_until, 'node', i.node, 'crashes', i.crashes, 'series_id', i.series_id) END AS item_json
+    'finished_at', i.finished_at, 'held_until', i.held_until, 'node', i.node, 'crashes', i.crashes, 'series_id', i.series_id, 'inside_track', i.inside_track) END AS item_json
   FROM library l LEFT JOIN items i ON i.key = l.key`;
 
 function toEntry(r: EntryRow): Entry {

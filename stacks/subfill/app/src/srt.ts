@@ -217,3 +217,33 @@ export function checkAligned(source: Parsed, output: Parsed): string | null {
   }
   return null;
 }
+
+// An ASS vector drawing ("m 0 0 l 1920 0 ..."), which ffmpeg writes out as
+// text when it turns a styled track into SRT.
+const DRAWING = /^m(?:\s+(?:[mnlbspc]|-?\d+(?:\.\d+)?))+$/i;
+
+// A track pulled out of a video, made fit to translate: drawings left out,
+// and cues that repeat an earlier one's timing and words (styled tracks
+// stack copies of a line, often differing only in colour) kept once.
+// Renumbered when any go.
+export function cleanStyled(parsed: Parsed): { parsed: Parsed; drawings: number; copies: number } {
+  const seen = new Set<string>();
+  let drawings = 0;
+  let copies = 0;
+  const cues = parsed.cues.filter((c) => {
+    const words = c.lines.join(' ').replace(INNER_TAG, '').replace(/\s+/g, ' ').trim();
+    if (DRAWING.test(words) && /\d/.test(words)) {
+      drawings++;
+      return false;
+    }
+    const k = `${c.timing.trim()}\n${words}`;
+    if (seen.has(k)) {
+      copies++;
+      return false;
+    }
+    seen.add(k);
+    return true;
+  });
+  if (cues.length === parsed.cues.length) return { parsed, drawings, copies };
+  return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies };
+}

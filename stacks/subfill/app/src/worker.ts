@@ -9,9 +9,10 @@
 import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { seriesKey, type Bazarr, type Media, type Wanted } from './bazarr.ts';
+import { extractEmbedded, INSIDE_REASON, NoTextTrack, type InsideReason } from './embedded.ts';
 import { Unavailable } from './errors.ts';
 import { OllamaCrash } from './ollama.ts';
-import { checkAligned, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
+import { checkAligned, cleanStyled, markRtl, parseSrt, rebuild, segmentsOf, serializeSrt } from './srt.ts';
 import { EXCLUDED_NOTE, type Item, type State, type Store } from './store.ts';
 import { languageOf, translateAll, type Generate, type Language } from './translate.ts';
 
@@ -41,6 +42,19 @@ const HANDS_OFF: State[] = ['translating', 'failed', 'skipped', 'done'];
 // States whose row is dropped once Bazarr no longer wants Arabic for the item.
 const DROP_WHEN_FOUND: State[] = ['waiting', 'eligible', 'no_source', 'failed', 'skipped'];
 
+// inside_track for a look inside that found nothing: why, and the file's
+// change time, so a new file at the same path is looked at again.
+export function emptyInside(reason: InsideReason, ctime: number): string {
+  return `none:${reason}:${ctime}`;
+}
+
+// The reason a look inside this file (by its change time; null when the
+// video path changed) found nothing, or null if it has not looked.
+export function lookedInside(insideTrack: string | null, ctime: number | null): InsideReason | null {
+  const m = insideTrack?.match(/^none:(pictures|missing):(\d+)$/);
+  return m && ctime !== null && Number(m[2]) === ctime ? (m[1] as InsideReason) : null;
+}
+
 export function outPathFor(video: string, target: Language): string {
   const ext = path.extname(video);
   return `${video.slice(0, video.length - ext.length)}.${target.code}.${MARKER}.srt`;
@@ -52,13 +66,15 @@ export class Worker {
   private readonly store: Store;
   private readonly bazarr: Bazarr;
   private readonly generate: Generate;
+  private readonly extract: typeof extractEmbedded;
   private readonly cfg: Config;
   private readonly now: () => number;
 
-  constructor(opts: { store: Store; bazarr: Bazarr; generate: Generate; config: Config; now?: () => number }) {
+  constructor(opts: { store: Store; bazarr: Bazarr; generate: Generate; config: Config; now?: () => number; extract?: typeof extractEmbedded }) {
     this.store = opts.store;
     this.bazarr = opts.bazarr;
     this.generate = opts.generate;
+    this.extract = opts.extract ?? extractEmbedded;
     this.cfg = opts.config;
     this.now = opts.now ?? Date.now;
   }
@@ -124,14 +140,21 @@ export class Worker {
     }
   }
 
-  private async pickSource(media: Media): Promise<{ path: string; lang: string } | null> {
+  // A subtitle file beside the video first. Failing that, a track inside the
+  // video that Bazarr lists, unless a look inside this same file (same path
+  // and change time) already found nothing readable.
+  private async pickSource(media: Media, seenEmpty: InsideReason | null): Promise<{ path: string | null; lang: string; inside: boolean } | null> {
     for (const lang of this.cfg.sourceLanguages) {
       const candidates = media.subtitles
         .filter((s) => s.code2 === lang && s.path && !s.forced && s.path.toLowerCase().endsWith('.srt'))
         .sort((a, b) => Number(a.hi) - Number(b.hi));
       for (const c of candidates) {
-        if (c.path && this.inMedia(c.path) && (await this.exists(c.path))) return { path: c.path, lang };
+        if (c.path && this.inMedia(c.path) && (await this.exists(c.path))) return { path: c.path, lang, inside: false };
       }
+    }
+    if (seenEmpty) return null;
+    for (const lang of this.cfg.sourceLanguages) {
+      if (media.subtitles.some((s) => s.code2 === lang && !s.path && !s.forced)) return { path: null, lang, inside: true };
     }
     return null;
   }
@@ -174,19 +197,22 @@ export class Worker {
       ) {
         continue;
       }
-      const source = await this.pickSource(media);
-      let eligibleAt = this.now() + this.cfg.waitMs;
-      let note: string | null = null;
+      let ctime: number | null = null;
       try {
         // ctime, not mtime: moving or hard-linking the file into the library
         // sets it, so it is when the video arrived, whatever date the release
-        // itself carries.
-        eligibleAt = Math.floor((await stat(media.path)).ctimeMs) + this.cfg.waitMs;
+        // itself carries. A new file at the same path changes it too.
+        ctime = Math.floor((await stat(media.path)).ctimeMs);
       } catch {
-        note = 'video file not found';
+        // Left null: no_source below, "video file not found".
       }
+      const seenEmpty = row && ctime !== null ? lookedInside(row.inside_track, media.path === row.video_path ? ctime : null) : null;
+      // No video, nothing to take a source from.
+      const source = ctime === null ? null : await this.pickSource(media, seenEmpty);
+      const eligibleAt = (ctime ?? this.now()) + this.cfg.waitMs;
+      let note: string | null = ctime === null ? 'video file not found' : null;
       let state: State = !source || note ? 'no_source' : eligibleAt <= this.now() ? 'eligible' : 'waiting';
-      note ??= source ? null : 'no external subtitle to translate from';
+      note ??= source ? null : seenEmpty ? INSIDE_REASON[seenEmpty] : 'no subtitle beside the video or inside it to translate from';
       // A show or film the owner marked not to translate: set aside, new
       // episodes included, until the mark is lifted. Read now, after the
       // awaits above, so a mark set or lifted while this sync waited counts.
@@ -199,6 +225,9 @@ export class Worker {
         video_path: media.path,
         source_path: source?.path ?? null,
         source_lang: source?.lang ?? null,
+        // Kept while the file is the same, and through a sync that cannot see
+        // it at all: a look inside that found nothing stays found.
+        inside_track: source?.inside ? 'yes' : seenEmpty || ctime === null ? (row?.inside_track ?? null) : null,
         // An eligible row keeps its time: "translate now" and the retry delay set it.
         eligible_at: row?.state === 'eligible' ? row.eligible_at : eligibleAt,
         note,
@@ -308,7 +337,8 @@ export class Worker {
       await this.drop(item);
       return;
     }
-    if (!item.source_path || !this.inMedia(item.source_path) || !this.inMedia(out)) {
+    const inside = !item.source_path && item.inside_track === 'yes';
+    if (!(inside ? this.inMedia(item.video_path) : item.source_path && this.inMedia(item.source_path)) || !this.inMedia(out)) {
       throw new Error('the subtitle or video is outside the media folder');
     }
     // A file holding several episodes: the first one translated serves them all.
@@ -323,7 +353,36 @@ export class Worker {
       throw new Error(`${path.basename(out)} already exists and subfill did not write it`);
     }
 
-    const source = parseSrt(decode(await readFile(item.source_path)));
+    let from = item.source_lang ?? 'en';
+    let text: string;
+    if (inside) {
+      // The item's language first, then the others it may translate from.
+      const langs = [from, ...this.cfg.sourceLanguages.filter((l) => l !== from)];
+      try {
+        const got = await this.extract(item.video_path, langs);
+        text = got.srt;
+        from = got.lang;
+        this.store.log(item.key, `read the ${got.lang} subtitle inside the video (track ${got.stream.index}, ${got.stream.codec}${got.stream.title ? `, "${got.stream.title}"` : ''})`);
+      } catch (err) {
+        if (!(err instanceof NoTextTrack)) throw err;
+        // Nothing readable inside: not an attempt, and not offered again until
+        // the file changes (or the owner skips and un-skips it).
+        // A video gone since the look (replaced mid-run) gets 0: the next sync
+        // sees a different time and looks inside the new file.
+        const ctime = await stat(item.video_path).then((st) => Math.floor(st.ctimeMs), () => 0);
+        this.store.move(item.key, ['translating'], 'no_source', { attempts: item.attempts - 1, inside_track: emptyInside(err.reason, ctime), note: err.message });
+        this.store.log(item.key, err.message);
+        return;
+      }
+    } else {
+      text = decode(await readFile(item.source_path!));
+    }
+    let source = parseSrt(text);
+    if (inside) {
+      const { parsed, drawings, copies } = cleanStyled(source);
+      source = parsed;
+      if (drawings || copies) this.store.log(item.key, `left out ${copies} stacked copies of lines and ${drawings} drawings from the track`);
+    }
     if (!source.cues.length) throw new Error('the source subtitle has no cues');
     const segments = segmentsOf(source.cues);
     const startedAt = this.now();
@@ -332,7 +391,7 @@ export class Worker {
       segments.map((s) => s.body),
       node.generate,
       {
-        from: languageOf(item.source_lang ?? 'en'),
+        from: languageOf(from),
         to: target,
         batchSize: this.cfg.batchSize,
         onProgress: (done, total) => {
@@ -353,7 +412,7 @@ export class Worker {
     await writeFile(part, serializeSrt(result), 'utf8');
     await rename(part, out);
     const minutes = Math.round((this.now() - startedAt) / 60_000);
-    const untranslated = kept ? `, ${kept} left in ${languageOf(item.source_lang ?? 'en').name}` : '';
+    const untranslated = kept ? `, ${kept} left in ${languageOf(from).name}` : '';
     const note = `${source.cues.length} cues in ${minutes} min on the ${node.name}${untranslated}`;
     if (!this.store.move(item.key, ['translating'], 'done', { finished_at: this.now(), note, crashes: 0 })) {
       // The row changed under us, so nothing would ever clean this file up.
@@ -392,7 +451,8 @@ export class Worker {
         case 'skip':
           return this.store.move(key, ['waiting', 'eligible', 'failed', 'no_source'], 'skipped', { note: 'skipped by you' });
         case 'unskip':
-          return this.store.move(key, ['skipped'], 'waiting', { note: null, crashes: 0, eligible_at: this.now() });
+          // Also forgets a look inside that found nothing, so it is looked at again.
+          return this.store.move(key, ['skipped'], 'waiting', { note: null, crashes: 0, eligible_at: this.now(), inside_track: null });
         default:
           return false;
       }

@@ -10,8 +10,9 @@
 #
 # How it fits with Bazarr. Bazarr searches first, and subfill reads Bazarr's
 # wanted lists every SYNC_MINUTES. An episode or film whose Arabic is still
-# missing WAIT_HOURS after its video arrived, and which has an English .srt
-# beside it, is translated by TranslateGemma 12B in the ollama stack and saved
+# missing WAIT_HOURS after its video arrived, and which has an English subtitle
+# beside it or inside the video, is translated by TranslateGemma 12B in the
+# ollama stack and saved
 # as <video>.ar.machine.srt. Only the words change: index and timing lines go
 # back out byte for byte, and tags, positions, song markers and dialogue dashes
 # are put back where they were.
@@ -56,9 +57,16 @@
 # in the same database. A read that fails keeps the last copy, and the page
 # says how old it is.
 #
-# Nothing phones home. The app has no dependencies besides Node itself, which
-# has no telemetry or update check; it talks only to Bazarr, the two Ollamas,
-# the power client and its sign-in container. Ollama's cloud features are off.
+# The English to translate from is a subtitle file beside the video when there
+# is one. Otherwise it is the subtitle track inside the video (most .mkv files
+# carry one), pulled out by ffmpeg into memory: nothing is written beside the
+# video but the Arabic. Only text tracks can be read; a video whose track is a
+# picture (Blu-ray, DVD) is left as "nothing to translate from", with why.
+#
+# Nothing phones home. The app has no npm dependencies, only Node and Alpine's
+# ffmpeg, neither with telemetry or an update check; it talks only to Bazarr,
+# the two Ollamas, the power client and its sign-in container. Ollama's cloud
+# features are off.
 #
 # First start, on the mini:
 #   1. The model, once:  docker exec ollama ollama pull translategemma:12b

@@ -102,7 +102,7 @@ export function renderItem(v: View, key: string): string | null {
     ['Note', item.note],
     ['Node', item.node],
     ['Video', item.video_path],
-    ['Translated from', item.source_path],
+    ['Translated from', item.source_path ?? (item.inside_track === 'yes' ? 'the subtitle inside the video' : null)],
     ['Machine subtitle', item.out_path],
     [item.eligible_at > v.now ? 'Ready' : 'Ready since', ago(item.eligible_at, v.now)],
     ['Attempts', String(item.attempts)],

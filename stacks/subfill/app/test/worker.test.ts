@@ -39,7 +39,7 @@ test('Bazarr gets its wait first: a new video is waiting, not eligible', async (
   assert.equal(await worker.translateNext(), false);
 });
 
-test('items with Arabic, with no English, or with only a forced or embedded English are not translated', async () => {
+test('items with Arabic, with no English, or with only a forced English are not translated; English inside the video is', async () => {
   const root = mediaDir();
   const hasArabic = episode(root, 1, 'Arabic', { missing: [] });
   const noSource = { ...episode(root, 2, 'NoSource'), subtitles: [] };
@@ -48,7 +48,9 @@ test('items with Arabic, with no English, or with only a forced or embedded Engl
   const { store, worker } = setup([hasArabic, noSource, embedded, forced]);
   await worker.sync();
   assert.equal(store.get('episode:1'), undefined);
-  for (const k of ['episode:2', 'episode:3', 'episode:4']) assert.equal(store.get(k)!.state, 'no_source', k);
+  for (const k of ['episode:2', 'episode:4']) assert.equal(store.get(k)!.state, 'no_source', k);
+  assert.equal(store.get('episode:3')!.state, 'eligible');
+  assert.equal(store.get('episode:3')!.inside_track, 'yes');
 });
 
 test('a failed Bazarr read changes nothing', async () => {
