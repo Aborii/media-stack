@@ -15,7 +15,9 @@
 # ollama stack and saved
 # as <video>.ar.machine.srt. Only the words change: index and timing lines go
 # back out byte for byte, and tags, positions, song markers and dialogue dashes
-# are put back where they were.
+# are put back where they were. (A track from inside the video is cleaned
+# first: stacked copies and drawings left out, and a sign repeated frame by
+# frame joined into one line, so its timing is the joined line's.)
 #
 # Why ".machine" in the name. Jellyfin reads <video>.ar.machine.srt as an
 # Arabic track titled "machine", so it is plain which track is not a human one.

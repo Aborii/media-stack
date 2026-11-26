@@ -301,7 +301,8 @@ test('a sign shown frame by frame is one line: back-to-back repeats are joined, 
   assert.deepEqual(
     parsed.cues.map((c) => [c.index, c.timing, c.lines.join('|')]),
     [
-      ['1', '00:00:01,000 --> 00:00:01,200', '{\\an8}<font color="#fff">SHOP</font>'],
+      // The longest frame's look (the last one here, 50 ms) is kept.
+      ['1', '00:00:01,000 --> 00:00:01,200', '{\\an8}SHOP'],
       ['2', '00:00:01,000 --> 00:00:03,000', 'Dialogue in between.'],
       ['3', '00:00:05,000 --> 00:00:06,000', 'No!'],
       ['4', '00:00:06,500 --> 00:00:07,000', 'No!'],
@@ -337,4 +338,27 @@ test('the worker translates a frame-by-frame sign once and writes one line for i
   assert.equal(out.cues[0].timing, '00:00:01,000 --> 00:00:02,008');
   assert.equal(prompts.join('\n').split('TRAIN STATION').length - 1, 1);
   assert.ok(store.logFor('episode:1').some((l) => /joined 23 back-to-back repeats/.test(l.message)));
+});
+
+test('joining keeps a spoken line apart from a sign with the same words, takes the longest frame\'s look, and never swallows an earlier line', async () => {
+  const { parseSrt, cleanStyled } = await import('../src/srt.ts');
+  const cue = (n: number, from: string, to: string, text: string) => `${n}\n${from} --> ${to}\n${text}\n`;
+  const at = (srt: string) => cleanStyled(parseSrt(srt)).parsed.cues.map((c) => [c.timing, c.lines.join('|')]);
+  // A sign at the top, then the same name spoken at the bottom.
+  assert.deepEqual(at(cue(1, '00:00:01,000', '00:00:01,042', '{\\an8}Marley') + '\n' + cue(2, '00:00:01,050', '00:00:03,000', 'Marley')), [
+    ['00:00:01,000 --> 00:00:01,042', '{\\an8}Marley'],
+    ['00:00:01,050 --> 00:00:03,000', 'Marley'],
+  ]);
+  // A sign fading in: the settled (longest) frame's colour is kept.
+  const fade = [
+    cue(1, '00:00:01,000', '00:00:01,042', '<font color="#101010">SHOP</font>'),
+    cue(2, '00:00:01,042', '00:00:01,083', '<font color="#808080">SHOP</font>'),
+    cue(3, '00:00:01,083', '00:00:03,000', '<font color="#ffffff">SHOP</font>'),
+  ].join('\n');
+  assert.deepEqual(at(fade), [['00:00:01,000 --> 00:00:03,000', '<font color="#ffffff">SHOP</font>']]);
+  // Out of order: the earlier, separate line stays.
+  assert.equal(at(cue(1, '00:00:05,000', '00:00:06,000', 'Hey') + '\n' + cue(2, '00:00:01,000', '00:00:01,500', 'Hey')).length, 2);
+  // Exactly at the gap joins; just past it does not.
+  assert.equal(at(cue(1, '00:00:01,000', '00:00:02,000', 'Go') + '\n' + cue(2, '00:00:02,100', '00:00:03,000', 'Go')).length, 1);
+  assert.equal(at(cue(1, '00:00:01,000', '00:00:02,000', 'Go') + '\n' + cue(2, '00:00:02,101', '00:00:03,000', 'Go')).length, 2);
 });

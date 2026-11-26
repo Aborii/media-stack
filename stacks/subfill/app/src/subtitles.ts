@@ -172,5 +172,11 @@ export async function fileFor(item: Item, which: 'arabic' | 'original', deps: Su
   }
   const source = await loadSource(item, deps);
   if (source.text !== null && source.name) return { name: source.name, body: source.text };
-  return { name: `${base}.${source.lang}.srt`, body: serializeSrt(source.parsed) };
+  // Cleaned the way the Arabic beside it was, so the two match cue for cue.
+  const arabic = await loadTarget(item, deps).catch(() => null);
+  const parsed =
+    source.unmerged && arabic && source.parsed.cues.length !== arabic.cues.length && source.unmerged.cues.length === arabic.cues.length
+      ? source.unmerged
+      : source.parsed;
+  return { name: `${base}.${source.lang}.srt`, body: serializeSrt(parsed) };
 }

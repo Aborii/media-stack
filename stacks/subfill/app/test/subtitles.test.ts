@@ -290,3 +290,15 @@ test('an Arabic translated before repeats were joined still pairs line for line'
     assert.ok(pair.rows.every((r) => r.source && r.target), `${lines} lines all paired`);
   }
 });
+
+test('the original downloaded beside an older Arabic is cleaned the same way, cue for cue', async () => {
+  const f = files();
+  const frames = '1\n00:00:01,000 --> 00:00:01,042\nSIGN\n\n2\n00:00:01,042 --> 00:00:01,083\nSIGN\n\n3\n00:00:02,000 --> 00:00:03,000\nHello.\n';
+  writeFileSync(f.ar, '1\n00:00:01,000 --> 00:00:01,042\nلافتة\n\n2\n00:00:01,042 --> 00:00:01,083\nلافتة\n\n3\n00:00:02,000 --> 00:00:03,000\nمرحبا.\n');
+  writeFileSync(f.video, 'video older');
+  const extract: SubtitleDeps['extract'] = async () => ({ srt: frames, lang: 'en', stream: { index: 3, codec: 'ass', language: 'eng', title: '', forced: false, hi: false } });
+  const it = item({ video_path: f.video, inside_track: 'yes', out_path: f.ar });
+  assert.equal(parseSrt((await fileFor(it, 'original', deps(f.root, extract))).body).cues.length, 3);
+  writeFileSync(f.ar, '1\n00:00:01,000 --> 00:00:01,083\nلافتة\n\n2\n00:00:02,000 --> 00:00:03,000\nمرحبا.\n');
+  assert.equal(parseSrt((await fileFor(it, 'original', deps(f.root, extract))).body).cues.length, 2);
+});

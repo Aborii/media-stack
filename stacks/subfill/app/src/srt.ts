@@ -235,10 +235,12 @@ function toMs(t: string): number | null {
 //   - drawings left out;
 //   - cues that repeat an earlier one's timing and words kept once (styled
 //     tracks stack copies of a line, often differing only in colour);
-//   - with `merge`, a cue whose words were already showing, or ended at most
-//     MERGE_GAP_MS before, extends that cue instead (a sign animated frame by
-//     frame is one line, translated once). Off only to rebuild how a track
-//     was cleaned before merging, for translations made then.
+//   - with `merge`, a cue whose words, at the same screen position, were
+//     already showing or ended at most MERGE_GAP_MS before, extends that cue
+//     instead (a sign animated frame by frame is one line, translated once).
+//     The joined cue takes the look (colour, tags) of its longest frame. Off
+//     only to rebuild how a track was cleaned before merging, for
+//     translations made then.
 // Renumbered when any go.
 export function cleanStyled(
   parsed: Parsed,
@@ -247,7 +249,7 @@ export function cleanStyled(
   const merge = opts.merge ?? true;
   const seen = new Set<string>();
   // The last kept cue for some words, and when it ends.
-  const open = new Map<string, { cue: Cue; end: number }>();
+  const open = new Map<string, { cue: Cue; start: number; end: number; longest: number }>();
   let drawings = 0;
   let copies = 0;
   let merged = 0;
@@ -268,18 +270,26 @@ export function cleanStyled(
     const start = toMs(startText ?? '');
     const end = toMs(endText ?? '');
     if (merge && start !== null && end !== null) {
-      const prev = open.get(words);
-      if (prev && start <= prev.end + MERGE_GAP_MS) {
+      // The same words at another position (a sign at the top, the spoken
+      // line at the bottom) are another line.
+      const position = c.lines.join('').match(/\{\\an(\d)\}/)?.[1] ?? '';
+      const key = `${position}|${words}`;
+      const prev = open.get(key);
+      if (prev && start <= prev.end + MERGE_GAP_MS && start >= prev.start - MERGE_GAP_MS) {
         if (end > prev.end) {
           prev.end = end;
           prev.cue.timing = `${prev.cue.timing.split('-->')[0].trim()} --> ${endText}`;
+        }
+        if (end - start > prev.longest) {
+          prev.longest = end - start;
+          prev.cue.lines = c.lines;
         }
         merged++;
         continue;
       }
       const kept = { ...c };
       cues.push(kept);
-      open.set(words, { cue: kept, end });
+      open.set(key, { cue: kept, start, end, longest: end - start });
       continue;
     }
     cues.push(c);
