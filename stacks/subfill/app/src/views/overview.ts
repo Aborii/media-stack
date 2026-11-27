@@ -30,6 +30,27 @@ const NODE_LABEL: Record<NodeState, string> = {
   outside_hours: 'outside its hours',
 };
 
+// An offline node with a power reading (the PC): is the machine off, or only
+// its model? One line for the card, a dot colour, and whether to offer Turn on.
+function offlineReading(n: NodeStatus, now: number): { label: string; dot: string; turnOn: boolean; note: string } | null {
+  const p = n.power;
+  if (n.state !== 'offline' || !p) return null;
+  const asked = p.checkedAt ? ` (checked ${ago(p.checkedAt, now)})` : '';
+  if (p.error && !p.pc) return { label: 'offline, and the power client cannot be asked', dot: 'offline', turnOn: false, note: esc(p.error) };
+  switch (p.pc) {
+    case 'on':
+      return { label: 'PC is on, but its subtitle model is not running', dot: 'model-down', turnOn: false, note: `Start the subtitle Ollama on the PC${asked}.` };
+    case 'starting':
+      return { label: 'PC is starting', dot: 'starting', turnOn: false, note: `Its model should answer in a minute or two${asked}.` };
+    case 'asleep':
+      return { label: 'PC is asleep', dot: 'offline', turnOn: p.canTurnOn, note: asked.trim() };
+    case 'off':
+      return { label: 'PC is off', dot: 'offline', turnOn: p.canTurnOn, note: asked.trim() };
+    default:
+      return { label: `cannot tell if the PC is on (${esc(p.pc ?? 'not checked yet')})`, dot: 'offline', turnOn: p.canTurnOn, note: asked.trim() };
+  }
+}
+
 // `back` is the page the Pause and Resume buttons return to.
 export function renderNodes(v: View, back = '/'): string {
   const held = v.store.heldNow(v.now);
@@ -39,8 +60,9 @@ export function renderNodes(v: View, back = '/'): string {
       const doing = n.current
         ? `<div class="doing"><b>${itemLink({ key: n.current.key, title: n.current.title })}</b><div class="meter"><i style="width:${n.current.total ? Math.round((n.current.done / n.current.total) * 100) : 0}%"></i></div><span class="dim">${n.current.done} of ${n.current.total} lines &middot; started ${ago(n.current.startedAt, v.now)}${eta(n, v.now)}</span></div>`
         : '';
+      const reading = offlineReading(n, v.now);
       const facts = [
-        n.state === 'offline' && n.problem ? esc(n.problem) : '',
+        n.state === 'offline' && n.problem && !reading ? esc(n.problem) : '',
         n.lastSeen ? `last answered ${ago(n.lastSeen, v.now)}` : n.state === 'offline' ? 'has never answered' : '',
         n.lease?.held ? 'keeping the PC awake while it works' : '',
         n.name !== 'mini' && held ? `${esc(held.title)} is kept for it until ${clock(held.held_until ?? 0)}` : '',
@@ -49,9 +71,11 @@ export function renderNodes(v: View, back = '/'): string {
       const pace = w ? `<div class="meta">This week: ${w.count} done, about ${span(Math.round(w.avgSeconds))} each</div>` : '';
       const problem = n.lease?.error ? `<div class="bad" style="margin:10px 0 0">${esc(n.lease.error)}</div>` : '';
       const toggle = n.paused ? button(n.name, 'resume-node', 'Resume', back, 'primary') : button(n.name, 'pause-node', 'Pause', back);
+      const turnOn = reading?.turnOn ? button(n.name, 'pc-turn-on', 'Turn on', back, 'primary') : '';
       // A paused node still finishes the item it is on.
-      const label = n.paused && n.state === 'working' ? 'pauses after this item' : NODE_LABEL[n.state];
-      return `<div class="card node"><div class="row" style="justify-content:space-between"><h3><span class="dot ${n.state}"></span>${esc(n.label)}</h3>${toggle}</div><div class="meta">${esc(label)}${facts.length ? ` &middot; ${facts.join(' &middot; ')}` : ''}</div>${pace}${problem}${doing}</div>`;
+      const label = reading ? reading.label : n.paused && n.state === 'working' ? 'pauses after this item' : NODE_LABEL[n.state];
+      const why = reading ? `<div class="meta">${reading.note ? `${reading.note} &middot; ` : ''}${esc(n.problem ?? '')}</div>` : '';
+      return `<div class="card node"><div class="row" style="justify-content:space-between"><h3><span class="dot ${reading?.dot ?? n.state}"></span>${esc(n.label)}</h3><span class="acts">${turnOn}${toggle}</span></div><div class="meta">${reading ? `<b class="state-line">${esc(label)}</b>` : esc(label)}${facts.length ? ` &middot; ${facts.join(' &middot; ')}` : ''}</div>${why}${pace}${problem}${doing}</div>`;
     })
     .join('');
 }

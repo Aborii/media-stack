@@ -24,6 +24,7 @@
 // runs out of work: then the PC was woken for this, and may sleep after it.
 import { inHours, type Hours } from './hours.ts';
 import type { Lease, LeaseState } from './lease.ts';
+import type { PcPower, PowerState } from './power.ts';
 import { OllamaCrash } from './ollama.ts';
 import type { Store } from './store.ts';
 import type { Generate } from './translate.ts';
@@ -49,6 +50,8 @@ export type NodeStatus = {
   lease: LeaseState | null;
   // When its Ollama last answered, across restarts; null if it never has.
   lastSeen: number | null;
+  // The PC's own power, from the power client (the PC node only).
+  power?: PowerState | null;
 };
 
 export type Model = { problem(): Promise<string | null>; generate: Generate };
@@ -60,6 +63,7 @@ export class NodeRunner {
   private readonly worker: Worker;
   private readonly store: Store;
   private readonly lease: Lease | null;
+  private readonly power: PcPower | null;
   private readonly hours: Hours;
   private readonly takesHeld: boolean;
   private readonly waitMs: { idle: number; offline: number; paused: number };
@@ -80,6 +84,7 @@ export class NodeRunner {
     worker: Worker;
     store: Store;
     lease?: Lease | null;
+    power?: PcPower | null;
     hours?: Hours;
     takesHeld?: boolean;
     waitMs?: { idle: number; offline: number; paused: number };
@@ -91,6 +96,7 @@ export class NodeRunner {
     this.worker = opts.worker;
     this.store = opts.store;
     this.lease = opts.lease ?? null;
+    this.power = opts.power ?? null;
     this.hours = opts.hours ?? null;
     this.takesHeld = opts.takesHeld ?? false;
     this.waitMs = opts.waitMs ?? { idle: 60_000, offline: 30_000, paused: 15_000 };
@@ -131,6 +137,7 @@ export class NodeRunner {
       current: this.worker.currentOf(this.name),
       lease: this.lease?.state ?? null,
       lastSeen: this.lastSeen,
+      power: this.power?.state ?? null,
     };
   }
 
@@ -156,6 +163,8 @@ export class NodeRunner {
     this.problem = await this.model.problem();
     if (this.problem) {
       this.state = 'offline';
+      // Is the machine off, or only its model? The page says which.
+      await this.power?.refresh();
       await this.letGo();
       return this.waitMs.offline;
     }

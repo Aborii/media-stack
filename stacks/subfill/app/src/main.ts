@@ -12,6 +12,7 @@ import { readSettings } from './config.ts';
 import { Lease } from './lease.ts';
 import { LibraryStore } from './library.ts';
 import { NodeRunner } from './nodes.ts';
+import { PcPower } from './power.ts';
 import { Ollama } from './ollama.ts';
 import { Store } from './store.ts';
 import { ARABIC } from './translate.ts';
@@ -56,11 +57,13 @@ const nodes: NodeRunner[] = [
     hours: settings.activeHours,
   }),
 ];
+let pcPower: PcPower | null = null;
 if (settings.pcOllamaUrl) {
   // A batch takes seconds on the GPU, so a PC that has not answered in three
   // minutes has gone to sleep, not slowed down.
   const pc = new Ollama({ url: settings.pcOllamaUrl, model: settings.model, timeoutMs: 3 * 60_000 });
   const lease = settings.powerClientToken ? new Lease({ url: settings.powerClientUrl, token: settings.powerClientToken }) : null;
+  pcPower = settings.powerClientToken ? new PcPower({ url: settings.powerClientUrl, token: settings.powerClientToken }) : null;
   if (!lease) console.log('no POWER_CLIENT_TOKEN: the PC may hibernate in the middle of an episode, which then starts again later');
   nodes.push(
     new NodeRunner({
@@ -70,6 +73,7 @@ if (settings.pcOllamaUrl) {
       worker,
       store,
       lease,
+      power: pcPower,
       takesHeld: true,
     }),
   );
@@ -114,6 +118,14 @@ const server = startWeb(
     loginUrl: settings.loginUrl,
     apiToken: settings.apiToken,
     status: () => ({ ...status, nodes: nodes.map((n) => n.status()), model: settings.model }),
+    // The PC card's Turn on: wakes the PC through the power client, and marks
+    // the wake as subfill's own, so the PC node holds its lease while it works.
+    turnOnPc: async () => {
+      if (!pcPower) return 'there is no PC node, or no power client token';
+      const problem = await pcPower.turnOn();
+      if (!problem) worker.markPcWoken(30);
+      return problem;
+    },
     setNodePaused: (name, paused) => {
       const node = nodes.find((n) => n.name === name);
       if (!node) return `no node called ${name}`;

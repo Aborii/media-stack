@@ -3,8 +3,9 @@
 // episode, and dropped as soon as the PC has nothing left to do.
 //
 // It never asks for a wake (no `wake: true`). Waking the PC is the owner's
-// call, made through Malak; this only keeps an awake PC from sleeping while it
-// works. pc-power still decides when to sleep once the lease is gone.
+// call, made through Malak or the Turn on button (power.ts); this only keeps
+// an awake PC from sleeping while it works. pc-power still decides when to
+// sleep once the lease is gone.
 //
 // The power client forgets a registration not renewed within 180 s, so it is
 // renewed every RENEW_MS while held. A failed call is logged and shown on the
