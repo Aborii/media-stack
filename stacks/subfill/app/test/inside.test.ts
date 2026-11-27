@@ -398,3 +398,23 @@ test('Translate again puts a done item back in the queue, and its new Arabic rep
   assert.match(worker.act('episode:1', 'again') ?? '', /marked not to translate/);
   assert.equal(store.get('episode:1')!.state, 'done');
 });
+
+test('a drawing behind an ASS comment marker like {=2} is still caught, and the marker never reaches the screen', async () => {
+  const { parseSrt, cleanStyled } = await import('../src/srt.ts');
+  // As Alpine's ffmpeg writes a typeset Dr. STONE track.
+  const srt = [
+    '1\n00:00:01,000 --> 00:00:02,000\n<font size="50">{\\an5}{=2}<font color="#261309">m -320 -49 l 330 -49 330 42 -320 42</font></font>\n',
+    '2\n00:00:01,000 --> 00:00:02,000\n<font size="50">{\\an5}{=7}<font color="#26120c">m 0.5 -4 l 601.5 -4 601.5 88 0.5 88</font></font>\n',
+    '3\n00:00:03,000 --> 00:00:04,000\n{\\an8}{=3}Super Rare\n',
+    '4\n00:00:05,000 --> 00:00:06,000\nHello {note to self} there.\n',
+  ].join('\n');
+  const { parsed, drawings } = cleanStyled(parseSrt(srt));
+  assert.equal(drawings, 2);
+  assert.deepEqual(
+    parsed.cues.map((c) => c.lines.join('|')),
+    ['{\\an8}Super Rare', 'Hello  there.'],
+  );
+  // A track with no comments still comes back as it was.
+  const plain = parseSrt('1\n00:00:01,000 --> 00:00:02,000\n{\\an8}Sign\n');
+  assert.equal(cleanStyled(plain).parsed, plain);
+});
