@@ -105,7 +105,7 @@ function upNext(v: View, items: Item[]): string {
   return `<ol class="list">${items
     .map(
       (i, n) =>
-        `<li><span class="rank">${n + 1}</span><span class="grow">${itemLink(i)}${i.held_until && i.held_until > v.now ? ' <span class="badge s-ready">kept for the PC</span>' : ''}${i.priority ? ' <span class="badge s-translating">translate now</span>' : ''}</span></li>`,
+        `<li><span class="rank">${n + 1}</span><span class="grow">${itemLink(i)}${i.held_until && i.held_until > v.now ? ' <span class="badge s-ready">kept for the PC</span>' : ''}</span></li>`,
     )
     .join('')}</ol>`;
 }

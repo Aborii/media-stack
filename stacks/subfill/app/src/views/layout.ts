@@ -285,6 +285,8 @@ td a{color:var(--text);font-weight:500} td a:hover{color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff} .btn.primary:hover{background:var(--accent2)}
 .acts{display:inline-flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 form.inline{display:inline}
+.movers{display:inline-flex;gap:3px} .btn.mv,.btn.ghost{width:28px;padding:3px 0;text-align:center;font-size:14px;line-height:18px}
+.btn.ghost{visibility:hidden}
 a.btn{display:inline-block} a.btn:hover{text-decoration:none}
 table.subs td{vertical-align:top;line-height:1.55} table.subs td:nth-child(3),table.subs td:nth-child(4){width:46%}
 table.subs td.ar{font-size:15px;text-align:right;font-family:"Noto Naskh Arabic","Segoe UI","Geeza Pro",var(--font)}

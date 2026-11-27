@@ -54,6 +54,7 @@ const server = startWeb(
       releaseHolds: () => void released++,
       markPcWoken: (minutes: number) => void woken.push(minutes),
       exclude: (key: string, on: boolean, keys: string[]) => (marks.push([key, on, keys]), null),
+      showFirst: (key: string, keys: string[]) => (marks.push([key, true, keys]), key === 'series:9' ? 'nothing in this show is waiting to be translated' : null),
     },
     status: () => status,
     setNodePaused: (name: string, p: boolean) => (paused.push([name, p]), name === 'nope' ? 'no node called nope' : null),
@@ -395,5 +396,24 @@ test('the shows header counts what the All filter lists, without the marked show
     assert.match(r.body, /Not translated<span class="c">1</);
   } finally {
     store.setExcluded('series:8', false, []);
+  }
+});
+
+test('the queue offers arrows to move each ready item, and a show page offers Translate this show now', async () => {
+  store.insert({ key: 'episode:2', kind: 'episode', bazarr_id: 2, title: 'Second', video_path: '/data/v2.mkv', source_path: null, source_lang: null, out_path: null, state: 'eligible', note: null, eligible_at: 0 });
+  store.insert({ key: 'episode:3', kind: 'episode', bazarr_id: 3, title: 'Third', video_path: '/data/v3.mkv', source_path: null, source_lang: null, out_path: null, state: 'eligible', note: null, eligible_at: 0 });
+  try {
+    const q = await call('/queue', { cookie: 'subfill_session=good' });
+    assert.match(q.body, /name="op" value="down"><input type="hidden" name="back" value="\/queue"><button class="btn mv" title="One down"/);
+    assert.match(q.body, /<span class="btn ghost" aria-hidden="true">/);
+    const show = await call('/show?id=7', { cookie: 'subfill_session=good' });
+    assert.match(show.body, /value="series:7"><input type="hidden" name="op" value="show-now">/);
+    const r = await call('/action', { method: 'POST', cookie: 'subfill_session=good', body: 'key=series%3A7&op=show-now&back=%2Fshow%3Fid%3D7' });
+    assert.equal(r.status, 303);
+    assert.deepEqual(marks.at(-1), ['series:7', true, ['episode:1', 'episode:2']]);
+    assert.equal((await call('/action', { method: 'POST', cookie: 'subfill_session=good', body: 'key=series%3A9&op=show-now' })).status, 409);
+  } finally {
+    store.remove('episode:2');
+    store.remove('episode:3');
   }
 });

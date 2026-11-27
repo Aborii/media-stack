@@ -291,6 +291,76 @@ export class Store {
       .all(now, now, limit) as Item[];
   }
 
+  // The ready items the queue page shows, in their order, for moving by hand.
+  private readyOrder(now: number): { key: string; priority: number }[] {
+    return this.db
+      .prepare(
+        `SELECT key, priority FROM items WHERE state = 'eligible' AND eligible_at <= ?
+           AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
+           AND NOT ${MARKED} ORDER BY ${QUEUE_ORDER}`,
+      )
+      .all(now, now) as { key: string; priority: number }[];
+  }
+
+  // Moves a ready item by hand: to the top, one up, one down, or to the
+  // bottom. The order is the priority (higher first), so the items from the
+  // top down to where it lands are renumbered in their new order, above
+  // every item after them; the rest keep theirs. An item held for the PC
+  // stays first whatever its priority. False when the item is not ready.
+  place(key: string, where: 'top' | 'up' | 'down' | 'bottom', now: number): boolean {
+    this.db.exec('BEGIN');
+    try {
+      const order = this.readyOrder(now);
+      const from = order.findIndex((r) => r.key === key);
+      if (from < 0) {
+        this.db.exec('ROLLBACK');
+        return false;
+      }
+      const to = where === 'top' ? 0 : where === 'up' ? Math.max(0, from - 1) : where === 'down' ? Math.min(order.length - 1, from + 1) : order.length - 1;
+      const [moved] = order.splice(from, 1);
+      order.splice(to, 0, moved);
+      const set = this.db.prepare('UPDATE items SET priority = ?, updated_at = ? WHERE key = ?');
+      if (where === 'bottom') {
+        // Below every other ready item, without renumbering them all.
+        const lowest = Math.min(0, ...order.slice(0, -1).map((r) => r.priority));
+        set.run(lowest - 1, this.now(), key);
+      } else {
+        const head = order.slice(0, Math.max(from, to) + 1);
+        const rest = order.slice(head.length);
+        const base = Math.max(0, ...rest.map((r) => r.priority)) + 1;
+        head.forEach((r, i) => set.run(base + head.length - 1 - i, this.now(), r.key));
+      }
+      this.db.exec('COMMIT');
+      return true;
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
+  // Puts these items first, in this order: the ones ready or waiting for
+  // Bazarr become ready now, a failed one starts over, a skipped or done one
+  // is left as it is. Returns the keys it moved.
+  putFirst(keys: string[], now: number): string[] {
+    this.db.exec('BEGIN');
+    try {
+      const top = Math.max(0, ...this.readyOrder(now).map((r) => r.priority));
+      const take = this.db.prepare(
+        `UPDATE items SET state = 'eligible', priority = ?, eligible_at = ?, held_until = NULL,
+           attempts = CASE WHEN state = 'failed' THEN 0 ELSE attempts END,
+           crashes = CASE WHEN state = 'failed' THEN 0 ELSE crashes END,
+           note = CASE WHEN state = 'failed' THEN NULL ELSE note END, updated_at = ?
+         WHERE key = ? AND state IN ('waiting', 'eligible', 'failed') AND NOT ${MARKED}`,
+      );
+      const moved = keys.filter((k, i) => Number(take.run(top + keys.length - i, now, this.now(), k).changes) === 1);
+      this.db.exec('COMMIT');
+      return moved;
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
   // Items in a state, the most recently changed first.
   inState(state: State, limit: number): Item[] {
     return this.db.prepare('SELECT * FROM items WHERE state = ? ORDER BY updated_at DESC LIMIT ?').all(state, limit) as Item[];

@@ -258,9 +258,11 @@ export class LibraryStore {
     return out;
   }
 
-  // A show's episodes, for marking them all at once.
+  // A show's episodes in episode order, for marking or queueing them all at once.
   episodeKeys(showId: number): string[] {
-    return (this.db.prepare(`SELECT key FROM library WHERE show_id = ? AND kind = 'episode'`).all(showId) as { key: string }[]).map((r) => r.key);
+    return (
+      this.db.prepare(`SELECT key FROM library WHERE show_id = ? AND kind = 'episode' ORDER BY season, episode`).all(showId) as { key: string }[]
+    ).map((r) => r.key);
   }
 
   // The library entry behind an item, for its page: which show it is in.

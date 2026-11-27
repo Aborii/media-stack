@@ -33,7 +33,7 @@ export type { Status };
 export type WebDeps = {
   store: Store;
   library: LibraryStore;
-  worker: Pick<Worker, 'act' | 'exclude' | 'holdForPc' | 'releaseHolds' | 'markPcWoken'>;
+  worker: Pick<Worker, 'act' | 'exclude' | 'showFirst' | 'holdForPc' | 'releaseHolds' | 'markPcWoken'>;
   status: () => Status;
   // Pauses or resumes a node by name; returns a problem, or null.
   setNodePaused: (name: string, paused: boolean) => string | null;
@@ -207,7 +207,9 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
             ? deps.setNodePaused(key, op === 'pause-node')
             : op === 'exclude' || op === 'include'
               ? deps.worker.exclude(key, op === 'exclude', itemsOf(key))
-              : deps.worker.act(key, op);
+              : op === 'show-now'
+                ? deps.worker.showFirst(key, itemsOf(key))
+                : deps.worker.act(key, op);
         if (problem) return send(res, 409, problemPage(problem, safeBack(form.get('back'))));
         return send(res, 303, '', { location: safeBack(form.get('back')) });
       }
