@@ -39,6 +39,8 @@ export type WebDeps = {
   status: () => Status;
   // Pauses or resumes a node by name; returns a problem, or null.
   setNodePaused: (name: string, paused: boolean) => string | null;
+  // Turns the PC on through the power client; returns a problem, or null.
+  turnOnPc?: () => Promise<string | null>;
   loginUrl: string;
   // Where to read subtitles from, for the subtitles page; off without it.
   subtitles?: SubtitleDeps;
@@ -205,7 +207,11 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
         const key = form.get('key') ?? '';
         const op = form.get('op') ?? '';
         const problem =
-          op === 'pause-node' || op === 'resume-node'
+          op === 'pc-turn-on'
+            ? deps.turnOnPc
+              ? await deps.turnOnPc()
+              : 'turning the PC on is not set up'
+            : op === 'pause-node' || op === 'resume-node'
             ? deps.setNodePaused(key, op === 'pause-node')
             : op === 'exclude' || op === 'include'
               ? deps.worker.exclude(key, op === 'exclude', itemsOf(key))

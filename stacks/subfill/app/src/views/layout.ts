@@ -197,7 +197,10 @@ export function renderSideNodes(v: View): string {
   return v.status.nodes
     .map((n) => {
       const pct = n.current?.total ? Math.round((n.current.done / n.current.total) * 100) : null;
-      return `<div class="sn"><span class="dot ${n.state}"></span><span class="sn-name">${esc(n.label)}</span><span class="sn-state">${pct !== null ? `${pct}%` : esc(n.paused && n.state === 'working' ? 'pausing' : NODE_SHORT[n.state])}</span></div>`;
+      // Offline with a power reading: say what is off, the PC or only its model.
+      const power = n.state === 'offline' && n.power?.pc ? ({ on: ['model off', 'model-down'], starting: ['starting', 'starting'], asleep: ['asleep', 'offline'], off: ['off', 'offline'] } as Record<string, [string, string]>)[n.power.pc] : undefined;
+      const word = pct !== null ? `${pct}%` : power ? power[0] : n.paused && n.state === 'working' ? 'pausing' : NODE_SHORT[n.state];
+      return `<div class="sn"><span class="dot ${power ? power[1] : n.state}"></span><span class="sn-name">${esc(n.label)}</span><span class="sn-state">${esc(word)}</span></div>`;
     })
     .join('');
 }
@@ -245,7 +248,8 @@ h2 a{font-size:12.5px;font-weight:500;margin-left:auto}
 .node h3{margin:0;font-size:14px;font-weight:600;display:flex;align-items:center}
 .node .meta{color:var(--muted);font-size:12.5px;margin-top:4px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;background:var(--off);flex:none}
-.dot.working{background:var(--accent);animation:pulse 1.8s infinite} .dot.idle{background:var(--ok)} .dot.paused,.dot.outside_hours{background:var(--warn)} .dot.offline{background:var(--faint)}
+.dot.working{background:var(--accent);animation:pulse 1.8s infinite} .dot.idle{background:var(--ok)} .dot.paused,.dot.outside_hours{background:var(--warn)} .dot.offline{background:var(--faint)} .dot.model-down{background:var(--warn)} .dot.starting{background:var(--accent);animation:pulse 1.8s infinite}
+.state-line{color:var(--text);font-weight:600}
 @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
 .doing{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)} .doing a{color:var(--text);font-weight:600}
 .meter{height:6px;border-radius:999px;background:var(--card2);overflow:hidden;margin:8px 0 6px} .meter i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .6s}

@@ -417,3 +417,10 @@ test('the queue offers arrows to move each ready item, and a show page offers Tr
     store.remove('episode:3');
   }
 });
+
+test('the Turn on button wakes the PC through the page, and a refusal shows why', async () => {
+  // This page's deps have no turnOnPc: the press says it is not set up.
+  const r = await call('/action', { method: 'POST', cookie: 'subfill_session=good', body: 'key=pc&op=pc-turn-on&back=%2F' });
+  assert.equal(r.status, 409);
+  assert.match(r.body, /not set up/);
+});
