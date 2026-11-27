@@ -70,3 +70,12 @@ test('Translate this show now refuses a marked show, or one with nothing to do; 
   assert.match(worker.showFirst('series:7', ['episode:1']) ?? '', /marked not to translate/);
   assert.equal(worker.act('episode:3', 'bottom'), null);
 });
+
+test('the arrows move within the list the page shows, skipping an episode hidden behind a shared video', () => {
+  const s = queueOf([['a', 50], ['b', 40], ['c', 30]]);
+  s.insert({ key: 'busy', kind: 'episode', bazarr_id: 0, title: 'busy', video_path: '/v/b', source_path: null, source_lang: null, out_path: null, state: 'translating', note: null, eligible_at: 0 });
+  // b shares its video with the one being translated: hidden from the page.
+  assert.deepEqual(order(s), ['a', 'c']);
+  s.place('c', 'up', 10_000);
+  assert.deepEqual(order(s), ['c', 'a']);
+});

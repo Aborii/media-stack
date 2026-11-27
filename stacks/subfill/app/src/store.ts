@@ -291,10 +291,14 @@ export class Store {
       .all(now, now, limit) as Item[];
   }
 
-  // Every ready item the nodes may take, in their order, for moving by hand.
+  // The ready items the queue page shows, in their order, for moving by hand.
   private readyOrder(now: number): { key: string; priority: number }[] {
     return this.db
-      .prepare(`SELECT key, priority FROM items WHERE state = 'eligible' AND eligible_at <= ? AND NOT ${MARKED} ORDER BY ${QUEUE_ORDER}`)
+      .prepare(
+        `SELECT key, priority FROM items WHERE state = 'eligible' AND eligible_at <= ?
+           AND video_path NOT IN (SELECT video_path FROM items WHERE state = 'translating')
+           AND NOT ${MARKED} ORDER BY ${QUEUE_ORDER}`,
+      )
       .all(now, now) as { key: string; priority: number }[];
   }
 
