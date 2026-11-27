@@ -10,6 +10,7 @@
 export type Generate = (prompt: string) => Promise<string>;
 
 // `rtl`: written right to left, so its subtitle lines get direction marks (srt.ts markRtl).
+import { ModelLooped } from './errors.ts';
 export type Language = { name: string; code: string; rtl?: boolean };
 
 export const ARABIC: Language = { name: 'Arabic', code: 'ar', rtl: true };
@@ -100,10 +101,20 @@ export async function translateAll(
   let done = 0;
   let kept = 0;
 
+  // An answer, or null when the model looped on this text.
+  async function ask(prompt: string): Promise<string | null> {
+    try {
+      return await generate(prompt);
+    } catch (err) {
+      if (err instanceof ModelLooped) return null;
+      throw err;
+    }
+  }
+
   async function run(start: number, end: number): Promise<void> {
     const slice = bodies.slice(start, end);
     if (slice.length === 1) {
-      const reply = (await generate(promptFor(opts.from, opts.to, `1. ${slice[0]}`))).trim();
+      const reply = ((await ask(promptFor(opts.from, opts.to, `1. ${slice[0]}`))) ?? '').trim();
       // One line in, one line out: a stray blank line would end the cue early.
       const text = (parseNumbered(reply, 1)?.[0] ?? reply.replace(NUMBERED, '$2')).replace(/\s+/g, ' ').trim();
       if (believable(slice[0], text, opts.to)) {
@@ -115,8 +126,8 @@ export async function translateAll(
       }
     } else {
       const input = slice.map((b, k) => `${k + 1}. ${b}`).join('\n');
-      const reply = await generate(promptFor(opts.from, opts.to, input));
-      const parts = parseNumbered(reply, slice.length);
+      const reply = await ask(promptFor(opts.from, opts.to, input));
+      const parts = reply === null ? null : parseNumbered(reply, slice.length);
       if (!parts || parts.some((p, k) => !believable(slice[k], p, opts.to))) {
         const mid = start + Math.ceil(slice.length / 2);
         await run(start, mid);

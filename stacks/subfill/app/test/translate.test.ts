@@ -90,3 +90,34 @@ test('languageOf names the common ones and falls back to the code', () => {
   assert.equal(languageOf('fr').name, 'French');
   assert.equal(languageOf('xx').name, 'xx');
 });
+
+test('a line the model loops on is kept in English, and the rest of its batch is still translated', async () => {
+  const { ModelLooped } = await import('../src/errors.ts');
+  const calls: string[] = [];
+  // Loops on any prompt holding the song line, as Ollama does with "token repeat limit reached".
+  const generate = async (prompt: string) => {
+    calls.push(prompt);
+    if (prompt.includes('Sasageyo')) throw new ModelLooped('Ollama answered 500: {"error":"prediction aborted, token repeat limit reached"}');
+    const text = prompt.split('\n\n\n')[1];
+    return text.split('\n').map((l) => l.replace(/^(\d+)\. (.*)$/, '$1. ترجمة $2')).join('\n');
+  };
+  const bodies = Array.from({ length: 40 }, (_, i) => (i === 17 ? 'Sasageyo sasageyo' : `Line ${i}`));
+  const { texts, kept } = await translateAll(bodies, generate, { from: languageOf('en'), to: ARABIC, batchSize: 10, onProgress: () => undefined });
+  assert.equal(kept, 1);
+  assert.equal(texts[17], 'Sasageyo sasageyo');
+  assert.equal(texts[16], 'ترجمة Line 16');
+  assert.equal(texts[39], 'ترجمة Line 39');
+  // Split down only around the looping line: far fewer calls than one per line.
+  assert.ok(calls.length < 15, String(calls.length));
+});
+
+test('Ollama\'s "token repeat limit reached" is told apart from other errors and from a crash', async () => {
+  const { Ollama, OllamaCrash, OllamaError } = await import('../src/ollama.ts');
+  const { ModelLooped } = await import('../src/errors.ts');
+  const answer = (status: number, error: string) =>
+    (async () => new Response(JSON.stringify({ error }), { status })) as unknown as typeof fetch;
+  const call = (f: typeof fetch) => new Ollama({ url: 'http://ollama:11434', model: 'm', fetcher: f }).generate('x');
+  await assert.rejects(call(answer(500, 'prediction aborted, token repeat limit reached')), ModelLooped);
+  await assert.rejects(call(answer(500, 'model runner has unexpectedly stopped')), OllamaCrash);
+  await assert.rejects(call(answer(400, 'bad request')), OllamaError);
+});
