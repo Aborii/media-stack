@@ -11,6 +11,8 @@ export type PowerState = {
   canTurnOn: boolean;
   checkedAt: number | null;
   error: string | null;
+  // Why the power client's last wake gave up, if it did.
+  wakeError?: string | null;
 };
 
 export class PcPower {
@@ -37,13 +39,18 @@ export class PcPower {
     try {
       const status = await this.get('/status');
       if (!status.ok) throw new Error(`power client answered ${status.status}`);
-      const pc = String(((await status.json()) as { pc?: unknown }).pc ?? 'unknown');
+      const body = (await status.json()) as { pc?: unknown; wake?: { waking?: unknown; lastError?: unknown } };
+      // A wake under way counts as starting, though the light may still read off.
+      const pc = body.wake?.waking === true && body.pc !== 'on' ? 'starting' : String(body.pc ?? 'unknown');
+      const wakeError = typeof body.wake?.lastError === 'string' && body.wake.lastError ? body.wake.lastError : null;
       // An older power client has no /me, and no way for subfill to turn the PC on.
       const me = await this.get('/me');
       const can = me.ok ? (((await me.json()) as { can?: unknown }).can ?? []) : [];
-      this.state = { pc, canTurnOn: Array.isArray(can) && can.includes('on'), checkedAt: this.now(), error: null };
+      this.state = { pc, canTurnOn: Array.isArray(can) && can.includes('on'), checkedAt: this.now(), error: null, wakeError };
     } catch (err) {
-      this.state = { ...this.state, checkedAt: this.now(), error: `could not ask the power client: ${(err as Error).message}` };
+      // No reading now: an old one shown as if just checked would send the
+      // owner to the wrong fix.
+      this.state = { pc: null, canTurnOn: false, checkedAt: this.now(), error: `could not ask the power client: ${(err as Error).message}`, wakeError: null };
     }
     return this.state;
   }

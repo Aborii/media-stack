@@ -35,7 +35,7 @@ const NODE_LABEL: Record<NodeState, string> = {
 function offlineReading(n: NodeStatus, now: number): { label: string; dot: string; turnOn: boolean; note: string } | null {
   const p = n.power;
   if (n.state !== 'offline' || !p) return null;
-  const asked = p.checkedAt ? ` (checked ${ago(p.checkedAt, now)})` : '';
+  const asked = (p.checkedAt ? ` (checked ${ago(p.checkedAt, now)})` : '') + (p.wakeError ? ` The last wake gave up: ${esc(p.wakeError)}.` : '');
   if (p.error && !p.pc) return { label: 'offline, and the power client cannot be asked', dot: 'offline', turnOn: false, note: esc(p.error) };
   switch (p.pc) {
     case 'on':
