@@ -3,7 +3,7 @@
 // Temperature 0 because a subtitle wants the most likely translation, not a
 // creative one. The deadline is long on purpose: a 12B model on the mini's CPU
 // takes a minute or two per batch, and a slow answer is still a good one.
-import { Unavailable } from './errors.ts';
+import { ModelLooped, Unavailable } from './errors.ts';
 
 // An answer from Ollama that is an error: counted against the item.
 export class OllamaError extends Error {}
@@ -77,7 +77,9 @@ export class Ollama {
     if (!res.ok) {
       const text = (await res.text()).slice(0, 200);
       const message = `Ollama answered ${res.status}: ${text}`;
-      throw res.status >= 500 && CRASHED.test(text) ? new OllamaCrash(message) : new OllamaError(message);
+      if (res.status >= 500 && CRASHED.test(text)) throw new OllamaCrash(message);
+      if (/repeat limit/i.test(text)) throw new ModelLooped(message);
+      throw new OllamaError(message);
     }
     const body = (await res.json()) as { response?: string };
     return body.response ?? '';
