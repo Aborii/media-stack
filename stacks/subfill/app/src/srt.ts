@@ -231,6 +231,8 @@ const DRAWING = /^m(?:\s+(?:[mnlbspc]|-?\d+(?:\.\d+)?))+$/i;
 // kept, to rebuild how a track was cleaned before, for translations made then.
 const FRAGMENT = /^(?:.|[a-z]{2,3})$/u;
 
+const COMMENT = /\{(?!\\)[^}]*\}/g;
+
 // How far apart two showings of the same words may be and still be one
 // line: animated signs come as a new cue per frame, back to back.
 export const MERGE_GAP_MS = 100;
@@ -265,7 +267,13 @@ export function cleanStyled(
   let copies = 0;
   let merged = 0;
   const cues: Cue[] = [];
-  for (const c of parsed.cues) {
+  let uncommented = false;
+  for (const raw of parsed.cues) {
+    // Brace blocks with no backslash ("{=2}", "{note}") are comments in ASS,
+    // never shown; ffmpeg leaves them in the text, where they would hide a
+    // drawing from the check below and show on screen as junk.
+    const bare = raw.lines.map((l) => l.replace(COMMENT, ''));
+    const c = bare.some((l, i) => l !== raw.lines[i]) ? ((uncommented = true), { ...raw, lines: bare }) : raw;
     const words = c.lines.join(' ').replace(INNER_TAG, '').replace(/\s+/g, ' ').trim();
     if (DRAWING.test(words) && /\d/.test(words)) {
       drawings++;
@@ -309,6 +317,6 @@ export function cleanStyled(
     }
     cues.push(c);
   }
-  if (cues.length === parsed.cues.length) return { parsed, drawings, copies, merged, fragments };
+  if (cues.length === parsed.cues.length && !uncommented) return { parsed, drawings, copies, merged, fragments };
   return { parsed: { ...parsed, cues: cues.map((c, i) => ({ ...c, index: String(i + 1) })) }, drawings, copies, merged, fragments };
 }
