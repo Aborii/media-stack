@@ -24,6 +24,8 @@ import { renderKpis, renderNodes, renderOverview } from './views/overview.ts';
 import { renderQueue } from './views/queue.ts';
 import { renderShow, renderShows } from './views/shows.ts';
 import { renderSubtitles } from './views/subtitles.ts';
+import { renderStats } from './views/stats.ts';
+import { parseDay } from './stats.ts';
 import type { Status, View } from './views/view.ts';
 import type { Worker } from './worker.ts';
 
@@ -262,6 +264,11 @@ export function makeHandler(deps: WebDeps): (req: IncomingMessage, res: ServerRe
             'content-type': 'application/x-subrip; charset=utf-8',
             'content-disposition': `attachment; filename="${file.name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file.name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`,
           });
+        }
+        case '/stats': {
+          // A day to look at: today unless one is asked for, and never the future.
+          const asked = parseDay(q.get('day'));
+          return send(res, 200, renderStats(v, asked !== null && asked <= v.now ? asked : v.now));
         }
         case '/activity':
           return send(res, 200, renderActivity(v));
