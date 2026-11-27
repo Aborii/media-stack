@@ -158,6 +158,7 @@ const ICONS: Record<string, string> = {
   movies: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>',
   items: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
   activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  stats: '<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
 };
@@ -172,6 +173,7 @@ export const TABS = [
   ['shows', '/shows', 'Shows'],
   ['movies', '/movies', 'Films'],
   ['items', '/items', 'All items'],
+  ['stats', '/stats', 'Stats'],
   ['activity', '/activity', 'Activity'],
 ] as const;
 export type Tab = (typeof TABS)[number][0];
@@ -285,6 +287,17 @@ td a{color:var(--text);font-weight:500} td a:hover{color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff} .btn.primary:hover{background:var(--accent2)}
 .acts{display:inline-flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 form.inline{display:inline}
+.chart{display:block;width:100%;height:auto;margin-top:6px;--pc:#3987e5;--mini:#d95926}
+@media (prefers-color-scheme:light){.chart,.legend,.key{--pc:#2a78d6;--mini:#eb6834}}
+.legend,.key{--pc:#3987e5;--mini:#d95926}
+.chart .grid{stroke:var(--line);stroke-width:1} .chart .grid.base{stroke:var(--line2)}
+.chart .tick{fill:var(--faint);font-size:11px;font-family:var(--font)} .chart .tick.on{fill:var(--text);font-weight:600}
+.chart .hit{fill:transparent} .chart .col:hover .hit{fill:var(--hover)} .chart .col.on .hit{fill:color-mix(in srgb,var(--accent) 10%,transparent)}
+.bar-pc{fill:var(--pc);background:var(--pc)} .bar-mini{fill:var(--mini);background:var(--mini)} .bar-other{fill:var(--off);background:var(--off)}
+.legend i.bar-pc,.legend i.bar-mini,.legend i.bar-other{background:var(--c,currentColor)} .legend i.bar-pc{--c:var(--pc)} .legend i.bar-mini{--c:var(--mini)}
+i.key{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;vertical-align:1px} i.key.bar-pc{background:var(--pc)} i.key.bar-mini{background:var(--mini)} i.key.bar-other{background:var(--off)}
+.as-table{margin-top:10px;font-size:12.5px;color:var(--muted)} .as-table summary{cursor:pointer} .as-table table{margin-top:8px}
+input[type=date]{font:inherit;font-size:13px;height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);color-scheme:inherit}
 .movers{display:inline-flex;gap:3px} .btn.mv,.btn.ghost{width:28px;padding:3px 0;text-align:center;font-size:14px;line-height:18px}
 .btn.ghost{visibility:hidden}
 a.btn{display:inline-block} a.btn:hover{text-decoration:none}
