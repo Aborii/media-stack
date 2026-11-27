@@ -6,6 +6,7 @@ import {
   actions,
   ago,
   badge,
+  button,
   coverageBar,
   epCode,
   esc,
@@ -122,7 +123,7 @@ export function renderShow(v: View, id: number): string | null {
   const tile = (label: string, value: string | number, c: string, sub = '') =>
     `<div class="card kpi"><span class="l"><i class="s-${c}"></i>${label}</span><b>${value}</b>${sub ? `<span class="sub">${sub}</span>` : ''}</div>`;
   const body = `<p class="crumb"><a href="/shows">Shows</a> / ${esc(show.title)}</p>
-${pageHeader(`${esc(show.title)}${show.year ? ` <span class="dim">${esc(show.year)}</span>` : ''}`, '', `<span class="tag">${esc(show.folder)}</span><span class="tag">${show.ended ? 'ended' : 'continuing'}</span>${excludeButton(seriesKey(show.id), show.excluded, back, 'show')}`)}
+${pageHeader(`${esc(show.title)}${show.year ? ` <span class="dim">${esc(show.year)}</span>` : ''}`, '', `<span class="tag">${esc(show.folder)}</span><span class="tag">${show.ended ? 'ended' : 'continuing'}</span>${show.excluded || sum(show.counts, GROUPS.queue) + show.counts.failed === 0 ? '' : button(seriesKey(show.id), 'show-now', 'Translate this show now', back, 'primary')}${excludeButton(seriesKey(show.id), show.excluded, back, 'show')}`)}
 ${show.excluded ? '<div class="note">You marked this show not to translate. Its episodes are set aside, new ones too, and it is listed only under "Not translated" on the shows page. Machine subtitles written before stay.</div>' : ''}
 ${libraryNote(v)}
 <div class="kpis">${tile('Coverage', wanted ? `${Math.round((has / wanted) * 100)}%` : '-', 'human', `${has} of ${wanted} that want Arabic`)}${tile('Episodes', show.episodes, 'not_wanted')}${tile('Machine Arabic', show.counts.machine, 'machine')}${tile('In the queue', sum(show.counts, GROUPS.queue), 'ready')}${tile('Missing', sum(show.counts, GROUPS.needs), 'missing')}</div>

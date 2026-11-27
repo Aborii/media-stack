@@ -113,7 +113,7 @@ const server = startWeb(
   {
     store,
     library: new LibraryStore(store.db),
-    worker: { act: () => null, exclude: () => null, holdForPc: () => undefined, releaseHolds: () => undefined, markPcWoken: () => undefined },
+    worker: { act: () => null, exclude: () => null, showFirst: () => null, holdForPc: () => undefined, releaseHolds: () => undefined, markPcWoken: () => undefined },
     status: () => ({ bazarrError: null, lastSync: null, model: 'm', nodes: [] }),
     setNodePaused: () => null,
     loginUrl: 'http://gate',

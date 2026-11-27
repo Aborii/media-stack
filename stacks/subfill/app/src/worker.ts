@@ -440,17 +440,34 @@ export class Worker {
     return null;
   }
 
+  // "Translate this show now": its episodes not translated yet go to the
+  // top of the queue, in episode order. Returns a problem, or null.
+  showFirst(key: string, episodeKeys: string[]): string | null {
+    if (!/^series:\d+$/.test(key)) return 'not a show';
+    if (this.store.isExcluded(key)) return 'this show is marked not to translate; lift the mark first';
+    const moved = this.store.putFirst(episodeKeys, this.now());
+    if (!moved.length) return 'nothing in this show is waiting to be translated';
+    for (const k of moved) this.store.log(k, 'you chose: translate this show now');
+    return null;
+  }
+
   // Owner actions from the page.
   act(key: string, op: string): string | null {
     const item = this.store.get(key);
     if (!item) return 'no such item';
-    if (['now', 'retry', 'unskip', 'again'].includes(op) && this.store.isItemMarked(key)) {
+    if (['now', 'retry', 'unskip', 'again', 'top', 'up'].includes(op) && this.store.isItemMarked(key)) {
       return 'its show or film is marked not to translate; lift the mark first';
     }
     const ok = (() => {
       switch (op) {
         case 'now':
-          return this.store.move(key, ['waiting', 'eligible'], 'eligible', { priority: 1, eligible_at: this.now() });
+          // To the top of the queue, waiting for Bazarr or not.
+          return this.store.move(key, ['waiting', 'eligible'], 'eligible', { eligible_at: this.now() }) && this.store.place(key, 'top', this.now());
+        case 'top':
+        case 'up':
+        case 'down':
+        case 'bottom':
+          return this.store.place(key, op, this.now());
         case 'retry':
           return this.store.move(key, ['failed'], 'eligible', { attempts: 0, crashes: 0, eligible_at: this.now(), note: null });
         case 'skip':
