@@ -122,8 +122,11 @@ const server = startWeb(
     // the wake as subfill's own, so the PC node holds its lease while it works.
     turnOnPc: async () => {
       if (!pcPower) return 'there is no PC node, or no power client token';
+      // Only the PC's power: a paused PC node stays paused, so the queue can
+      // be reordered before anything starts.
       const problem = await pcPower.turnOn();
       if (!problem) worker.markPcWoken(30);
+      nodes.find((n) => n.name === 'pc')?.poke();
       return problem;
     },
     setNodePaused: (name, paused) => {

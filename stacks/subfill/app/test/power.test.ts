@@ -80,7 +80,7 @@ test('the PC card says whether the PC or only its model is off, and offers Turn 
   assert.match(card(null).card, /offline &middot; Ollama call failed/);
   // The power client unreachable: says it cannot tell, and no button.
   const unknown = card({ pc: null, canTurnOn: false, checkedAt: 30_000, error: 'could not ask the power client: timeout' });
-  assert.match(unknown.card, /offline, and the power client cannot be asked/);
+  assert.match(unknown.card, /the power client cannot be asked about the PC/);
   assert.ok(!unknown.card.includes('pc-turn-on'));
   // A wake that gave up is shown, with the button to try again.
   const gave = card({ pc: 'off', canTurnOn: true, checkedAt: 30_000, error: null, wakeError: 'the PC did not come up in 300 s' });
