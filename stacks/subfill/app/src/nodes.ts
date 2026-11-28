@@ -30,7 +30,8 @@ import type { Store } from './store.ts';
 import type { Generate } from './translate.ts';
 import type { Current, Worker } from './worker.ts';
 
-export const NODE_STATES = ['working', 'idle', 'offline', 'paused', 'outside_hours'] as const;
+// checking: just resumed, finding out whether its model answers.
+export const NODE_STATES = ['working', 'idle', 'offline', 'paused', 'outside_hours', 'checking'] as const;
 export type NodeState = (typeof NODE_STATES)[number];
 
 export const MAX_BACKOFF_MS = 15 * 60_000;
@@ -64,6 +65,10 @@ export class NodeRunner {
   private readonly store: Store;
   private readonly lease: Lease | null;
   private readonly power: PcPower | null;
+  private readonly powerEveryMs: number;
+  // Wake the loop's sleep, and the power watcher's, early.
+  private wakeStep: (() => void) | null = null;
+  private wakePower: (() => void) | null = null;
   private readonly hours: Hours;
   private readonly takesHeld: boolean;
   private readonly waitMs: { idle: number; offline: number; paused: number };
@@ -85,6 +90,8 @@ export class NodeRunner {
     store: Store;
     lease?: Lease | null;
     power?: PcPower | null;
+    // How often the PC's power is asked, paused or not.
+    powerEveryMs?: number;
     hours?: Hours;
     takesHeld?: boolean;
     waitMs?: { idle: number; offline: number; paused: number };
@@ -97,6 +104,7 @@ export class NodeRunner {
     this.store = opts.store;
     this.lease = opts.lease ?? null;
     this.power = opts.power ?? null;
+    this.powerEveryMs = opts.powerEveryMs ?? 30_000;
     this.hours = opts.hours ?? null;
     this.takesHeld = opts.takesHeld ?? false;
     this.waitMs = opts.waitMs ?? { idle: 60_000, offline: 30_000, paused: 15_000 };
@@ -122,9 +130,45 @@ export class NodeRunner {
     return this.store.getMeta(`paused:${this.name}`) === '1';
   }
 
+  // Pause and Resume only decide whether subfill uses this node; they never
+  // turn the PC on or off. Either takes effect now, not after the loop's
+  // sleep: a resumed node that finds its model away waits for it, and starts
+  // by itself once it answers.
   setPaused(paused: boolean): void {
     if (paused) this.store.setMeta(`paused:${this.name}`, '1');
     else this.store.deleteMeta(`paused:${this.name}`);
+    if (paused && this.state !== 'working') this.state = 'paused';
+    if (!paused && this.state === 'paused') this.state = 'checking';
+    this.poke();
+  }
+
+  // Look again now: at the model (the loop) and at the PC's power.
+  poke(): void {
+    this.wakeStep?.();
+    this.wakePower?.();
+  }
+
+  private sleep(ms: number, slot: 'step' | 'power'): Promise<void> {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        if (slot === 'step') this.wakeStep = null;
+        else this.wakePower = null;
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      if (slot === 'step') this.wakeStep = done;
+      else this.wakePower = done;
+    });
+  }
+
+  // The PC's power, asked on its own clock, paused or not: whether the PC
+  // is on is the PC's business, not the node's.
+  private async watchPower(): Promise<void> {
+    while (this.power && !this.stopped) {
+      await this.power.refresh();
+      if (!this.stopped) await this.sleep(this.powerEveryMs, 'power');
+    }
   }
 
   status(): NodeStatus {
@@ -162,9 +206,9 @@ export class NodeRunner {
     }
     this.problem = await this.model.problem();
     if (this.problem) {
+      // Just found away: ask about the PC's power now, not at the next tick.
+      if (this.state !== 'offline') this.wakePower?.();
       this.state = 'offline';
-      // Is the machine off, or only its model? The page says which.
-      await this.power?.refresh();
       await this.letGo();
       return this.waitMs.offline;
     }
@@ -206,6 +250,7 @@ export class NodeRunner {
   }
 
   async run(): Promise<void> {
+    const watching = this.watchPower();
     while (!this.stopped) {
       let wait = this.waitMs.idle;
       try {
@@ -213,13 +258,15 @@ export class NodeRunner {
       } catch (err) {
         console.error(`${this.name} node:`, (err as Error).message);
       }
-      if (wait > 0 && !this.stopped) await new Promise((r) => setTimeout(r, wait));
+      if (wait > 0 && !this.stopped) await this.sleep(wait, 'step');
     }
+    await watching;
   }
 
   // Once only: a second signal waits for the first stop rather than racing it.
   stop(): Promise<void> {
     this.stopped = true;
+    this.poke();
     this.stopping ??= this.lease ? this.lease.release() : Promise.resolve();
     return this.stopping;
   }
