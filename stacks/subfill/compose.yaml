@@ -45,9 +45,10 @@
 # Telegram when work is piling up, and on ▶️ Wake PC turns the PC on and tells
 # subfill (POST /api/answer); or from the PC card's Turn on button here, which
 # asks the power client itself (needs subfill:on in POWER_CLIENT_ALLOW). subfill
-# never wakes it on its own. While the PC's model does not answer, the card
-# asks the power client whether the PC itself is on, starting, asleep or off,
-# so "on, but the model is not running" is told apart. Only after a wake, for a PC that
+# never wakes it on its own. The PC card always shows whether the PC itself is
+# on, starting, asleep or off, asked of the power client every 30 s whether
+# the node is paused or not, so "on, but the model is not running" is told
+# apart. Pause/Resume and Turn on are separate: neither does the other. Only after a wake, for a PC that
 # comes up within the half hour, does subfill hold a lease at the mini's power
 # client (mini/subfill), so pc-power does not hibernate the PC under an
 # episode, dropping it when the PC has nothing left. A PC that is awake for

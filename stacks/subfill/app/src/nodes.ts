@@ -66,9 +66,11 @@ export class NodeRunner {
   private readonly lease: Lease | null;
   private readonly power: PcPower | null;
   private readonly powerEveryMs: number;
-  // Wake the loop's sleep, and the power watcher's, early.
-  private wakeStep: (() => void) | null = null;
-  private wakePower: (() => void) | null = null;
+  // Wake the loop's sleep, and the power watcher's, early. A wake that comes
+  // while that loop is busy (a step, a refresh) is kept, so its next sleep
+  // is skipped rather than the wake lost.
+  private readonly wakers: Record<'step' | 'power', (() => void) | null> = { step: null, power: null };
+  private readonly woken: Record<'step' | 'power', boolean> = { step: false, power: false };
   private readonly hours: Hours;
   private readonly takesHeld: boolean;
   private readonly waitMs: { idle: number; offline: number; paused: number };
@@ -144,21 +146,29 @@ export class NodeRunner {
 
   // Look again now: at the model (the loop) and at the PC's power.
   poke(): void {
-    this.wakeStep?.();
-    this.wakePower?.();
+    this.wake('step');
+    this.wake('power');
+  }
+
+  private wake(slot: 'step' | 'power'): void {
+    const waker = this.wakers[slot];
+    if (waker) waker();
+    else this.woken[slot] = true;
   }
 
   private sleep(ms: number, slot: 'step' | 'power'): Promise<void> {
+    if (this.woken[slot]) {
+      this.woken[slot] = false;
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer);
-        if (slot === 'step') this.wakeStep = null;
-        else this.wakePower = null;
+        this.wakers[slot] = null;
         resolve();
       };
       const timer = setTimeout(done, ms);
-      if (slot === 'step') this.wakeStep = done;
-      else this.wakePower = done;
+      this.wakers[slot] = done;
     });
   }
 
@@ -204,10 +214,12 @@ export class NodeRunner {
       this.state = 'outside_hours';
       return this.waitMs.idle;
     }
+    const wasOffline = this.state === 'offline';
     this.problem = await this.model.problem();
+    // Just found away, or back: ask about the PC's power now, not at the
+    // next tick, so the card never shows an old reading for the new state.
+    if (Boolean(this.problem) !== wasOffline) this.wake('power');
     if (this.problem) {
-      // Just found away: ask about the PC's power now, not at the next tick.
-      if (this.state !== 'offline') this.wakePower?.();
       this.state = 'offline';
       await this.letGo();
       return this.waitMs.offline;

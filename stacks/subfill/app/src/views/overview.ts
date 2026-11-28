@@ -28,7 +28,7 @@ const NODE_LABEL: Record<NodeState, string> = {
   offline: 'offline',
   paused: 'paused by you',
   outside_hours: 'outside its hours',
-  checking: 'checking the PC',
+  checking: 'checking its model',
 };
 
 // The PC's own power, for a node with a power reading: the first line of its
@@ -39,7 +39,9 @@ export function powerLine(n: NodeStatus, now: number): { label: string; dot: str
   if (!p) return null;
   const asked = (p.checkedAt ? ` (checked ${ago(p.checkedAt, now)})` : '') + (p.wakeError ? ` The last wake gave up: ${esc(p.wakeError)}.` : '');
   if (p.error && !p.pc) return { label: 'the power client cannot be asked about the PC', dot: 'offline', turnOn: false, note: esc(p.error) };
-  switch (p.pc) {
+  // Its model answering is proof the PC is on, whatever an older reading
+  // said: a Turn on here would claim a wake the owner never needed.
+  switch (n.state === 'working' ? 'on' : p.pc) {
     case null:
       return { label: 'checking the PC', dot: 'checking', turnOn: false, note: '' };
     case 'on':
@@ -62,7 +64,7 @@ export function powerLine(n: NodeStatus, now: number): { label: string; dot: str
 // translating.
 export function useLine(n: NodeStatus): string {
   if (n.paused) return n.state === 'working' ? 'pauses after this item' : 'paused by you';
-  if (n.state === 'paused' || n.state === 'checking') return NODE_LABEL.checking;
+  if (n.state === 'paused' || n.state === 'checking') return n.power ? 'checking the PC' : NODE_LABEL.checking;
   if (n.state === 'offline') {
     if (!n.power) return 'offline';
     return n.power.pc === 'on' ? "waiting for the PC's model" : 'waiting for the PC: starts by itself once it is on';

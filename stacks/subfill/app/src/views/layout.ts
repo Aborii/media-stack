@@ -199,8 +199,9 @@ export function renderSideNodes(v: View): string {
     .map((n) => {
       const pct = n.current?.total ? Math.round((n.current.done / n.current.total) * 100) : null;
       // The PC off, asleep or starting is said first, paused or not; on with
-      // its model away only while the node is trying to use it.
-      const pc = n.power?.pc;
+      // its model away only while the node is trying to use it. A translating
+      // node's PC is on, whatever an older reading says.
+      const pc = n.state === 'working' ? 'on' : n.power?.pc;
       const power =
         pc === 'off' || pc === 'asleep' || pc === 'starting'
           ? ({ starting: ['starting', 'starting'], asleep: ['PC asleep', 'offline'], off: ['PC off', 'offline'] } as Record<string, [string, string]>)[pc]
